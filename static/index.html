@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper→Results Graph</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<style>
+:root{
+  --ink:#07090f;
+  --panel:#0d111c;
+  --panel-2:#111726;
+  --line:#1e2740;
+  --line-bright:#2c3a63;
+  --text:#c9d4ee;
+  --text-dim:#5f6e96;
+  --paper:#e8b64c;
+  --claim:#5ad0e6;
+  --method:#a78bfa;
+  --run-ok:#4ade80;
+  --run-bad:#f87171;
+  --dataset:#7d8cb8;
+  --accent:#4ade80;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:
+    radial-gradient(1200px 600px at 75% -10%, rgba(90,208,230,.06), transparent 60%),
+    radial-gradient(900px 500px at 10% 110%, rgba(167,139,250,.05), transparent 60%),
+    var(--ink);
+  color:var(--text);
+  font-family:"IBM Plex Mono",monospace;
+  font-size:13px;
+  overflow:hidden;
+}
+body::before{ /* graph-paper texture */
+  content:"";position:fixed;inset:0;pointer-events:none;opacity:.5;
+  background:
+    linear-gradient(rgba(60,80,140,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(60,80,140,.05) 1px, transparent 1px);
+  background-size:28px 28px;
+}
+header{
+  display:flex;align-items:baseline;gap:18px;
+  padding:14px 22px 12px;border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg, rgba(13,17,28,.9), rgba(13,17,28,.6));
+}
+h1{
+  font-family:"Fraunces",serif;font-weight:900;font-size:22px;letter-spacing:.5px;
+  color:#eef2ff;
+}
+h1 .arrow{color:var(--accent);font-family:"IBM Plex Mono",monospace;font-weight:600}
+header .tag{color:var(--text-dim);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase}
+header .legend{margin-left:auto;display:flex;gap:14px;font-size:11px;color:var(--text-dim)}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;transform:translateY(.5px)}
+main{display:grid;grid-template-columns:1fr 420px;height:calc(100vh - 53px)}
+#graph{position:relative;border-right:1px solid var(--line)}
+#net{position:absolute;inset:0}
+#graph .hint{
+  position:absolute;left:16px;bottom:12px;z-index:5;color:var(--text-dim);
+  font-size:11px;letter-spacing:.05em;background:rgba(7,9,15,.7);padding:4px 8px;
+  border:1px solid var(--line);border-radius:3px;
+}
+aside{display:flex;flex-direction:column;overflow:hidden}
+section{border-bottom:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+section > .head{
+  display:flex;align-items:center;gap:8px;
+  padding:9px 14px;border-bottom:1px solid var(--line);
+  font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);
+  background:var(--panel);
+}
+section > .head::before{content:"§";color:var(--accent);font-family:"Fraunces",serif}
+#method-panel{flex:0 0 auto}
+#method-body{padding:12px 14px;background:var(--panel-2)}
+#method-body .name{font-family:"Fraunces",serif;font-size:16px;font-weight:700;color:#eef2ff;margin-bottom:4px}
+#method-body .desc{color:var(--text-dim);font-size:12px;line-height:1.55;margin-bottom:10px;max-height:70px;overflow:auto}
+#run-btn{
+  width:100%;padding:10px;border:1px solid var(--accent);border-radius:3px;
+  background:linear-gradient(180deg, rgba(74,222,128,.16), rgba(74,222,128,.05));
+  color:var(--accent);font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:13px;
+  letter-spacing:.1em;cursor:pointer;text-transform:uppercase;
+  transition:background .15s, box-shadow .15s;
+}
+#run-btn:hover:not(:disabled){background:rgba(74,222,128,.25);box-shadow:0 0 18px rgba(74,222,128,.25)}
+#run-btn:disabled{opacity:.35;cursor:not-allowed;border-color:var(--line-bright);color:var(--text-dim)}
+#log-panel{flex:1 1 40%}
+#log{
+  flex:1;overflow-y:auto;padding:10px 14px;background:#05070c;
+  font-size:11.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word;
+}
+#log .t-dim{color:var(--text-dim)}
+#log .t-ok{color:var(--run-ok)}
+#log .t-bad{color:var(--run-bad)}
+#log .t-warn{color:var(--paper)}
+#log .cursor{display:inline-block;width:7px;height:13px;background:var(--accent);animation:blink 1s steps(1) infinite;vertical-align:text-bottom}
+@keyframes blink{50%{opacity:0}}
+#evidence-panel{flex:1 1 30%}
+#evidence{flex:1;overflow-y:auto}
+#evidence table{width:100%;border-collapse:collapse;font-size:11px}
+#evidence td{padding:6px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+#evidence td:first-child{color:var(--claim);white-space:nowrap;font-weight:500}
+#evidence .no-run{color:var(--text-dim)}
+#evidence .validates{color:var(--run-ok);font-weight:600}
+#evidence .refutes{color:var(--run-bad);font-weight:600}
+#ask-panel{flex:0 0 auto;border-bottom:none}
+#ask-row{display:flex;gap:0;border-top:1px solid transparent}
+#ask-input{
+  flex:1;padding:11px 14px;background:var(--panel-2);border:none;outline:none;
+  color:var(--text);font-family:"IBM Plex Mono",monospace;font-size:12.5px;
+}
+#ask-input::placeholder{color:var(--text-dim)}
+#ask-btn{
+  padding:0 18px;border:none;border-left:1px solid var(--line);cursor:pointer;
+  background:var(--panel);color:var(--claim);font-family:"IBM Plex Mono",monospace;
+  font-weight:600;font-size:12px;letter-spacing:.08em;
+}
+#ask-btn:hover{background:var(--line)}
+#ask-answer{
+  max-height:150px;overflow-y:auto;padding:10px 14px;font-size:12px;line-height:1.6;
+  color:var(--text);background:#0a0e18;border-top:1px solid var(--line);display:none;
+}
+#ask-answer.show{display:block}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:var(--line-bright);border-radius:4px}
+::-webkit-scrollbar-track{background:transparent}
+.flash{animation:flash .8s ease-out 3}
+@keyframes flash{0%{background:rgba(74,222,128,.25)}100%{background:transparent}}
+</style>
+</head>
+<body>
+<header>
+  <h1>PAPER<span class="arrow">→</span>RESULTS</h1>
+  <span class="tag">executable evidence graph · hackwithbay 3.0</span>
+  <div class="legend">
+    <span><i style="background:var(--paper)"></i>Paper</span>
+    <span><i style="background:var(--claim)"></i>Claim</span>
+    <span><i style="background:var(--method)"></i>Method</span>
+    <span><i style="background:var(--run-ok)"></i>Run</span>
+    <span><i style="background:var(--dataset)"></i>Other</span>
+  </div>
+</header>
+<main>
+  <div id="graph">
+    <div id="net"></div>
+    <div class="hint">click a METHOD node, then RUN — watch the graph learn</div>
+  </div>
+  <aside>
+    <section id="method-panel">
+      <div class="head">Selected method</div>
+      <div id="method-body">
+        <div class="name" id="m-name">— none selected —</div>
+        <div class="desc" id="m-desc">Click a violet method node in the graph.</div>
+        <button id="run-btn" disabled>▶ Run this method</button>
+      </div>
+    </section>
+    <section id="log-panel">
+      <div class="head">Experiment console</div>
+      <div id="log"><span class="t-dim">idle. waiting for a run…</span></div>
+    </section>
+    <section id="evidence-panel">
+      <div class="head">Claims × executable evidence</div>
+      <div id="evidence"></div>
+    </section>
+    <section id="ask-panel">
+      <div class="head">Ask the research agent (RocketRide × Neo4j)</div>
+      <div id="ask-row">
+        <input id="ask-input" placeholder="e.g. Do these papers agree on whether Adam generalizes well?">
+        <button id="ask-btn">ASK</button>
+      </div>
+      <div id="ask-answer"></div>
+    </section>
+  </aside>
+</main>
+<script>
+const COLORS = {
+  Paper:{bg:"#e8b64c", fg:"#07090f"}, Claim:{bg:"#5ad0e6", fg:"#07090f"},
+  Method:{bg:"#a78bfa", fg:"#07090f"}, Run:{bg:"#4ade80", fg:"#07090f"},
+  RunFail:{bg:"#f87171", fg:"#07090f"}, Author:{bg:"#3a4666", fg:"#c9d4ee"},
+  Dataset:{bg:"#7d8cb8", fg:"#07090f"}, Task:{bg:"#31406e", fg:"#c9d4ee"},
+  Artifact:{bg:"#274036", fg:"#c9d4ee"},
+};
+const SIZE = {Paper:26, Claim:14, Method:20, Run:18, Author:8, Dataset:11, Task:12, Artifact:9};
+let network, nodesDS, edgesDS, selectedMethod=null, methodProps={};
+
+const log = (msg, cls="") => {
+  const el = document.getElementById("log");
+  el.innerHTML += (el.dataset.used ? "\n" : "") + `<span class="${cls}">${msg}</span>`;
+  el.dataset.used = 1;
+  el.scrollTop = el.scrollHeight;
+};
+const clearLog = () => { const el=document.getElementById("log"); el.innerHTML=""; delete el.dataset.used; };
+
+function nodeStyle(n){
+  const label = n.label==="Run" && n.props.status!=="success" ? "RunFail" : n.label;
+  const c = COLORS[label] || COLORS.Dataset;
+  let caption = (n.caption||"").slice(0,36);
+  if(n.label==="Claim") caption = n.key;
+  if(n.label==="Run") caption = "⚡ " + (n.key||"run").replace("run-","").slice(0,26);
+  return {
+    id:n.eid, label:caption,
+    shape:n.label==="Paper"?"box":"dot", size:SIZE[n.label]||10,
+    color:{background:c.bg, border:c.bg, highlight:{background:"#ffffff", border:c.bg}},
+    font:{color:n.label==="Paper"?c.fg:"#c9d4ee", size:n.label==="Paper"?13:10, face:"IBM Plex Mono"},
+    margin:n.label==="Paper"?8:undefined,
+    _raw:n,
+  };
+}
+
+async function loadGraph(flashNew=false){
+  const res = await fetch("/api/graph"); const g = await res.json();
+  const existing = nodesDS ? new Set(nodesDS.getIds()) : new Set();
+  const nodes = g.nodes.map(nodeStyle);
+  const edges = g.edges.map((e,i)=>({
+    id:`${e.src}|${e.rel}|${e.dst}`, from:e.src, to:e.dst,
+    label:["VALIDATES","REFUTES","CONTRADICTS","IMPLEMENTS"].includes(e.rel)?e.rel:"",
+    font:{size:8, color:e.rel==="VALIDATES"?"#4ade80":e.rel==="REFUTES"?"#f87171":e.rel==="CONTRADICTS"?"#e8b64c":"#5f6e96", face:"IBM Plex Mono", strokeWidth:0},
+    color:{color:e.rel==="VALIDATES"?"#4ade80":e.rel==="REFUTES"?"#f87171":e.rel==="CONTRADICTS"?"#b98a2e":"#2c3a63", opacity:.75},
+    width:["VALIDATES","REFUTES"].includes(e.rel)?2.2:1,
+    dashes:e.rel==="CONTRADICTS",
+    arrows:{to:{enabled:true, scaleFactor:.45}},
+  }));
+  if(!network){
+    nodesDS = new vis.DataSet(nodes); edgesDS = new vis.DataSet(edges);
+    network = new vis.Network(document.getElementById("net"), {nodes:nodesDS, edges:edgesDS}, {
+      physics:{barnesHut:{gravitationalConstant:-5200, springLength:130, springConstant:.02}, stabilization:{iterations:250}},
+      interaction:{hover:true},
+    });
+    network.on("click", p=>{
+      if(!p.nodes.length) return;
+      const n = nodesDS.get(p.nodes[0]);
+      if(n._raw.label==="Method") selectMethod(n._raw);
+    });
+  } else {
+    nodes.forEach(n=>nodesDS.update(n)); edges.forEach(e=>edgesDS.update(e));
+    if(flashNew){
+      const fresh = nodes.filter(n=>!existing.has(n.id)).map(n=>n.id);
+      if(fresh.length) network.selectNodes(fresh);
+    }
+  }
+}
+
+function selectMethod(raw){
+  selectedMethod = raw.props.id; methodProps = raw.props;
+  document.getElementById("m-name").textContent = raw.props.name || raw.props.id;
+  document.getElementById("m-desc").textContent = raw.props.runnable_hint || raw.props.description || "";
+  document.getElementById("run-btn").disabled = false;
+}
+
+async function loadEvidence(){
+  const rows = await (await fetch("/api/evidence")).json();
+  document.getElementById("evidence").innerHTML =
+    "<table>" + rows.map(r=>{
+      const cls = r.evidence.startsWith("VALIDATES")?"validates":r.evidence.startsWith("REFUTES")?"refutes":"no-run";
+      return `<tr><td>${r.claim}</td><td class="${cls}">${r.evidence}</td></tr>`;
+    }).join("") + "</table>";
+}
+
+document.getElementById("run-btn").addEventListener("click", async ()=>{
+  if(!selectedMethod) return;
+  const btn = document.getElementById("run-btn");
+  btn.disabled = true; clearLog();
+  log(`$ paper2result run ${selectedMethod}`, "t-warn");
+  log("① generating implementation from method node…", "t-dim");
+  log("② executing in sandbox…", "t-dim");
+  const started = Date.now();
+  try{
+    const rec = await (await fetch(`/api/run/${selectedMethod}`, {method:"POST"})).json();
+    const dt = ((Date.now()-started)/1000).toFixed(1);
+    if(rec.error){ log(`✗ run failed: ${rec.error}`, "t-bad"); }
+    else{
+      log(`③ run ${rec.run_id} [${rec.backend}] exit=${rec.exit_code} in ${rec.duration_s}s`, "");
+      (rec.stdout||"").trim().split("\n").slice(0,-1).forEach(l=>log("  "+l, "t-dim"));
+      (rec.result?.claim_checks||[]).forEach(c=>
+        log(`④ ${c.verdict} ${c.claim_id} — ${c.detail}`, c.verdict==="VALIDATES"?"t-ok":"t-bad"));
+      log(`⑤ graph updated (+Run +Artifact, wall ${dt}s) ✓`, "t-ok");
+    }
+  }catch(e){ log("✗ "+e, "t-bad"); }
+  await loadGraph(true); await loadEvidence();
+  btn.disabled = false;
+});
+
+async function ask(){
+  const q = document.getElementById("ask-input").value.trim();
+  if(!q) return;
+  const out = document.getElementById("ask-answer");
+  out.classList.add("show"); out.textContent = "thinking (agent waves: graph → cypher → synthesis)…";
+  try{
+    const r = await (await fetch("/api/ask", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({question:q})})).json();
+    out.textContent = r.answer;
+  }catch(e){ out.textContent = "agent error: "+e; }
+}
+document.getElementById("ask-btn").addEventListener("click", ask);
+document.getElementById("ask-input").addEventListener("keydown", e=>{ if(e.key==="Enter") ask(); });
+
+loadGraph(); loadEvidence();
+</script>
+</body>
+</html>

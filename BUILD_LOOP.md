@@ -71,10 +71,10 @@ This file is the single source of truth for the build loop. Each loop iteration:
 - [x] VERIFIED live via `scripts/check_pipeline.py`: agent answered "which claims have executable evidence" citing real run id, VALIDATES verdicts, metrics from the graph
 - [ ] Polish: agent sometimes misquotes metric values (said 0.05 vs actual 0.425) — tighten instructions or db_description; add tool_daytona node when key arrives
 
-### M7 — UI + Butterbase (BLOCKED: Butterbase account)
-- [ ] Minimal web UI: graph viz (papers/claims/methods/runs), "Run this method" button, live run log panel
-- [ ] Butterbase backend: store papers, runs, artifacts; deploy frontend for live URL
-- [ ] Fallback: local FastAPI + static page with vis-network so demo works regardless
+### M7 — UI + Butterbase
+- [x] Demo UI (`static/index.html` + `app/server.py` FastAPI on :8787): vis-network graph (color-coded node types, VALIDATES/REFUTES/CONTRADICTS edge styling), method panel + RUN button, experiment console with staged log, evidence table, ask-the-agent box (RocketRide pipeline). Verified in Chrome: click method → RUN → console streams verdicts → new Run node appears → evidence flips
+- [x] Butterbase backend: dedicated app `paper2result` (app_vinjruy5c03s, https://paper2result.butterbase.dev) created via /init — sceneshop's app untouched. Tables papers+runs applied; `app/butterbase.py` sync (insert-or-skip; jsonb arrays must be wrapped in an object; row-id endpoints need UUID ids so text-id rows are immutable). Server mirrors every run to Butterbase automatically
+- [ ] Deployed frontend URL: DECISION NEEDED — UI needs the local FastAPI backend (graph/run/ask), so a Butterbase static deploy would need a read-from-Butterbase-only variant or the demo stays on localhost. Note: one stray `probe1` row in runs table (undeletable via REST, text id) — filter out if it shows anywhere
 
 ### M8 — Demo + submission
 - [ ] Seed demo data end-to-end; rehearse the 2-min flow from README
@@ -85,6 +85,7 @@ This file is the single source of truth for the build loop. Each loop iteration:
 
 (loop appends: iteration #, what was done, what's verified, what's next)
 
+- **#8 (2026-07-07):** M7 complete (minus deploy decision). Instrument-panel UI verified live in Chrome — the killer demo moment (click method → RUN → verdicts stream → graph grows → evidence flips) works visually. Created dedicated Butterbase app paper2result (NOT sceneshop's); papers+runs persisted; server auto-mirrors runs. Butterbase REST quirks learned: primaryKey not primary; jsonb top-level arrays rejected; row-id routes UUID-only. Next: M8 demo prep + README + submission; deploy decision for live URL.
 - **#7 (2026-07-07):** M6 complete. KEY DISCOVERY: Butterbase AI gateway is OpenAI-compatible and our service key works — LLM access unblocked without any OpenAI/Anthropic key (also strengthens Butterbase integration story). Pipeline paper2result.pipe verified live: agent → gateway LLM + memory + db_neo4j(Aura) + tool_python, answers evidence questions citing real run ids. extract.py/codegen.py live modes can now also use the gateway (optional polish). Next: M7 UI + Butterbase backend.
 - **#6 (2026-07-07):** M5 complete — THE CORE LOOP IS CLOSED end-to-end (paper → method → code → run → result → graph update, verified by evidence-query diff). Everything from here is orchestration + presentation. Next: M6 RocketRide pipeline — MUST read .rocketride/docs (README, QUICKSTART, PIPELINE_RULES, COMPONENT_REFERENCE, COMMON_MISTAKES, python_API) before writing the .pipe.
 - **#5 (2026-07-07):** M4 complete (local verified; Daytona code-complete, blocked on key). Run records persist to runs/ with full stdout/stderr/duration + parsed claim verdicts. Inspected installed daytona_sdk 0.194 to write against the real API instead of guessing. Next: M5 — curator writes Run/Artifact nodes back to Neo4j + end-to-end demo_loop.py.
