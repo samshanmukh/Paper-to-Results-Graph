@@ -466,7 +466,127 @@ function findMethodNodeEid(methodId){
   return null;
 }
 
-async function pulseNode(eid, on=true){
+function edgeRel(ed){
+  if(ed?._rel) return ed._rel;
+  const parts = String(ed?.id || "").split("|");
+  return parts.length >= 2 ? parts[1] : "";
+}
+
+async function waitCamera(duration=1500){
+  return new Promise(resolve=>{
+    if(!network) return resolve();
+    let done = false;
+    const finish = ()=>{ if(!done){ done=true; resolve(); } };
+    network.once("animationFinished", finish);
+    setTimeout(finish, duration + 250);
+  });
+}
+
+async function smoothFocus(nodeId, {scale=1.1, duration=1600, offset={x:0,y:0}}={}){
+  if(!network || !nodeId) return;
+  network.selectNodes([nodeId]);
+  network.focus(nodeId, {scale, offset, animation:{duration, easingFunction:"easeInOutCubic"}});
+  await waitCamera(duration);
+}
+
+async function smoothFit({duration=1400}={}){
+  if(!network) return;
+  network.fit({animation:{duration, easingFunction:"easeInOutCubic"}});
+  await waitCamera(duration);
+}
+
+async function animateEdgeIn(edgeId, ms=600){
+  const e = edgesDS.get(edgeId);
+  if(!e) return;
+  const color = e.color?.color || "#C9C9D0";
+  const fullOp = e._fullOpacity ?? e.color?.opacity ?? 1;
+  const fullW = e._fullWidth ?? e.width ?? 1;
+  const fullLabel = e._fullLabel ?? e.label ?? "";
+  edgesDS.update({id:edgeId, color:{color, opacity:0.04}, width:0.4, label:""});
+  const t0 = performance.now();
+  await new Promise(resolve=>{
+    function frame(now){
+      const t = Math.min(1, (now - t0) / ms);
+      const ease = 1 - Math.pow(1 - t, 3);
+      edgesDS.update({
+        id:edgeId,
+        color:{color, opacity:0.04 + (fullOp - 0.04) * ease},
+        width:0.4 + (fullW - 0.4) * ease,
+        label:t > 0.7 ? fullLabel : "",
+      });
+      if(t < 1) requestAnimationFrame(frame);
+      else resolve();
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+async function revealEdgesCinematic(edges, ms=520){
+  const order = {FROM:0, DESCRIBED_IN:1, CITES:2, IMPLEMENTS:3, VALIDATES:4, REFUTES:5, CONTRADICTS:6};
+  const prepared = edges.map(e=>({
+    ...e,
+    _fullLabel: e.label,
+    _fullOpacity: e._fullOpacity ?? e.color?.opacity ?? 1,
+    _fullWidth: e._fullWidth ?? e.width ?? 1,
+    color:{color:e.color?.color || "#C9C9D0", opacity:0.03},
+    width:0.4,
+    label:"",
+  }));
+  edgesDS.add(prepared);
+  const sorted = [...prepared].sort((a,b)=>(order[a._rel]??9)-(order[b._rel]??9));
+  for(const e of sorted){
+    await animateEdgeIn(e.id, ms);
+    await sleep(30);
+  }
+}
+
+async function cinematicTourToMethod(methodId){
+  const methodEid = findMethodNodeEid(methodId);
+  if(!methodEid || !network) return;
+  const paperPrefix = methodId.replace(/-m\d+$/, "");
+  const paperEid = findPaperNodeEid(paperPrefix);
+
+  await smoothFit({duration:2000});
+  if(paperEid){
+    await smoothFocus(paperEid, {scale:0.9, duration:1800});
+    const claimEdges = edgesDS.get()
+      .filter(ed=>ed.to === paperEid && edgeRel(ed) === "FROM")
+      .sort((a,b)=>(nodesDS.get(a.from)?.y||0)-(nodesDS.get(b.from)?.y||0));
+    for(const ed of claimEdges){
+      await animateEdgeIn(ed.id, 580);
+      await sleep(180);
+      await smoothFocus(ed.from, {scale:1.02, duration:1000});
+      await sleep(280);
+    }
+  }
+  const methodEdge = edgesDS.get().find(ed=>ed.from === methodEid && edgeRel(ed) === "DESCRIBED_IN");
+  if(methodEdge) await animateEdgeIn(methodEdge.id, 620);
+  await smoothFocus(methodEid, {scale:1.15, duration:2000});
+}
+
+async function cinematicRevealRun(methodEid){
+  const runNode = nodesDS.get().find(n=>n._raw?.label === "Run");
+  if(!runNode || !network) return;
+  const runEid = runNode.id;
+  const implEdge = edgesDS.get().find(ed=>ed.from === runEid && edgeRel(ed) === "IMPLEMENTS");
+  if(implEdge && methodEid){
+    await smoothFocus(methodEid, {scale:1.06, duration:1100});
+    await animateEdgeIn(implEdge.id, 720);
+  }
+  const valEdges = edgesDS.get()
+    .filter(ed=>ed.from === runEid && (edgeRel(ed) === "VALIDATES" || edgeRel(ed) === "REFUTES"))
+    .sort((a,b)=>(nodesDS.get(a.to)?.y||0)-(nodesDS.get(b.to)?.y||0));
+  await smoothFocus(runEid, {scale:1.18, duration:1700});
+  for(const ed of valEdges){
+    await animateEdgeIn(ed.id, 680);
+    await sleep(220);
+    await smoothFocus(ed.to, {scale:1.04, duration:900});
+    await sleep(320);
+  }
+  await smoothFit({duration:1500});
+}
+
+async function pulseNode(eid, on=true, {focus=false}={}){
   if(!eid || !nodesDS) return;
   const n = nodesDS.get(eid);
   if(!n) return;
@@ -476,7 +596,7 @@ async function pulseNode(eid, on=true){
     shadow: on ? {enabled:true, color:"rgba(108,76,241,.5)", size:22, x:0, y:0}
               : (n._raw?.label === "Run" ? n.shadow : {enabled:false}),
   });
-  if(on && network){
+  if(on && focus && network){
     network.selectNodes([eid]);
     network.focus(eid, {scale:1.15, animation:{duration:700, easingFunction:"easeInOutCubic"}});
   }
@@ -594,7 +714,7 @@ async function tweenPositions(targets, ms=420){
   await Promise.all(jobs);
 }
 
-async function animateGraph(nodes, edges, {initial=false, focusNew=false, existing=new Set()}={}){
+async function animateGraph(nodes, edges, {initial=false, focusNew=false, existing=new Set(), cinematic=false, skipFit=false}={}){
   if(graphAnimating) return;
   graphAnimating = true;
   const newRuns = nodes.filter(n=>!existing.has(n.id) && n._raw?.label==="Run").map(n=>n.id);
@@ -623,9 +743,11 @@ async function animateGraph(nodes, edges, {initial=false, focusNew=false, existi
     });
     network.on("hoverNode", ()=>document.body.style.cursor="pointer");
     network.on("blurNode", ()=>document.body.style.cursor="default");
-    await revealNodes(staged, 38);
-    edgesDS.add(edges);
-    network.fit({animation:{duration:700, easingFunction:"easeInOutCubic"}});
+    await revealNodes(staged, cinematic ? 55 : 38);
+    const styledEdges = edges.map(e=>({...e, _rel: edgeRel(e) || e._rel}));
+    if(cinematic) await revealEdgesCinematic(styledEdges, 500);
+    else edgesDS.add(styledEdges);
+    if(!skipFit) await smoothFit({duration: cinematic ? 1800 : 700});
   } else {
     const fresh = new Set(nodes.map(n=>n.id));
     nodesDS.getIds().filter(id=>!fresh.has(id)).forEach(id=>nodesDS.remove(id));
@@ -646,17 +768,33 @@ async function animateGraph(nodes, edges, {initial=false, focusNew=false, existi
       if(nodesDS.get(n.id)) nodesDS.update(staged);
       else nodesDS.add(staged);
     });
-    edges.forEach(e=>edgesDS.update(e));
-    await revealNodes(newcomers, 55);
+    const styledEdges = edges.map(e=>({...e, _rel: edgeRel(e) || e._rel}));
+    const newEdgeIds = new Set(styledEdges.map(e=>e.id));
+    edgesDS.getIds().filter(id=>!newEdgeIds.has(id)).forEach(id=>edgesDS.remove(id));
+    styledEdges.forEach(e=>{
+      const cur = edgesDS.get(e.id);
+      if(cur){
+        edgesDS.update({...e, _fullLabel:e.label, _fullOpacity:e._fullOpacity ?? e.color?.opacity,
+          _fullWidth:e._fullWidth ?? e.width});
+      } else if(cinematic && guidedDemoRunning){
+        edgesDS.add({...e, _fullLabel:e.label, _fullOpacity:e.color?.opacity, _fullWidth:e.width,
+          color:{color:e.color.color, opacity:0.03}, width:0.4, label:""});
+      } else {
+        edgesDS.add(e);
+      }
+    });
+    await revealNodes(newcomers, cinematic ? 60 : 55);
 
-    if(focusNew && newRuns.length){
-      network.selectNodes(newRuns);
-      network.focus(newRuns[0], {scale:1.1, animation:{duration:900, easingFunction:"easeInOutCubic"}});
-      setTimeout(()=>network.fit({animation:{duration:1100, easingFunction:"easeInOutCubic"}}), 2400);
-    } else if(newcomers.length){
-      network.fit({animation:{duration:750, easingFunction:"easeInOutCubic"}});
-    } else {
-      network.fit({animation:{duration:500, easingFunction:"easeInOutCubic"}});
+    if(!skipFit){
+      if(focusNew && newRuns.length){
+        network.selectNodes(newRuns);
+        await smoothFocus(newRuns[0], {scale:1.1, duration:1200});
+        setTimeout(()=>smoothFit({duration:1100}), 1800);
+      } else if(newcomers.length){
+        await smoothFit({duration:750});
+      } else {
+        await smoothFit({duration:500});
+      }
     }
   }
   graphAnimating = false;
@@ -779,7 +917,11 @@ function edgeStyle(e){
   if(!s) return null;
   return {
     id:`${e.src}|${e.rel}|${e.dst}`, from:e.src, to:e.dst,
+    _rel: e.rel,
+    _fullOpacity: s.opacity,
+    _fullWidth: s.width,
     label:s.label ? e.rel : "",
+    _fullLabel: s.label ? e.rel : "",
     font:{size:8.5, color:s.color, face:"IBM Plex Sans", strokeWidth:5, strokeColor:"#FBFBF9"},
     color:{color:s.color, opacity:s.opacity},
     width:s.width, dashes:s.dashes||false, smooth:s.smooth,
@@ -814,8 +956,10 @@ async function loadGraph(focusNew=false){
 
   await animateGraph(nodes, edges, {
     initial: !network,
-    focusNew,
+    focusNew: focusNew && !guidedDemoRunning,
     existing,
+    cinematic: guidedDemoRunning,
+    skipFit: guidedDemoRunning,
   });
 }
 
@@ -1215,7 +1359,8 @@ async function runMethodAndWait(){
   btn.classList.add("done");
   btn.textContent = "✓ run complete";
   btn.disabled = false;
-  await loadGraph(true); await loadEvidence();
+  await loadGraph(!guidedDemoRunning);
+  await loadEvidence();
   return true;
 }
 
@@ -1226,36 +1371,38 @@ async function runGuidedDemo(){
   btn.disabled = true;
   btn.textContent = "● Demo running…";
   if(panelCollapsed) togglePanel(false);
+  let methodEid = null;
   try{
-    showDemoToast("Step 1 — Loading 3-paper demo (Adam · Wilson · AdamW)…", 4000);
+    showDemoToast("Step 1 — Loading 3-paper demo (Adam · Wilson · AdamW)…", 5000);
     const loaded = await doLoadDemo(true);
     if(!loaded) throw new Error("could not load demo");
-    await sleep(1200);
-    await loadGraph();
-    const eid = findMethodNodeEid(DEMO_METHOD_ID);
-    if(!eid){
-      showDemoToast("Demo method not found — select wilson2017-m1 manually", 5000);
-      return;
-    }
-    showDemoToast("Step 2 — Highlighting Wilson counterexample method…", 3500);
-    const raw = nodesDS.get(eid)._raw;
+    await sleep(600);
+
+    methodEid = findMethodNodeEid(DEMO_METHOD_ID);
+    if(!methodEid) throw new Error("demo method not found");
+
+    showDemoToast("Step 2 — Tracing paper → claims → method…", 6000);
+    const raw = nodesDS.get(methodEid)._raw;
     selectMethod(raw);
-    await pulseNode(eid, true);
-    await sleep(1800);
-    showDemoToast("Step 3 — Running experiment (GD vs Adam)…", 5000);
+    await cinematicTourToMethod(DEMO_METHOD_ID);
+    await pulseNode(methodEid, true);
+
+    showDemoToast("Step 3 — Running experiment (GD vs Adam)…", 8000);
     const ok = await runMethodAndWait();
-    await pulseNode(eid, false);
+    await pulseNode(methodEid, false);
     if(!ok){
       showDemoToast("Run failed — check Console tab for details", 5000);
       return;
     }
+
     setTab("evidence");
-    showDemoToast("Step 4 — Evidence updated! Watch the counter flip to VALIDATES", 4500);
-    await sleep(2000);
-    showDemoToast("Step 5 — Asking the agent about executable evidence…", 4000);
+    showDemoToast("Step 4 — Drawing evidence connections…", 6000);
+    await cinematicRevealRun(methodEid);
+    await loadEvidence();
+
+    showDemoToast("Step 5 — Asking the agent about executable evidence…", 5000);
     await ask("Which claims have executable evidence?");
-    showDemoToast("✓ Guided demo complete — GD 0.000 vs Adam 0.425 validates Wilson's claim", 6000);
-    if(network) network.fit({animation:{duration:900, easingFunction:"easeInOutCubic"}});
+    showDemoToast("✓ Guided demo complete — GD 0.000 vs Adam 0.425 validates Wilson's claim", 7000);
   }catch(e){
     showDemoToast("Demo error: " + e.message, 5000);
   }finally{
