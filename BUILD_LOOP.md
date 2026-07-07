@@ -61,9 +61,9 @@ This file is the single source of truth for the build loop. Each loop iteration:
 - [x] Daytona backend code-complete against daytona_sdk 0.194 real API (Daytona(DaytonaConfig) → create() → process.exec pip numpy → code_run → delete) — [BLOCKED: DAYTONA_API_KEY] unverified until key lands in .env; `--backend auto` picks daytona iff key present
 
 ### M5 — Close the loop
-- [ ] `app/curator.py`: write Run + Artifact nodes back to Neo4j, link Run-[:IMPLEMENTS]->Method and Run-[:VALIDATES|REFUTES]->Claim
-- [ ] End-to-end script `scripts/demo_loop.py`: pick method → codegen → run → curate → print graph diff
-- [ ] Verify: "which claims now have executable evidence?" query returns the new Run
+- [x] `app/curator.py`: Run + Artifact (stdout, capped 4k chars) nodes, IMPLEMENTS/VALIDATES/REFUTES edges with detail; failed runs curated too
+- [x] `scripts/demo_loop.py`: method → codegen → run → curate → evidence diff
+- [x] VERIFIED CLOSED: evidence flipped 'no runs yet' → 'VALIDATES by run-wilson2017-m1-...' for both wilson claims. This is the demo command: `python scripts/demo_loop.py wilson2017-m1`
 
 ### M6 — RocketRide orchestration
 - [ ] Read ALL RocketRide docs first (ground rules)
@@ -84,6 +84,7 @@ This file is the single source of truth for the build loop. Each loop iteration:
 
 (loop appends: iteration #, what was done, what's verified, what's next)
 
+- **#6 (2026-07-07):** M5 complete — THE CORE LOOP IS CLOSED end-to-end (paper → method → code → run → result → graph update, verified by evidence-query diff). Everything from here is orchestration + presentation. Next: M6 RocketRide pipeline — MUST read .rocketride/docs (README, QUICKSTART, PIPELINE_RULES, COMPONENT_REFERENCE, COMMON_MISTAKES, python_API) before writing the .pipe.
 - **#5 (2026-07-07):** M4 complete (local verified; Daytona code-complete, blocked on key). Run records persist to runs/ with full stdout/stderr/duration + parsed claim verdicts. Inspected installed daytona_sdk 0.194 to write against the real API instead of guessing. Next: M5 — curator writes Run/Artifact nodes back to Neo4j + end-to-end demo_loop.py.
 - **#4 (2026-07-07):** M3 complete. First naive reproduction gave 0/0 test error — fixed by matching the paper's conditions (imbalanced classes, full-batch); now GD 0.000 vs Adam 0.425 with Adam's first three weights exactly equalized as the theory predicts. codegen --run validates the JSON contract. Next: M4 runner — local-subprocess fallback is unblocked; Daytona path stays BLOCKED on DAYTONA_API_KEY.
 - **#3 (2026-07-07):** M2 complete. Graph live in Aura with full schema; conflicts query surfaces 4 real cross-paper contradictions. Discovered the Aura instance is shared with sceneshop — all destructive ops restricted to our labels via `OUR_LABELS` in `app/db.py`. Next: M3 codegen (pre-written wilson2017-m1 implementation first, since it's the demo centerpiece and needs no LLM).
