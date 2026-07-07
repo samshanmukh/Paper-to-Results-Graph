@@ -4,7 +4,7 @@ Two modes:
   --mock  : return the hand-verified golden JSON from papers/extracted/ (default
             until the RocketRide extraction pipeline lands in M6).
   live    : POST the paper text to the local RocketRide pipeline (PIPELINE_URL);
-            wired up in M6.
+            wired up in M6. Direct LLM calls use XAI_API_KEY (Grok).
 """
 
 import argparse
