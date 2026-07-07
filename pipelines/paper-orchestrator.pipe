@@ -1,0 +1,173 @@
+{
+	"components": [
+		{
+			"id": "chat_1",
+			"provider": "chat",
+			"config": { "hideForm": true, "mode": "Source", "parameters": {}, "type": "chat" },
+			"ui": { "position": { "x": 20, "y": 200 }, "measured": { "width": 150, "height": 66 } }
+		},
+		{
+			"id": "agent_conductor",
+			"provider": "agent_rocketride",
+			"config": {
+				"instructions": [
+					"You are the CONDUCTOR for Paper-to-Results Graph — a verified workflow engine, not a chatbot. You delegate to specialist sub-agents (available as tools), VERIFY their structured output, then synthesize.",
+					"Delegation map: conflicts/untested-claims/what-to-test → agent_investigator; run an experiment (needs method_id) → agent_executor; evidence summary/report → agent_reporter; simple factual lookups → your own Neo4j tool (read-only).",
+					"WAVE PROTOCOL: (0) classify intent — single or compound; (1) preflight: query Run/Claim counts via Neo4j; (2) delegate to ONE sub-agent at a time; (3) VERIFY: each sub-agent must return a ---P2R--- header with status and a payload JSON — check status is ok/partial, check ids look real (spot-check via Neo4j if suspicious); if verification fails, retry that sub-agent ONCE with 'Your prior response failed check X, return the required format'; (4) synthesize for the user citing agent names, claim ids, run ids and exact metrics.",
+					"COMPOUND tasks (e.g. 'investigate, then run it, then brief'): execute as sequential tool calls — investigator first, take its recommended_method_id, pass it to agent_executor ('Run method <id> now'), verify the run succeeded (graph_updated true), then agent_reporter. Never skip verification between steps.",
+					"GATES: do not call agent_reporter if the graph has zero Runs. Do not call agent_executor without a concrete method_id.",
+					"ACCURACY: quote metrics digit-for-digit and ids character-for-character from sub-agent payloads (run ids end with a trailing Z — include it). Never estimate or invent ids.",
+					"Final answer format: start with one line per delegation: '[<agent>] ✓|✗ <one-line outcome>', then the synthesis."
+				],
+				"max_waves": 12,
+				"parameters": {}
+			},
+			"input": [{ "lane": "questions", "from": "chat_1" }],
+			"ui": { "position": { "x": 240, "y": 200 }, "measured": { "width": 150, "height": 86 } }
+		},
+		{
+			"id": "response_answers_1",
+			"provider": "response_answers",
+			"config": { "laneName": "answers" },
+			"input": [{ "lane": "answers", "from": "agent_conductor" }],
+			"ui": { "position": { "x": 460, "y": 200 }, "measured": { "width": 150, "height": 66 } }
+		},
+		{
+			"id": "agent_investigator",
+			"provider": "agent_rocketride",
+			"config": {
+				"instructions": [
+					"You are the INVESTIGATOR sub-agent (a tool of the Conductor). Job: audit the research graph for cross-paper conflicts and untested claims, recommend exactly ONE runnable method.",
+					"Waves: (1) query CONTRADICTS pairs with papers; (2) query claims with no Run; (3) query Method ids; (4) rank: cross-paper conflict + untested + runnable; (5) answer.",
+					"Answer format — start with exactly: ---P2R---\nagent: investigator\nstatus: ok\npayload: {\"conflicts\": [...], \"untested_claims\": [...], \"recommended_method_id\": \"...\", \"recommended_claim_ids\": [...], \"rationale\": \"...\"}\n---END--- then 2-3 sentences of prose. payload = single-line JSON; ids only from query results."
+				],
+				"max_waves": 8,
+				"parameters": {}
+			},
+			"control": [{ "classType": "tool", "from": "agent_conductor" }],
+			"ui": { "position": { "x": 60, "y": 420 }, "measured": { "width": 150, "height": 86 } }
+		},
+		{
+			"id": "agent_executor",
+			"provider": "agent_rocketride",
+			"config": {
+				"instructions": [
+					"You are the EXECUTOR sub-agent (a tool of the Conductor). Job: run the requested method via the canonical API and report faithfully.",
+					"POST to http://127.0.0.1:8787/api/run/<method_id> with JSON body {\"params\": {}} using your HTTP tool. The response is the full run record. NEVER fabricate results; on HTTP failure report status: error. Retry at most once.",
+					"Answer format — start with exactly: ---P2R---\nagent: executor\nstatus: ok\npayload: {\"method_id\": \"...\", \"run_id\": \"...\", \"backend\": \"...\", \"exit_code\": 0, \"claim_checks\": [...], \"metrics\": {...}, \"graph_updated\": true, \"error\": null}\n---END--- then 2 sentences. Copy fields EXACTLY from the HTTP response (result.metrics, result.claim_checks)."
+				],
+				"max_waves": 6,
+				"parameters": {}
+			},
+			"control": [{ "classType": "tool", "from": "agent_conductor" }],
+			"ui": { "position": { "x": 240, "y": 420 }, "measured": { "width": 150, "height": 86 } }
+		},
+		{
+			"id": "agent_reporter",
+			"provider": "agent_rocketride",
+			"config": {
+				"instructions": [
+					"You are the REPORTER sub-agent (a tool of the Conductor). Job: synthesize an evidence brief across all Runs in the graph.",
+					"Waves: (1) query Runs with status/metrics/params; (2) query VALIDATES/REFUTES edges with claim text; (3) query untested claims; (4) answer.",
+					"Answer format — start with exactly: ---P2R---\nagent: reporter\nstatus: ok\npayload: {\"run_ids_covered\": [...], \"claims_validated\": [...], \"claims_refuted\": [...], \"claims_untested\": [...], \"chart_generated\": false, \"headline\": \"...\"}\n---END--- then the brief (<200 words): headline, per-run findings with exact metrics, untested claims as next steps."
+				],
+				"max_waves": 8,
+				"parameters": {}
+			},
+			"control": [{ "classType": "tool", "from": "agent_conductor" }],
+			"ui": { "position": { "x": 420, "y": 420 }, "measured": { "width": 150, "height": 86 } }
+		},
+		{
+			"id": "llm_openai_api_1",
+			"provider": "llm_openai_api",
+			"config": {
+				"profile": "custom",
+				"custom": {
+					"apikey": "${ROCKETRIDE_GATEWAY_KEY}",
+					"base_url": "${ROCKETRIDE_GATEWAY_BASE_URL}",
+					"model": "${ROCKETRIDE_GATEWAY_MODEL}",
+					"modelTotalTokens": 16384
+				},
+				"parameters": {}
+			},
+			"control": [
+				{ "classType": "llm", "from": "agent_conductor" },
+				{ "classType": "llm", "from": "agent_investigator" },
+				{ "classType": "llm", "from": "agent_executor" },
+				{ "classType": "llm", "from": "agent_reporter" },
+				{ "classType": "llm", "from": "db_neo4j_1" }
+			],
+			"ui": { "position": { "x": 60, "y": 620 }, "measured": { "width": 150, "height": 66 } }
+		},
+		{
+			"id": "memory_conductor",
+			"provider": "memory_internal",
+			"config": { "type": "memory_internal" },
+			"control": [{ "classType": "memory", "from": "agent_conductor" }],
+			"ui": { "position": { "x": 240, "y": 620 }, "measured": { "width": 150, "height": 66 } }
+		},
+		{
+			"id": "memory_investigator",
+			"provider": "memory_internal",
+			"config": { "type": "memory_internal" },
+			"control": [{ "classType": "memory", "from": "agent_investigator" }],
+			"ui": { "position": { "x": 60, "y": 720 }, "measured": { "width": 150, "height": 66 } }
+		},
+		{
+			"id": "memory_executor",
+			"provider": "memory_internal",
+			"config": { "type": "memory_internal" },
+			"control": [{ "classType": "memory", "from": "agent_executor" }],
+			"ui": { "position": { "x": 240, "y": 720 }, "measured": { "width": 150, "height": 66 } }
+		},
+		{
+			"id": "memory_reporter",
+			"provider": "memory_internal",
+			"config": { "type": "memory_internal" },
+			"control": [{ "classType": "memory", "from": "agent_reporter" }],
+			"ui": { "position": { "x": 420, "y": 720 }, "measured": { "width": 150, "height": 66 } }
+		},
+		{
+			"id": "db_neo4j_1",
+			"provider": "db_neo4j",
+			"config": {
+				"profile": "default",
+				"default": {
+					"uri": "${ROCKETRIDE_NEO4J_URI}",
+					"auth_method": "userpass",
+					"user": "${ROCKETRIDE_NEO4J_USER}",
+					"password": "${ROCKETRIDE_NEO4J_PASSWORD}",
+					"database": "neo4j",
+					"db_description": "STRICT READ-ONLY: generate ONLY MATCH/RETURN/WITH/ORDER/COUNT queries. NEVER generate CREATE, MERGE, DELETE, DETACH, SET, or REMOVE clauses — any write corrupts irreplaceable research evidence and is forbidden. Research evidence graph. Nodes: Paper(id,title,year), Claim(id,text), Method(id,name,runnable_hint), Run(id,status,backend,duration_s,metrics,params — metrics/params are JSON strings). Edges: FROM (claim->paper), CONTRADICTS/SUPPORTS (claim->claim), DESCRIBED_IN (method->paper), IMPLEMENTS (run->method), VALIDATES/REFUTES (run->claim), CITES. Ignore unrelated SceneStyle/Product/Creator nodes.",
+					"allow_execute": false,
+					"max_attempts": 5
+				},
+				"parameters": {}
+			},
+			"control": [
+				{ "classType": "tool", "from": "agent_conductor" },
+				{ "classType": "tool", "from": "agent_investigator" },
+				{ "classType": "tool", "from": "agent_reporter" }
+			],
+			"ui": { "position": { "x": 600, "y": 620 }, "measured": { "width": 150, "height": 135 } }
+		},
+		{
+			"id": "tool_http_request_1",
+			"provider": "tool_http_request",
+			"config": {
+				"type": "tool_http_request",
+				"allowGET": true,
+				"allowPOST": true,
+				"allowPUT": false,
+				"allowPATCH": false,
+				"allowDELETE": false,
+				"urlWhitelist": ["^http://127\\.0\\.0\\.1:8787/api/.*$", "^http://localhost:8787/api/.*$"]
+			},
+			"control": [{ "classType": "tool", "from": "agent_executor" }],
+			"ui": { "position": { "x": 600, "y": 420 }, "measured": { "width": 150, "height": 40 } }
+		}
+	],
+	"project_id": "70afddbb-a2a7-46be-8811-893ce0b99978",
+	"viewport": { "x": 0, "y": 0, "zoom": 1 },
+	"version": 1
+}
