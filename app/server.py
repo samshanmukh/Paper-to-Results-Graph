@@ -92,6 +92,48 @@ def run_method(method_id: str, backend: str = "auto", body: RunBody | None = Non
     return record
 
 
+class Upload(BaseModel):
+    text: str
+
+
+@app.post("/api/upload")
+def upload(body: Upload):
+    """Paper text -> LLM extraction -> graph + Butterbase. Returns summary."""
+    import json as _json
+
+    from app.extract import EXTRACTED_DIR, PAPERS_DIR, extract_live_text
+    from app.graph import load_claim_relations, load_paper
+
+    if len(body.text.strip()) < 200:
+        raise HTTPException(400, "paper text too short — paste at least the abstract and method section")
+    data = extract_live_text(body.text)
+    pid = data["paper"]["id"]
+
+    with open(os.path.join(PAPERS_DIR, f"{pid}.txt"), "w") as f:
+        f.write(body.text)
+    with open(os.path.join(EXTRACTED_DIR, f"{pid}.json"), "w") as f:
+        _json.dump(data, f, indent=2)
+
+    with get_driver() as driver, driver.session(database=DATABASE) as session:
+        session.execute_write(load_paper, data)
+        session.execute_write(load_claim_relations, data)
+
+    try:  # best-effort mirror
+        from app.butterbase import upsert
+        upsert("papers", {"id": pid, "title": data["paper"]["title"],
+                          "year": data["paper"]["year"],
+                          "arxiv": data["paper"].get("arxiv"),
+                          "topic": data["paper"].get("topic"),
+                          "extraction": data})
+    except Exception:
+        pass
+
+    return {"paper_id": pid, "title": data["paper"]["title"],
+            "claims": len(data["claims"]), "methods": len(data["methods"]),
+            "method_ids": [m["id"] for m in data["methods"]],
+            "relations": len(data.get("claim_relations", []))}
+
+
 class Ask(BaseModel):
     question: str
 

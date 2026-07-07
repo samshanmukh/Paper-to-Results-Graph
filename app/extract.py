@@ -13,6 +13,7 @@ import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
 PAPERS_DIR = os.path.join(ROOT, "papers")
 EXTRACTED_DIR = os.path.join(PAPERS_DIR, "extracted")
 
@@ -59,11 +60,53 @@ def extract_mock(paper_id: str) -> dict:
         return json.load(f)
 
 
+EXTRACTION_PROMPT = """You are the extraction stage of Paper-to-Results Graph.
+Given a research paper's text, produce ONLY a JSON object (no prose) with:
+
+{
+  "paper": {"id": "<firstauthorYEAR, lowercase, e.g. zhang2019>",
+            "title": str, "authors": [str], "year": int,
+            "arxiv": str|null, "topic": "<short-kebab-topic>"},
+  "claims": [{"id": "<paperid>-c<n>", "text": str, "metric": str|null}],
+  "methods": [{"id": "<paperid>-m<n>", "name": str, "description": str,
+               "runnable_hint": "how to reproduce as a SMALL numpy-only
+                experiment printing a metric — be concrete",
+               "params": [{"name": str, "default": num, "description": str}]}],
+  "datasets": [{"id": "<kebab>", "name": str}],
+  "cites": ["<paperid of cited papers ONLY if likely in our graph>"],
+  "claim_relations": [{"from": "<this paper's claim id>",
+                       "to": "<claim id, may be another paper's>",
+                       "type": "SUPPORTS"|"CONTRADICTS"}]
+}
+
+Rules: 2-4 claims, 1-2 methods (only genuinely runnable-as-toy-experiment
+ones), params are the paper's experiment parameters. Known graph papers and
+their claims (link cross-paper relations against these when relevant):
+adam2014 (adam2014-c1 Adam converges faster than SGD; adam2014-c2 defaults
+need little tuning; adam2014-c3 update invariant to gradient rescaling),
+wilson2017 (wilson2017-c1 adaptive methods generalize worse than SGD;
+wilson2017-c2 SGD 0 vs Adam ~50 percent test error on separable construction;
+wilson2017-c3 tuned SGD matches adaptive), adamw2017 (adamw2017-c1 L2 !=
+weight decay for Adam; adamw2017-c2 AdamW closes generalization gap;
+adamw2017-c3 decoupling makes weight decay independent of lr).
+
+PAPER TEXT:
+"""
+
+
+def extract_live_text(text: str) -> dict:
+    from app.llm import chat, extract_json_obj
+    reply = chat(EXTRACTION_PROMPT + text[:24000], max_tokens=4000)
+    data = extract_json_obj(reply)
+    errors = validate_extraction(data)
+    if errors:
+        raise ValueError(f"extraction failed validation: {errors}")
+    return data
+
+
 def extract_live(paper_id: str) -> dict:
-    raise NotImplementedError(
-        "Live extraction routes through the local RocketRide pipeline (M6). "
-        "Use --mock until pipelines/paper2result.pipe is built."
-    )
+    with open(os.path.join(PAPERS_DIR, f"{paper_id}.txt")) as f:
+        return extract_live_text(f.read())
 
 
 def list_papers() -> list[str]:

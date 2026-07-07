@@ -1,0 +1,86 @@
+{
+  "paper": {
+    "id": "zhang2019",
+    "title": "Lookahead Optimizer: k steps forward, 1 step back",
+    "authors": [
+      "Michael R. Zhang",
+      "James Lucas",
+      "Geoffrey Hinton",
+      "Jimmy Ba"
+    ],
+    "year": 2019,
+    "arxiv": "1907.08610",
+    "topic": "lookahead-optimizer"
+  },
+  "claims": [
+    {
+      "id": "zhang2019-c1",
+      "text": "Lookahead reduces the variance of the inner optimizer's iterates and improves learning stability across hyperparameter settings",
+      "metric": "variance of iterates"
+    },
+    {
+      "id": "zhang2019-c2",
+      "text": "Lookahead-wrapped SGD and Adam achieve faster convergence (lower training loss at matched step budgets) than the raw inner optimizers with default hyperparameters",
+      "metric": "training loss"
+    },
+    {
+      "id": "zhang2019-c3",
+      "text": "The computational and memory overhead of Lookahead is negligible",
+      "metric": "computation time"
+    }
+  ],
+  "methods": [
+    {
+      "id": "zhang2019-m1",
+      "name": "Lookahead",
+      "description": "Maintains slow weights phi and fast weights theta. For each outer step, fast weights are updated k times using an inner optimizer A starting from current slow weights, then slow weights are interpolated toward final fast weights: phi_t = phi_{t-1} + alpha_slow * (theta_{t,k} - phi_{t-1})",
+      "runnable_hint": "import numpy as np\nnp.random.seed(0)\nX = np.random.randn(100, 10)\ny = np.random.randn(100, 1)\nw_slow = np.zeros((10, 1))\nw_fast = w_slow.copy()\nk = 5\nalpha_slow = 0.5\nlr_inner = 0.01\nfor outer_step in range(20):\n    w_fast = w_slow.copy()\n    for i in range(k):\n        pred = X @ w_fast\n        loss = np.mean((pred - y)**2)\n        grad = 2 * X.T @ (pred - y) / len(X)\n        w_fast = w_fast - lr_inner * grad\n    w_slow = w_slow + alpha_slow * (w_fast - w_slow)\n    pred = X @ w_slow\n    loss = np.mean((pred - y)**2)\n    if outer_step % 5 == 0:\n        print(f'Step {outer_step}, Loss: {loss:.4f}')",
+      "params": [
+        {
+          "name": "k",
+          "default": 5,
+          "description": "Number of inner optimizer steps before updating slow weights"
+        },
+        {
+          "name": "alpha_slow",
+          "default": 0.5,
+          "description": "Interpolation coefficient for updating slow weights toward fast weights"
+        }
+      ]
+    }
+  ],
+  "datasets": [
+    {
+      "id": "cifar10",
+      "name": "CIFAR-10"
+    },
+    {
+      "id": "cifar100",
+      "name": "CIFAR-100"
+    },
+    {
+      "id": "imagenet",
+      "name": "ImageNet"
+    },
+    {
+      "id": "penn-treebank",
+      "name": "Penn Treebank"
+    }
+  ],
+  "cites": [
+    "adam2014",
+    "wilson2017"
+  ],
+  "claim_relations": [
+    {
+      "from": "zhang2019-c2",
+      "to": "adam2014-c2",
+      "type": "SUPPORTS"
+    },
+    {
+      "from": "zhang2019-c2",
+      "to": "wilson2017-c3",
+      "type": "SUPPORTS"
+    }
+  ]
+}

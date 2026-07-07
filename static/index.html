@@ -5,254 +5,263 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Paper→Results Graph</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,700;0,9..144,900;1,9..144,500&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,700;0,9..144,900;1,9..144,500;1,9..144,700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <style>
 :root{
-  --ink:#05070d;
-  --panel:#0c1120;
-  --panel-2:#101728;
-  --bezel:#1c2540;
-  --bezel-bright:#31406e;
-  --text:#cdd8f2;
-  --text-dim:#5c6b94;
-  --text-faint:#3b4666;
-  --paper:#e8b64c;
-  --claim:#5ad0e6;
-  --method:#a78bfa;
-  --run-ok:#4ade80;
-  --run-bad:#f87171;
-  --accent:#4ade80;
+  --bg:#f6f2e8;
+  --panel:#fffdf6;
+  --panel-2:#fbf8ee;
+  --line:#e2dac6;
+  --line-strong:#cfc5a9;
+  --ink:#23271d;
+  --dim:#7c765f;
+  --faint:#b0a88d;
+  --paper:#a87708;
+  --paper-bg:#fdf3d7;
+  --claim:#0d7d9e;
+  --method:#7350cf;
+  --ok:#157f46;
+  --ok-bright:#1ea45c;
+  --bad:#bb3434;
+  --console-bg:#12160f;
+  --console-text:#c9d4bd;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
 body{
-  background:var(--ink);color:var(--text);
+  background:var(--bg);color:var(--ink);
   font-family:"IBM Plex Mono",monospace;font-size:13px;overflow:hidden;
 }
-body::before{
+body::after{ /* faint engineering grid + paper vignette */
   content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
   background:
-    radial-gradient(1100px 560px at 72% -12%, rgba(90,208,230,.07), transparent 62%),
-    radial-gradient(880px 520px at 6% 112%, rgba(167,139,250,.055), transparent 60%);
-}
-body::after{
-  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
-  background:
-    linear-gradient(rgba(70,95,165,.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(70,95,165,.05) 1px, transparent 1px),
-    radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(0,0,0,.5) 100%);
+    linear-gradient(rgba(140,125,80,.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(140,125,80,.055) 1px, transparent 1px),
+    radial-gradient(ellipse at 50% 40%, transparent 60%, rgba(120,100,50,.07) 100%);
   background-size:26px 26px, 26px 26px, 100% 100%;
 }
 /* ============ header ============ */
 header{
-  position:relative;z-index:3;display:flex;align-items:center;gap:20px;
-  padding:0 22px;height:58px;border-bottom:1px solid var(--bezel);
-  background:linear-gradient(180deg, rgba(14,19,34,.97), rgba(10,14,26,.92));
+  position:relative;z-index:6;display:flex;align-items:center;gap:18px;
+  padding:0 22px;height:60px;border-bottom:2px solid var(--ink);
+  background:var(--panel);
   animation:dropIn .5s cubic-bezier(.2,.9,.3,1) both;
 }
 @keyframes dropIn{from{transform:translateY(-100%)}to{transform:translateY(0)}}
-.led{
-  width:8px;height:8px;border-radius:50%;background:var(--accent);
-  box-shadow:0 0 8px var(--accent), 0 0 18px rgba(74,222,128,.5);
-  animation:breathe 2.4s ease-in-out infinite;
+.led{width:9px;height:9px;border-radius:50%;background:var(--ok-bright);
+  box-shadow:0 0 0 3px rgba(30,164,92,.18);animation:breathe 2.4s ease-in-out infinite}
+@keyframes breathe{50%{opacity:.5}}
+h1{font-family:"Fraunces",serif;font-weight:900;font-size:23px;color:var(--ink);white-space:nowrap;letter-spacing:.2px}
+h1 .arrow{color:var(--ok);font-family:"IBM Plex Mono",monospace;font-weight:600}
+header .tag{color:var(--dim);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  border-left:1px solid var(--line-strong);padding-left:16px;line-height:1.5}
+#upload-btn{
+  margin-left:auto;padding:8px 16px;border:1.5px solid var(--ink);border-radius:2px;
+  background:var(--ink);color:var(--panel);font-family:"IBM Plex Mono",monospace;
+  font-weight:600;font-size:11px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;
+  transition:all .15s;box-shadow:3px 3px 0 rgba(35,39,29,.18);
 }
-@keyframes breathe{50%{opacity:.45;box-shadow:0 0 3px var(--accent)}}
-h1{font-family:"Fraunces",serif;font-weight:900;font-size:23px;color:#f2f5ff;white-space:nowrap}
-h1 .arrow{color:var(--accent);font-family:"IBM Plex Mono",monospace;font-weight:600;
-  display:inline-block;animation:arrowPulse 3s ease-in-out infinite}
-@keyframes arrowPulse{50%{text-shadow:0 0 12px var(--accent)}}
-header .tag{color:var(--text-dim);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
-  border-left:1px solid var(--bezel);padding-left:18px;line-height:1.5}
-#stats{margin-left:auto;display:flex;gap:8px}
+#upload-btn:hover{background:var(--ok);border-color:var(--ok);transform:translate(-1px,-1px);
+  box-shadow:4px 4px 0 rgba(21,127,70,.25)}
+#stats{display:flex;gap:8px}
 .chip{display:flex;align-items:baseline;gap:6px;padding:5px 11px;
-  border:1px solid var(--bezel);border-radius:2px;background:rgba(16,23,40,.7);
-  font-size:10px;letter-spacing:.1em;color:var(--text-dim);text-transform:uppercase}
-.chip b{font-size:15px;color:var(--text);font-weight:600;letter-spacing:0}
-.chip.runs b{color:var(--run-ok);text-shadow:0 0 10px rgba(74,222,128,.5)}
+  border:1px solid var(--line-strong);border-radius:2px;background:var(--panel-2);
+  font-size:9.5px;letter-spacing:.1em;color:var(--dim);text-transform:uppercase}
+.chip b{font-size:15px;color:var(--ink);font-weight:600;letter-spacing:0}
+.chip.runs{border-color:var(--ok)}
+.chip.runs b{color:var(--ok)}
 /* ============ layout ============ */
-main{position:relative;z-index:1;display:grid;grid-template-columns:1fr 440px;height:calc(100vh - 58px)}
-#graph{position:relative;border-right:1px solid var(--bezel);animation:fadeIn .9s .25s both}
+main{position:relative;z-index:1;display:grid;grid-template-columns:400px 1fr 420px;height:calc(100vh - 60px)}
+#graph{position:relative;animation:fadeIn .9s .25s both}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 #net{position:absolute;inset:0}
-/* edge legend strip (bottom of canvas) */
 #edge-legend{
   position:absolute;left:16px;bottom:14px;z-index:5;display:flex;gap:16px;
-  color:var(--text-dim);font-size:10px;letter-spacing:.05em;
-  background:rgba(5,7,13,.85);padding:7px 12px;border:1px solid var(--bezel);
-  border-radius:2px;backdrop-filter:blur(3px);align-items:center;
+  color:var(--dim);font-size:10px;letter-spacing:.05em;
+  background:rgba(255,253,246,.92);padding:7px 12px;border:1px solid var(--line-strong);
+  border-radius:2px;align-items:center;box-shadow:2px 2px 0 rgba(35,39,29,.08);
 }
-#edge-legend .sw{display:inline-block;width:22px;height:0;margin-right:6px;vertical-align:middle;
-  border-top:2px solid}
-#edge-legend .contradicts .sw{border-top-style:dashed;border-color:#c69433}
-#edge-legend .validates .sw{border-color:var(--run-ok)}
+#edge-legend .sw{display:inline-block;width:22px;height:0;margin-right:6px;vertical-align:middle;border-top:2.5px solid}
+#edge-legend .contradicts .sw{border-top-style:dashed;border-color:var(--paper)}
+#edge-legend .validates .sw{border-color:var(--ok-bright)}
 #edge-legend .implements .sw{border-color:var(--method)}
-#edge-legend .hint{color:var(--text-faint);border-left:1px solid var(--bezel);padding-left:14px}
-#edge-legend .hint b{color:var(--method);font-weight:500}
-aside{display:flex;flex-direction:column;overflow:hidden;background:rgba(9,13,23,.4)}
-section{
-  position:relative;border-bottom:1px solid var(--bezel);
-  display:flex;flex-direction:column;min-height:0;
-  animation:slideIn .55s cubic-bezier(.2,.9,.3,1) both;
-}
-section:nth-of-type(1){animation-delay:.12s}
-section:nth-of-type(2){animation-delay:.22s}
-section:nth-of-type(3){animation-delay:.32s}
-section:nth-of-type(4){animation-delay:.42s}
-@keyframes slideIn{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:translateX(0)}}
+#edge-legend .hint{color:var(--faint);border-left:1px solid var(--line);padding-left:14px}
+#edge-legend .hint b{color:var(--method);font-weight:600}
+aside{display:flex;flex-direction:column;overflow:hidden;background:var(--panel)}
+aside.left{border-right:1.5px solid var(--line-strong)}
+aside.right{border-left:1.5px solid var(--line-strong)}
+section{position:relative;border-bottom:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+aside.left section{animation:slideInL .55s cubic-bezier(.2,.9,.3,1) both}
+aside.right section{animation:slideInR .55s cubic-bezier(.2,.9,.3,1) both}
+aside section:nth-of-type(1){animation-delay:.12s}
+aside section:nth-of-type(2){animation-delay:.24s}
+@keyframes slideInR{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideInL{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:translateX(0)}}
 section > .head{
-  display:flex;align-items:center;gap:9px;padding:9px 16px;
-  border-bottom:1px solid var(--bezel);
-  font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--text-dim);
-  background:linear-gradient(180deg, var(--panel), rgba(12,17,32,.6));
+  display:flex;align-items:center;gap:9px;padding:10px 16px;
+  border-bottom:1px solid var(--line);
+  font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);
+  background:var(--panel-2);
 }
-section > .head::before{content:"";width:14px;height:1px;background:var(--accent);box-shadow:0 0 6px var(--accent)}
-section > .head .idx{margin-left:auto;color:var(--text-faint);letter-spacing:.05em}
+section > .head::before{content:"";width:14px;height:2px;background:var(--ok)}
+section > .head .idx{margin-left:auto;color:var(--faint);letter-spacing:.05em;
+  font-family:"Fraunces",serif;font-style:italic;font-size:11px}
 /* ============ method panel ============ */
-#method-body{padding:13px 16px 15px;background:var(--panel-2)}
-#m-paper{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--paper);
-  margin-bottom:3px;min-height:12px}
-#m-name{font-family:"Fraunces",serif;font-size:18px;font-weight:700;color:#f2f5ff;
+#method-body{padding:14px 16px 16px;background:var(--panel)}
+#m-paper{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--paper);
+  margin-bottom:3px;min-height:11px;font-weight:600}
+#m-name{font-family:"Fraunces",serif;font-size:19px;font-weight:700;color:var(--ink);
   margin-bottom:6px;line-height:1.2}
-#m-name.empty{color:var(--text-faint);font-style:italic;font-weight:500}
-#m-desc{color:var(--text-dim);font-size:11.5px;line-height:1.6;margin-bottom:10px;
-  max-height:44px;overflow:auto}
-#m-params{display:none;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:11px}
+#m-name.empty{color:var(--faint);font-style:italic;font-weight:500}
+#m-desc{color:var(--dim);font-size:11.5px;line-height:1.6;margin-bottom:11px;max-height:48px;overflow:auto}
+#params-head{display:none;align-items:center;gap:7px;margin-bottom:7px;
+  font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+#params-head.show{display:flex}
+#params-head::after{content:"";flex:1;height:1px;background:var(--line)}
+#params-reset{cursor:pointer;color:var(--faint);border:none;background:none;
+  font-family:"IBM Plex Mono",monospace;font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;padding:0}
+#params-reset:hover{color:var(--paper)}
+#m-params{display:none;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px}
 #m-params.show{display:grid}
 #m-params label{display:flex;flex-direction:column;gap:2px}
-#m-params .pname{
-  font-size:8.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--text-faint);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-}
+#m-params .pname{font-size:8px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #m-params input{
-  width:100%;padding:5px 6px;background:#0a0f1c;border:1px solid var(--bezel);
-  border-radius:2px;color:var(--paper);font-family:"IBM Plex Mono",monospace;
-  font-size:11px;outline:none;transition:border-color .15s;
+  width:100%;padding:5px 6px;background:var(--panel-2);border:1px solid var(--line-strong);
+  border-radius:2px;color:var(--ink);font-family:"IBM Plex Mono",monospace;font-size:11px;outline:none;
 }
-#m-params input:focus{border-color:var(--paper);box-shadow:0 0 8px rgba(232,182,76,.2)}
-#m-params input.dirty{border-color:var(--paper);color:#ffd97a}
-#params-head{
-  display:none;align-items:center;gap:7px;margin-bottom:7px;
-  font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);
-}
-#params-head.show{display:flex}
-#params-head::after{content:"";flex:1;height:1px;background:var(--bezel)}
-#params-reset{
-  cursor:pointer;color:var(--text-faint);border:none;background:none;
-  font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.1em;
-  text-transform:uppercase;padding:0;
-}
-#params-reset:hover{color:var(--paper)}
+#m-params input:focus{border-color:var(--paper);background:#fff}
+#m-params input.dirty{border-color:var(--paper);background:var(--paper-bg);font-weight:600}
 #run-btn{
-  position:relative;width:100%;padding:12px;overflow:hidden;
-  border:1px solid var(--accent);border-radius:2px;
-  background:linear-gradient(180deg, rgba(74,222,128,.17), rgba(74,222,128,.04));
-  color:var(--accent);font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:13px;
+  position:relative;width:100%;padding:13px;overflow:hidden;
+  border:1.5px solid var(--ok);border-radius:2px;background:var(--ok);color:#fff;
+  font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:13px;
   letter-spacing:.14em;cursor:pointer;text-transform:uppercase;
-  transition:box-shadow .2s, transform .08s;
+  transition:all .15s;box-shadow:3px 3px 0 rgba(21,127,70,.25);
 }
-#run-btn::after{content:"";position:absolute;top:0;left:-80%;width:60%;height:100%;
-  background:linear-gradient(105deg, transparent, rgba(190,255,210,.16), transparent);transition:left .5s}
-#run-btn:hover:not(:disabled){box-shadow:0 0 22px rgba(74,222,128,.35), inset 0 0 18px rgba(74,222,128,.08)}
-#run-btn:hover:not(:disabled)::after{left:110%}
-#run-btn:active:not(:disabled){transform:scale(.985)}
-#run-btn:disabled{opacity:.32;cursor:not-allowed;border-color:var(--bezel-bright);color:var(--text-dim)}
+#run-btn:hover:not(:disabled){background:var(--ok-bright);transform:translate(-1px,-1px);
+  box-shadow:4px 4px 0 rgba(21,127,70,.3)}
+#run-btn:active:not(:disabled){transform:translate(1px,1px);box-shadow:1px 1px 0 rgba(21,127,70,.25)}
+#run-btn:disabled{opacity:.35;cursor:not-allowed;background:var(--dim);border-color:var(--dim);box-shadow:none}
 #run-btn.running{
-  color:#0a2415;background:repeating-linear-gradient(-55deg, var(--accent) 0 12px, #35c46a 12px 24px);
-  background-size:200% 100%;animation:stripes 1.1s linear infinite;
-  border-color:var(--accent);opacity:1;cursor:wait;box-shadow:0 0 26px rgba(74,222,128,.45);
+  color:#0c3520;background:repeating-linear-gradient(-55deg, #58d68f 0 12px, #35c46a 12px 24px);
+  background-size:200% 100%;animation:stripes 1.1s linear infinite;cursor:wait;opacity:1;
 }
 @keyframes stripes{to{background-position:-34px 0}}
-/* ============ console ============ */
-#log-panel{flex:1 1 30%}
+/* ============ console (dark instrument in the light page) ============ */
+#log-panel{flex:1 1 auto;min-height:140px;border-bottom:none}
+#log-panel > .head{background:var(--console-bg);color:#8fa583;border-bottom:1px solid #232b1e}
+#log-panel > .head::before{background:var(--ok-bright)}
 #log{
-  flex:1;overflow-y:auto;padding:11px 16px;background:#03050a;
-  font-size:11.5px;line-height:1.75;white-space:pre-wrap;word-break:break-word;
-  box-shadow:inset 0 6px 14px rgba(0,0,0,.5);
+  flex:1;overflow-y:auto;padding:11px 16px;background:var(--console-bg);
+  color:var(--console-text);font-size:11.5px;line-height:1.75;
+  white-space:pre-wrap;word-break:break-word;box-shadow:inset 0 8px 16px rgba(0,0,0,.45);
 }
-#log .t-dim{color:var(--text-dim)}
-#log .t-faint{color:var(--text-faint)}
-#log .t-ok{color:var(--run-ok);text-shadow:0 0 8px rgba(74,222,128,.35)}
-#log .t-bad{color:var(--run-bad)}
-#log .t-warn{color:var(--paper)}
-#log .t-stage{color:var(--claim)}
-#log .cursor{display:inline-block;width:7px;height:13px;background:var(--accent);
-  animation:blink 1s steps(1) infinite;vertical-align:text-bottom;margin-left:2px;
-  box-shadow:0 0 8px var(--accent)}
+#log .t-dim{color:#7f8f72}
+#log .t-faint{color:#55614b}
+#log .t-ok{color:#4ade80}
+#log .t-bad{color:#f87171}
+#log .t-warn{color:#e8b64c}
+#log .t-stage{color:#7cc7e8}
+#log .cursor{display:inline-block;width:7px;height:13px;background:#4ade80;
+  animation:blink 1s steps(1) infinite;vertical-align:text-bottom;margin-left:2px}
 @keyframes blink{50%{opacity:0}}
 /* ============ evidence ============ */
-#evidence-panel{flex:0 1 auto;max-height:24%}
+#evidence-panel{flex:0 1 auto;max-height:42%}
 #evidence{flex:1;overflow-y:auto}
 #evidence table{width:100%;border-collapse:collapse;font-size:11px}
-#evidence td{padding:6px 12px;border-bottom:1px solid rgba(28,37,64,.55);vertical-align:middle}
-#evidence tr:hover{background:rgba(90,208,230,.05)}
-#evidence td:first-child{color:var(--claim);white-space:nowrap;font-weight:500;width:1%}
-.pill{display:inline-block;padding:2.5px 9px;border-radius:20px;font-size:9.5px;
+#evidence td{padding:7px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+#evidence tr:hover{background:var(--panel-2)}
+#evidence td:first-child{color:var(--claim);white-space:nowrap;font-weight:600;width:1%}
+.pill{display:inline-block;padding:2.5px 9px;border-radius:20px;font-size:9px;
   letter-spacing:.1em;font-weight:600;text-transform:uppercase}
-.pill.none{border:1px dashed var(--text-faint);color:var(--text-faint)}
-.pill.validates{background:rgba(74,222,128,.13);border:1px solid rgba(74,222,128,.6);
-  color:var(--run-ok);box-shadow:0 0 10px rgba(74,222,128,.15)}
-.pill.refutes{background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.6);color:var(--run-bad)}
-.run-ref{color:var(--text-faint);font-size:9.5px;display:block;margin-top:2px}
+.pill.none{border:1px dashed var(--faint);color:var(--faint)}
+.pill.validates{background:rgba(30,164,92,.12);border:1px solid var(--ok);color:var(--ok)}
+.pill.refutes{background:rgba(187,52,52,.1);border:1px solid var(--bad);color:var(--bad)}
+.run-ref{color:var(--faint);font-size:9px;display:block;margin-top:2px}
 tr.flash-row{animation:rowFlash 1s ease-out 2}
-@keyframes rowFlash{0%{background:rgba(74,222,128,.22)}100%{background:transparent}}
-/* ============ ask — conversation ============ */
-#ask-panel{flex:1 1 46%;border-bottom:none}
-#qa-log{flex:1;overflow-y:auto;padding:6px 16px 10px;background:#070b14}
+@keyframes rowFlash{0%{background:rgba(30,164,92,.22)}100%{background:transparent}}
+/* ============ ask ============ */
+#ask-panel{flex:1 1 auto;border-bottom:none}
+#qa-log{flex:1;overflow-y:auto;padding:6px 16px 10px;background:var(--panel)}
 #qa-log:empty::before{
   content:"ask the agent about conflicts, evidence, methods — it queries the live graph.";
-  display:block;padding:14px 2px;color:var(--text-faint);font-size:11px;
-  font-style:italic;line-height:1.6;
+  display:block;padding:14px 2px;color:var(--faint);font-size:11px;font-style:italic;line-height:1.6;
 }
-.qa{margin-top:12px}
-.qa .q{
-  color:var(--claim);font-size:11.5px;margin-bottom:6px;font-weight:500;
-}
-.qa .q::before{content:"you ▸ ";color:var(--text-faint);font-weight:400}
+.qa{margin-top:13px}
+.qa .q{color:var(--claim);font-size:11.5px;margin-bottom:6px;font-weight:600}
+.qa .q::before{content:"you ▸ ";color:var(--faint);font-weight:400}
 .qa .a{
-  color:var(--text);font-size:12px;line-height:1.7;white-space:pre-wrap;word-break:break-word;
-  border-left:2px solid rgba(74,222,128,.4);padding:2px 0 2px 12px;
+  color:var(--ink);font-size:12px;line-height:1.7;white-space:pre-wrap;word-break:break-word;
+  border-left:2.5px solid var(--ok);padding:2px 0 2px 12px;background:var(--panel-2);
+  border-radius:0 2px 2px 0;
 }
 .qa .a b{color:var(--claim);font-weight:600}
 .qa .a code{color:var(--paper);font-size:11px}
-.qa .a .thinking i{
-  display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--claim);
-  margin-right:4px;animation:dotHop 1s ease-in-out infinite;
-}
+.qa .a .thinking i{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--claim);
+  margin-right:4px;animation:dotHop 1s ease-in-out infinite}
 .qa .a .thinking i:nth-child(2){animation-delay:.15s}
 .qa .a .thinking i:nth-child(3){animation-delay:.3s}
 @keyframes dotHop{40%{transform:translateY(-4px);opacity:.5}}
-#suggest{display:flex;gap:7px;padding:10px 14px;flex-wrap:wrap;border-top:1px solid var(--bezel);
-  background:var(--panel)}
-.sug{
-  font-size:10px;color:var(--claim);border:1px solid rgba(90,208,230,.35);
-  background:rgba(90,208,230,.06);border-radius:20px;padding:4px 11px;cursor:pointer;
-  letter-spacing:.03em;transition:all .15s;font-family:"IBM Plex Mono",monospace;
+#suggest{display:flex;gap:7px;padding:10px 14px;flex-wrap:wrap;border-top:1px solid var(--line);background:var(--panel-2)}
+.sug{font-size:10px;color:var(--claim);border:1px solid rgba(13,125,158,.4);
+  background:rgba(13,125,158,.06);border-radius:20px;padding:4px 11px;cursor:pointer;
+  letter-spacing:.03em;transition:all .15s;font-family:"IBM Plex Mono",monospace}
+.sug:hover{background:rgba(13,125,158,.14)}
+#ask-row{display:flex;border-top:1.5px solid var(--line-strong)}
+#ask-input{flex:1;padding:13px 16px;background:var(--panel);border:none;outline:none;
+  color:var(--ink);font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+#ask-input::placeholder{color:var(--faint)}
+#ask-input:focus{background:#fff;box-shadow:inset 0 -2.5px 0 var(--claim)}
+#ask-btn{padding:0 22px;border:none;border-left:1px solid var(--line-strong);cursor:pointer;
+  background:var(--panel-2);color:var(--claim);font-family:"IBM Plex Mono",monospace;
+  font-weight:600;font-size:12px;letter-spacing:.12em;transition:all .15s}
+#ask-btn:hover{background:var(--claim);color:#fff}
+/* ============ upload modal ============ */
+#modal-backdrop{
+  position:fixed;inset:0;z-index:20;background:rgba(35,39,29,.45);backdrop-filter:blur(3px);
+  display:none;align-items:center;justify-content:center;
 }
-.sug:hover{background:rgba(90,208,230,.16);box-shadow:0 0 12px rgba(90,208,230,.2)}
-#ask-row{display:flex;border-top:1px solid var(--bezel)}
-#ask-input{
-  flex:1;padding:13px 16px;background:var(--panel-2);border:none;outline:none;
-  color:var(--text);font-family:"IBM Plex Mono",monospace;font-size:12.5px;
+#modal-backdrop.show{display:flex}
+#modal{
+  width:min(720px, 92vw);background:var(--panel);border:1.5px solid var(--ink);
+  border-radius:3px;box-shadow:8px 8px 0 rgba(35,39,29,.25);
+  animation:popIn .25s cubic-bezier(.2,.9,.3,1) both;
 }
-#ask-input::placeholder{color:var(--text-faint)}
-#ask-input:focus{background:#131b30;box-shadow:inset 0 -2px 0 var(--claim)}
-#ask-btn{
-  padding:0 22px;border:none;border-left:1px solid var(--bezel);cursor:pointer;
-  background:var(--panel);color:var(--claim);font-family:"IBM Plex Mono",monospace;
-  font-weight:600;font-size:12px;letter-spacing:.12em;transition:all .15s;
+@keyframes popIn{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+#modal .m-head{display:flex;align-items:baseline;gap:12px;padding:16px 20px 12px;border-bottom:1px solid var(--line)}
+#modal .m-head h2{font-family:"Fraunces",serif;font-size:20px;font-weight:900}
+#modal .m-head span{color:var(--dim);font-size:10.5px}
+#modal .m-head button{margin-left:auto;border:none;background:none;cursor:pointer;
+  color:var(--dim);font-size:16px;font-family:"IBM Plex Mono",monospace}
+#paper-text{
+  width:100%;height:300px;padding:14px 20px;border:none;outline:none;resize:vertical;
+  background:var(--panel-2);color:var(--ink);font-family:"IBM Plex Mono",monospace;
+  font-size:11.5px;line-height:1.6;
 }
-#ask-btn:hover{background:rgba(90,208,230,.12);text-shadow:0 0 10px rgba(90,208,230,.6)}
+#paper-text::placeholder{color:var(--faint)}
+#modal .m-foot{display:flex;align-items:center;gap:14px;padding:13px 20px;border-top:1px solid var(--line)}
+#upload-status{font-size:11px;color:var(--dim);flex:1;font-style:italic}
+#upload-go{
+  padding:10px 22px;border:1.5px solid var(--ok);border-radius:2px;background:var(--ok);
+  color:#fff;font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:11.5px;
+  letter-spacing:.12em;text-transform:uppercase;cursor:pointer;box-shadow:3px 3px 0 rgba(21,127,70,.25);
+  transition:all .15s;
+}
+#upload-go:hover:not(:disabled){background:var(--ok-bright);transform:translate(-1px,-1px)}
+#upload-go:disabled{opacity:.5;cursor:wait;box-shadow:none}
 div.vis-tooltip{
   font-family:"IBM Plex Mono",monospace !important;font-size:11px !important;
-  color:var(--text) !important;background:rgba(5,7,13,.95) !important;
-  border:1px solid var(--bezel-bright) !important;border-radius:2px !important;
+  color:var(--ink) !important;background:var(--panel) !important;
+  border:1.5px solid var(--ink) !important;border-radius:2px !important;
   padding:8px 11px !important;max-width:340px;white-space:normal !important;
-  box-shadow:0 6px 24px rgba(0,0,0,.6) !important;line-height:1.55;
+  box-shadow:4px 4px 0 rgba(35,39,29,.15) !important;line-height:1.55;
 }
-::-webkit-scrollbar{width:8px;height:8px}
-::-webkit-scrollbar-thumb{background:var(--bezel-bright);border-radius:4px}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:5px}
 ::-webkit-scrollbar-track{background:transparent}
+#log::-webkit-scrollbar-thumb{background:#2e3827}
 </style>
 </head>
 <body>
@@ -260,6 +269,7 @@ div.vis-tooltip{
   <div class="led"></div>
   <h1>PAPER<span class="arrow">→</span>RESULTS</h1>
   <span class="tag">executable evidence graph<br>hackwithbay 3.0</span>
+  <button id="upload-btn">+ upload paper</button>
   <div id="stats">
     <div class="chip">papers <b id="st-papers">–</b></div>
     <div class="chip">claims <b id="st-claims">–</b></div>
@@ -268,18 +278,9 @@ div.vis-tooltip{
   </div>
 </header>
 <main>
-  <div id="graph">
-    <div id="net"></div>
-    <div id="edge-legend">
-      <span class="contradicts"><span class="sw"></span>contradicts</span>
-      <span class="validates"><span class="sw"></span>validates</span>
-      <span class="implements"><span class="sw"></span>implements</span>
-      <span class="hint">click a <b>method</b> · then RUN</span>
-    </div>
-  </div>
-  <aside>
+  <aside class="left">
     <section id="method-panel">
-      <div class="head">Selected method <span class="idx">01</span></div>
+      <div class="head">Selected method <span class="idx">fig. 1</span></div>
       <div id="method-body">
         <div id="m-paper"></div>
         <div id="m-name" class="empty">awaiting selection…</div>
@@ -292,11 +293,22 @@ div.vis-tooltip{
       </div>
     </section>
     <section id="log-panel">
-      <div class="head">Experiment console <span class="idx">02</span></div>
+      <div class="head">Experiment console <span class="idx">live</span></div>
       <div id="log"></div>
     </section>
+  </aside>
+  <div id="graph">
+    <div id="net"></div>
+    <div id="edge-legend">
+      <span class="contradicts"><span class="sw"></span>contradicts</span>
+      <span class="validates"><span class="sw"></span>validates</span>
+      <span class="implements"><span class="sw"></span>implements</span>
+      <span class="hint">click a <b>method</b> · then RUN</span>
+    </div>
+  </div>
+  <aside class="right">
     <section id="evidence-panel">
-      <div class="head">Claims × executable evidence <span class="idx">03</span></div>
+      <div class="head">Claims × executable evidence <span class="idx">tab. 1</span></div>
       <div id="evidence"></div>
     </section>
     <section id="ask-panel">
@@ -314,12 +326,33 @@ div.vis-tooltip{
     </section>
   </aside>
 </main>
+<div id="modal-backdrop">
+  <div id="modal">
+    <div class="m-head">
+      <h2>Upload a paper</h2>
+      <span>paste title, abstract & method text — the agent extracts claims, methods and conflicts into the graph</span>
+      <button id="modal-close">✕</button>
+    </div>
+    <textarea id="paper-text" placeholder="Title: ...
+Authors: ...
+Year: ...
+
+ABSTRACT
+...
+
+METHOD
+...
+
+CLAIMS / EXPERIMENTS
+..."></textarea>
+    <div class="m-foot">
+      <span id="upload-status">extraction runs through the Butterbase AI gateway (~20s)</span>
+      <button id="upload-go">extract → graph</button>
+    </div>
+  </div>
+</div>
 <script>
-/* ================= evidence-flow graph =================
-   Deterministic columns, left → right:
-   PAPERS → CLAIMS → METHODS → RUNS
-   Only the story nodes are shown; authors/datasets/tasks/artifacts
-   live in tooltips and the agent, not on the canvas.            */
+/* ================= evidence-flow graph (light) ================= */
 const COL = {paper:0, claim:430, method:880, run:1290};
 const ROW = 92, GROUP_GAP = 70;
 let network, nodesDS, edgesDS, selectedMethod=null, running=false;
@@ -367,8 +400,8 @@ function buildLayout(g){
     nodes.push({
       id:p.eid, x:COL.paper, y:centerY, fixed:true, shape:"box",
       label:wrap(p.caption, 20) + "\n" + (p.props.year||""),
-      color:{background:"#2a2313", border:"#e8b64c", highlight:{background:"#3a2f16", border:"#ffd97a"}},
-      font:{color:"#e8b64c", size:13, face:"IBM Plex Mono", bold:{color:"#e8b64c"}},
+      color:{background:"#fdf3d7", border:"#a87708", highlight:{background:"#fff", border:"#a87708"}},
+      font:{color:"#7a5606", size:13, face:"IBM Plex Mono"},
       margin:10, borderWidth:1.5, widthConstraint:{maximum:185},
       title:(p.props.title||"") + " (" + (p.props.arxiv||"") + ")",
       _raw:p,
@@ -378,9 +411,8 @@ function buildLayout(g){
       pos[c.eid] = {x:COL.claim, y:cy};
       nodes.push({
         id:c.eid, x:COL.claim, y:cy, fixed:true, shape:"dot", size:10,
-        label:c.key, color:{background:"#5ad0e6", border:"#5ad0e6",
-          highlight:{background:"#fff", border:"#5ad0e6"}},
-        font:{color:"#8fd8e8", size:10.5, face:"IBM Plex Mono"},
+        label:c.key, color:{background:"#0d7d9e", border:"#0d7d9e", highlight:{background:"#23271d", border:"#0d7d9e"}},
+        font:{color:"#0d7d9e", size:10.5, face:"IBM Plex Mono"},
         title:c.props.text, _raw:c,
       });
     });
@@ -390,14 +422,13 @@ function buildLayout(g){
       nodes.push({
         id:m.eid, x:COL.method, y:my, fixed:true, shape:"dot", size:17,
         label:wrap(m.props.name||m.key, 20),
-        color:{background:"#a78bfa", border:"#c4b0ff", highlight:{background:"#fff", border:"#a78bfa"}},
-        font:{color:"#c9b8ff", size:11.5, face:"IBM Plex Mono"},
+        color:{background:"#7350cf", border:"#5636b8", highlight:{background:"#23271d", border:"#7350cf"}},
+        font:{color:"#5636b8", size:11.5, face:"IBM Plex Mono", bold:true},
         borderWidth:1.5, title:m.props.runnable_hint||m.props.description, _raw:m,
       });
     });
     y += groupH + GROUP_GAP;
   }
-  // runs: y = mean of linked claim/method rows
   const runs = by("Run");
   const runLinks = {};
   g.edges.filter(e=>["VALIDATES","REFUTES","IMPLEMENTS"].includes(e.rel))
@@ -410,41 +441,40 @@ function buildLayout(g){
     nodes.push({
       id:r.eid, x:COL.run, y:pos[r.eid].y, fixed:true, shape:"dot", size:15,
       label:"⚡ " + (r.key||"").replace("run-","").slice(0,22),
-      color:{background:ok?"#4ade80":"#f87171", border:"#eafff1",
-        highlight:{background:"#fff", border:ok?"#4ade80":"#f87171"}},
-      font:{color:ok?"#86efac":"#fca5a5", size:10.5, face:"IBM Plex Mono"},
-      borderWidth:2, shadow:{enabled:true, color:ok?"#4ade80":"#f87171", size:24, x:0, y:0},
+      color:{background:ok?"#1ea45c":"#bb3434", border:ok?"#0c5a30":"#7e2020",
+        highlight:{background:"#23271d", border:ok?"#1ea45c":"#bb3434"}},
+      font:{color:ok?"#157f46":"#bb3434", size:10.5, face:"IBM Plex Mono"},
+      borderWidth:2, shadow:{enabled:true, color:ok?"rgba(30,164,92,.5)":"rgba(187,52,52,.45)", size:18, x:0, y:0},
       title:`${r.key} · ${r.props.backend} · ${r.props.status} · ${r.props.duration_s}s`,
       _raw:r,
     });
   });
-  // column headers as text nodes (pan/zoom with the graph)
   const headY = -130;
   [["PAPERS",COL.paper],["CLAIMS",COL.claim],["METHODS",COL.method],["EXPERIMENT RUNS",COL.run]]
     .forEach(([t,x],i)=>nodes.push({
       id:"__h"+i, x, y:headY, fixed:true, shape:"text",
       label:t.split("").join(" "), physics:false,
-      font:{color:"#5c6b94", size:13, face:"IBM Plex Mono"},
+      font:{color:"#9a937c", size:13, face:"IBM Plex Mono"},
     }));
   return nodes;
 }
 
 const EDGE_STYLE = {
-  FROM:        {color:"#22304f", opacity:.7,  width:1,   arrows:false, smooth:{type:"cubicBezier", roundness:.3}},
-  DESCRIBED_IN:{color:"#3d3560", opacity:.5,  width:1,   arrows:false, dashes:[2,4], smooth:{type:"cubicBezier", roundness:.25}},
-  CITES:       {color:"#6b5a2a", opacity:.55, width:1,   arrows:true,  dashes:[2,4], smooth:{type:"curvedCW", roundness:.7}},
-  CONTRADICTS: {color:"#c69433", opacity:1,   width:2,   arrows:true,  dashes:[7,5], label:true, smooth:{type:"curvedCW", roundness:.55}},
-  IMPLEMENTS:  {color:"#a78bfa", opacity:.9,  width:1.8, arrows:true,  smooth:{type:"cubicBezier", roundness:.3}},
-  VALIDATES:   {color:"#4ade80", opacity:1,   width:2.6, arrows:true,  label:true, smooth:{type:"cubicBezier", roundness:.35}},
-  REFUTES:     {color:"#f87171", opacity:1,   width:2.6, arrows:true,  label:true, smooth:{type:"cubicBezier", roundness:.35}},
+  FROM:        {color:"#d5cdb4", opacity:.9,  width:1,   arrows:false, smooth:{type:"cubicBezier", roundness:.3}},
+  DESCRIBED_IN:{color:"#cdc2e8", opacity:.8,  width:1,   arrows:false, dashes:[2,4], smooth:{type:"cubicBezier", roundness:.25}},
+  CITES:       {color:"#cbb264", opacity:.8,  width:1,   arrows:true,  dashes:[2,4], smooth:{type:"curvedCW", roundness:.7}},
+  CONTRADICTS: {color:"#a87708", opacity:1,   width:2,   arrows:true,  dashes:[7,5], label:true, smooth:{type:"curvedCW", roundness:.55}},
+  IMPLEMENTS:  {color:"#7350cf", opacity:.95, width:1.8, arrows:true,  smooth:{type:"cubicBezier", roundness:.3}},
+  VALIDATES:   {color:"#1ea45c", opacity:1,   width:2.6, arrows:true,  label:true, smooth:{type:"cubicBezier", roundness:.35}},
+  REFUTES:     {color:"#bb3434", opacity:1,   width:2.6, arrows:true,  label:true, smooth:{type:"cubicBezier", roundness:.35}},
 };
 function edgeStyle(e){
   const s = EDGE_STYLE[e.rel];
-  if(!s) return null; // WROTE / EVALUATED_ON / ADDRESSES / PRODUCED stay off-canvas
+  if(!s) return null;
   return {
     id:`${e.src}|${e.rel}|${e.dst}`, from:e.src, to:e.dst,
     label:s.label ? e.rel : "",
-    font:{size:8.5, color:s.color, face:"IBM Plex Mono", strokeWidth:5, strokeColor:"#05070d"},
+    font:{size:8.5, color:s.color, face:"IBM Plex Mono", strokeWidth:5, strokeColor:"#f6f2e8"},
     color:{color:s.color, opacity:s.opacity},
     width:s.width, dashes:s.dashes||false, smooth:s.smooth,
     arrows:{to:{enabled:!!s.arrows, scaleFactor:.45}},
@@ -483,20 +513,24 @@ async function loadGraph(focusNew=false){
     network.on("hoverNode", ()=>document.body.style.cursor="pointer");
     network.on("blurNode", ()=>document.body.style.cursor="default");
   } else {
-    // remove stale, update the rest (positions recomputed each load)
     const fresh = new Set(nodes.map(n=>n.id));
     nodesDS.getIds().filter(id=>!fresh.has(id)).forEach(id=>nodesDS.remove(id));
     nodes.forEach(n=>nodesDS.update(n));
     edges.forEach(e=>edgesDS.update(e));
+    const newIds = nodes.filter(n=>!existing.has(n.id) && n._raw).map(n=>n.id);
     const newRuns = nodes.filter(n=>!existing.has(n.id) && n._raw?.label==="Run").map(n=>n.id);
     if(focusNew && newRuns.length){
       network.selectNodes(newRuns);
-      network.focus(newRuns[0], {scale:1.05, animation:{duration:900, easingFunction:"easeInOutCubic"}});
-      setTimeout(()=>network.fit({animation:{duration:1100, easingFunction:"easeInOutCubic"}}), 2300);
+      network.focus(newRuns[0], {scale:1.1, animation:{duration:900, easingFunction:"easeInOutCubic"}});
+      setTimeout(()=>network.fit({animation:{duration:1100, easingFunction:"easeInOutCubic"}}), 2400);
+    } else if(newIds.length){
+      network.selectNodes(newIds);
+      network.fit({animation:{duration:800, easingFunction:"easeInOutCubic"}});
     } else network.fit({animation:{duration:500, easingFunction:"easeInOutCubic"}});
   }
 }
 
+/* ---------- method selection + params ---------- */
 let methodParams = [];
 function renderParams(){
   const grid = document.getElementById("m-params");
@@ -540,6 +574,7 @@ function selectMethod(raw){
   document.getElementById("run-btn").disabled = running;
 }
 
+/* ---------- evidence ---------- */
 let lastEvidence = {};
 async function loadEvidence(){
   const rows = await (await fetch("/api/evidence")).json();
@@ -557,6 +592,7 @@ async function loadEvidence(){
     }).join("") + "</table>";
 }
 
+/* ---------- run ---------- */
 document.getElementById("run-btn").addEventListener("click", async ()=>{
   if(!selectedMethod || running) return;
   const btn = document.getElementById("run-btn");
@@ -570,12 +606,14 @@ document.getElementById("run-btn").addEventListener("click", async ()=>{
   log("② dispatching to sandbox (daytona)…", "t-stage");
   const started = Date.now();
   try{
-    const rec = await (await fetch(`/api/run/${selectedMethod}`, {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({params})})).json();
+    const res = await fetch(`/api/run/${selectedMethod}`, {method:"POST",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify({params})});
+    const rec = await res.json();
     const dt = ((Date.now()-started)/1000).toFixed(1);
     running = false;
-    if(rec.error){
+    if(!res.ok){
+      log(`✗ ${rec.detail || JSON.stringify(rec).slice(0,200)}`, "t-bad");
+    } else if(rec.error){
       log(`✗ run failed: ${rec.error}`, "t-bad");
       log(`  failure recorded as evidence — the graph remembers what broke.`, "t-dim");
     } else {
@@ -591,7 +629,7 @@ document.getElementById("run-btn").addEventListener("click", async ()=>{
   await loadGraph(true); await loadEvidence();
 });
 
-/* ---------- ask: conversation log ---------- */
+/* ---------- ask ---------- */
 const mdLite = s => s
   .replace(/&/g,"&amp;").replace(/</g,"&lt;")
   .replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>")
@@ -621,12 +659,44 @@ document.getElementById("ask-btn").addEventListener("click", ()=>ask());
 document.getElementById("ask-input").addEventListener("keydown", e=>{ if(e.key==="Enter") ask(); });
 document.querySelectorAll(".sug").forEach(s=>s.addEventListener("click", ()=>ask(s.textContent)));
 
+/* ---------- upload ---------- */
+const backdrop = document.getElementById("modal-backdrop");
+document.getElementById("upload-btn").addEventListener("click", ()=>backdrop.classList.add("show"));
+document.getElementById("modal-close").addEventListener("click", ()=>backdrop.classList.remove("show"));
+backdrop.addEventListener("click", e=>{ if(e.target===backdrop) backdrop.classList.remove("show"); });
+document.getElementById("upload-go").addEventListener("click", async ()=>{
+  const text = document.getElementById("paper-text").value.trim();
+  const status = document.getElementById("upload-status");
+  const go = document.getElementById("upload-go");
+  if(text.length < 200){ status.textContent = "need more text — paste at least the abstract + method."; return; }
+  go.disabled = true;
+  status.textContent = "extracting claims & methods via the AI gateway…";
+  log(`$ paper2result upload (${text.length} chars)`, "t-warn");
+  try{
+    const res = await fetch("/api/upload", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify({text})});
+    const r = await res.json();
+    if(!res.ok) throw new Error(r.detail || JSON.stringify(r).slice(0,160));
+    status.textContent = `✓ ${r.paper_id}: ${r.claims} claims, ${r.methods} methods, ${r.relations} cross-paper links`;
+    log(`✓ extracted ${r.paper_id} — "${r.title}"`, "t-ok");
+    log(`  ${r.claims} claims · ${r.methods} methods (${(r.method_ids||[]).join(", ")}) · ${r.relations} cross-paper relations`, "t-dim");
+    log(`  click its method node to generate + run an experiment.`, "t-dim");
+    await loadGraph(true); await loadEvidence();
+    setTimeout(()=>{ backdrop.classList.remove("show"); go.disabled = false;
+      document.getElementById("paper-text").value = ""; }, 1600);
+  }catch(e){
+    status.textContent = "✗ " + e.message;
+    log(`✗ upload failed: ${e.message}`, "t-bad");
+    go.disabled = false;
+  }
+});
+
 /* ---------- boot ---------- */
 (async ()=>{
-  log("paper2result · booting instrument panel", "t-dim");
-  log("engine: rocketride@localhost:5565 · graph: neo4j aura · sandbox: daytona", "t-faint");
+  log("paper2result · instrument online", "t-dim");
+  log("engine: rocketride@localhost:5565 · graph: neo4j aura · sandbox: daytona · llm: butterbase gateway", "t-faint");
   await loadGraph(); await loadEvidence();
-  log(`graph online — ${document.getElementById("st-claims").textContent} claims, ` +
+  log(`graph loaded — ${document.getElementById("st-claims").textContent} claims, ` +
       `${document.getElementById("st-conf").textContent} cross-paper conflicts. idle.`, "t-dim");
 })();
 </script>

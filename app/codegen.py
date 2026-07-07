@@ -16,20 +16,80 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
 IMPL_DIR = os.path.join(ROOT, "papers", "impl")
 GENERATED_DIR = os.path.join(ROOT, "generated")
 
 
+CODEGEN_PROMPT = """You are the codegen stage of Paper-to-Results Graph.
+Write ONE self-contained Python file (numpy + stdlib ONLY, no downloads, no
+network, finishes in under 60 seconds) that reproduces this method from a
+research paper as a small experiment.
+
+METHOD: {name} ({method_id})
+DESCRIPTION: {description}
+HOW TO REPRODUCE: {runnable_hint}
+EXPERIMENT PARAMETERS (read each from env var P2R_<NAME_UPPERCASE>, with
+these defaults): {params}
+CLAIMS TO CHECK (decide VALIDATES or REFUTES from your measured metrics):
+{claims}
+
+HARD REQUIREMENTS:
+- numpy only; np.random.default_rng(0) for reproducibility
+- read every experiment parameter via os.environ.get("P2R_<NAME>", default)
+- print progress lines, then AS THE VERY LAST STDOUT LINE print exactly one
+  JSON object: {{"method_id": "{method_id}", "params": {{...used params...}},
+  "metrics": {{...}}, "claim_checks": [{{"claim_id": str,
+  "verdict": "VALIDATES"|"REFUTES", "detail": str}}]}}
+- claim_checks verdicts MUST be computed from the measured metrics with an
+  explicit threshold, not hardcoded.
+
+Reply with ONLY a ```python code block."""
+
+
+def _method_context(method_id: str) -> dict:
+    """Pull method + its paper's claims from Neo4j for the codegen prompt."""
+    from app.db import DATABASE, get_driver
+    with get_driver() as driver:
+        recs, _, _ = driver.execute_query(
+            """
+            MATCH (m:Method {id: $id})-[:DESCRIBED_IN]->(p:Paper)
+            OPTIONAL MATCH (c:Claim)-[:FROM]->(p)
+            RETURN m.name AS name, m.description AS description,
+                   m.runnable_hint AS runnable_hint, m.params AS params,
+                   collect({id: c.id, text: c.text}) AS claims
+            """,
+            id=method_id, database_=DATABASE,
+        )
+    if not recs:
+        raise NotImplementedError(f"method '{method_id}' not found in the graph")
+    return dict(recs[0])
+
+
+def generate_implementation(method_id: str) -> str:
+    """LLM-generate an implementation via the Butterbase gateway."""
+    from app.llm import chat, extract_code_block
+    ctx = _method_context(method_id)
+    prompt = CODEGEN_PROMPT.format(
+        method_id=method_id, name=ctx["name"], description=ctx["description"],
+        runnable_hint=ctx["runnable_hint"], params=ctx.get("params") or "[]",
+        claims=json.dumps([c for c in ctx["claims"] if c.get("id")], indent=1),
+    )
+    return extract_code_block(chat(prompt, max_tokens=6000))
+
+
 def get_implementation(method_id: str) -> tuple[str, str]:
-    """Return (source, code). source is 'curated' or 'llm'."""
+    """Return (source, code). Curated first; else live LLM codegen (cached)."""
     curated = os.path.join(IMPL_DIR, f"{method_id}.py")
     if os.path.exists(curated):
         with open(curated) as f:
             return "curated", f.read()
-    raise NotImplementedError(
-        f"No curated implementation for '{method_id}' and live LLM codegen "
-        "routes through the local RocketRide pipeline (M6)."
-    )
+    code = generate_implementation(method_id)
+    os.makedirs(IMPL_DIR, exist_ok=True)
+    with open(curated, "w") as f:  # cache so re-runs are stable + editable
+        f.write(f'"""LLM-generated implementation for {method_id} '
+                f'(Butterbase gateway). Review before trusting."""\n' + code)
+    return "llm", code
 
 
 def materialize(method_id: str) -> str:
