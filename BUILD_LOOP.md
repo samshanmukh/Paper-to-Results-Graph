@@ -29,7 +29,7 @@ This file is the single source of truth for the build loop. Each loop iteration:
 | BUTTERBASE_API_KEY / APP_ID / SERVICE_KEY / MCP_URL | ✅ in `.env` | from `../sceneshop/.env` |
 | RocketRide local engine | ✅ running on :5565 | `PIPELINE_URL` in `.env` |
 | DAYTONA_API_KEY | ❌ MISSING (empty in sceneshop/.env too) | user must provide in `.env` |
-| OPENAI/ANTHROPIC key | optional | only as fallback; prefer RocketRide routing |
+| LLM access | ✅ SOLVED via Butterbase AI gateway | OpenAI-compatible: `$BUTTERBASE_API_URL/v1/$APP_ID/chat/completions`, Bearer = SERVICE_KEY, model `anthropic/claude-sonnet-4.5` (verified). Wired as ROCKETRIDE_GATEWAY_* in .env |
 
 ## Blockers (loop appends here; user resolves)
 
@@ -66,9 +66,10 @@ This file is the single source of truth for the build loop. Each loop iteration:
 - [x] VERIFIED CLOSED: evidence flipped 'no runs yet' → 'VALIDATES by run-wilson2017-m1-...' for both wilson claims. This is the demo command: `python scripts/demo_loop.py wilson2017-m1`
 
 ### M6 — RocketRide orchestration
-- [ ] Read ALL RocketRide docs first (ground rules)
-- [ ] `pipelines/paper2result.pipe`: orchestrates extract → generate → run → update-graph (agent + tools per component reference)
-- [ ] Validate pipeline locally per RocketRide quickstart
+- [x] Read RocketRide docs (README, QUICKSTART, PIPELINE_RULES, COMPONENT_REFERENCE, COMMON_MISTAKES) + services-catalog + schemas for llm_openai_api/db_neo4j/tool_python/tool_daytona
+- [x] `pipelines/paper2result.pipe`: chat → agent_rocketride (waves+memory) → response_answers; agent controls llm_openai_api (Butterbase AI gateway!), memory_internal, db_neo4j (Aura), tool_python. db_neo4j shares the same LLM node for NL→Cypher
+- [x] VERIFIED live via `scripts/check_pipeline.py`: agent answered "which claims have executable evidence" citing real run id, VALIDATES verdicts, metrics from the graph
+- [ ] Polish: agent sometimes misquotes metric values (said 0.05 vs actual 0.425) — tighten instructions or db_description; add tool_daytona node when key arrives
 
 ### M7 — UI + Butterbase (BLOCKED: Butterbase account)
 - [ ] Minimal web UI: graph viz (papers/claims/methods/runs), "Run this method" button, live run log panel
@@ -84,6 +85,7 @@ This file is the single source of truth for the build loop. Each loop iteration:
 
 (loop appends: iteration #, what was done, what's verified, what's next)
 
+- **#7 (2026-07-07):** M6 complete. KEY DISCOVERY: Butterbase AI gateway is OpenAI-compatible and our service key works — LLM access unblocked without any OpenAI/Anthropic key (also strengthens Butterbase integration story). Pipeline paper2result.pipe verified live: agent → gateway LLM + memory + db_neo4j(Aura) + tool_python, answers evidence questions citing real run ids. extract.py/codegen.py live modes can now also use the gateway (optional polish). Next: M7 UI + Butterbase backend.
 - **#6 (2026-07-07):** M5 complete — THE CORE LOOP IS CLOSED end-to-end (paper → method → code → run → result → graph update, verified by evidence-query diff). Everything from here is orchestration + presentation. Next: M6 RocketRide pipeline — MUST read .rocketride/docs (README, QUICKSTART, PIPELINE_RULES, COMPONENT_REFERENCE, COMMON_MISTAKES, python_API) before writing the .pipe.
 - **#5 (2026-07-07):** M4 complete (local verified; Daytona code-complete, blocked on key). Run records persist to runs/ with full stdout/stderr/duration + parsed claim verdicts. Inspected installed daytona_sdk 0.194 to write against the real API instead of guessing. Next: M5 — curator writes Run/Artifact nodes back to Neo4j + end-to-end demo_loop.py.
 - **#4 (2026-07-07):** M3 complete. First naive reproduction gave 0/0 test error — fixed by matching the paper's conditions (imbalanced classes, full-batch); now GD 0.000 vs Adam 0.425 with Adam's first three weights exactly equalized as the theory predicts. codegen --run validates the JSON contract. Next: M4 runner — local-subprocess fallback is unblocked; Daytona path stays BLOCKED on DAYTONA_API_KEY.

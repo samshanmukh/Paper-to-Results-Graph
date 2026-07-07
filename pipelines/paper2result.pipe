@@ -1,0 +1,90 @@
+{
+	"components": [
+		{
+			"id": "chat_1",
+			"provider": "chat",
+			"config": { "hideForm": true, "mode": "Source", "parameters": {}, "type": "chat" },
+			"ui": { "position": { "x": 20, "y": 200 }, "measured": { "width": 150, "height": 66 } }
+		},
+		{
+			"id": "agent_rocketride_1",
+			"provider": "agent_rocketride",
+			"config": {
+				"instructions": [
+					"You are the Paper-to-Results research agent. You answer questions about research papers, their claims, methods, datasets, and — crucially — the executable evidence attached to them.",
+					"The Neo4j knowledge graph contains: Paper, Author, Claim, Method, Dataset, Task, Run, Artifact nodes. Relationships: (Author)-[:WROTE]->(Paper), (Paper)-[:CITES]->(Paper), (Claim)-[:FROM]->(Paper), (Method)-[:DESCRIBED_IN]->(Paper), (Paper)-[:EVALUATED_ON]->(Dataset), (Paper)-[:ADDRESSES]->(Task), (Claim)-[:SUPPORTS|CONTRADICTS]->(Claim), (Run)-[:IMPLEMENTS]->(Method), (Run)-[:VALIDATES|REFUTES]->(Claim), (Run)-[:PRODUCED]->(Artifact).",
+					"Use the Neo4j tool to query the graph before answering. Always cite claim ids (e.g. wilson2017-c2) and run ids in your answers.",
+					"When asked about conflicts, query CONTRADICTS relationships between claims of different papers. When asked about evidence, query Run nodes and their VALIDATES/REFUTES links; distinguish claims with executable evidence from claims that are only asserted on paper.",
+					"Keep answers concise and factual; this is a research evidence tool, not a chatbot."
+				],
+				"max_waves": 6,
+				"parameters": {}
+			},
+			"input": [{ "lane": "questions", "from": "chat_1" }],
+			"ui": { "position": { "x": 240, "y": 200 }, "measured": { "width": 150, "height": 86 } }
+		},
+		{
+			"id": "response_answers_1",
+			"provider": "response_answers",
+			"config": { "laneName": "answers" },
+			"input": [{ "lane": "answers", "from": "agent_rocketride_1" }],
+			"ui": { "position": { "x": 460, "y": 200 }, "measured": { "width": 150, "height": 66 } }
+		},
+		{
+			"id": "llm_openai_api_1",
+			"provider": "llm_openai_api",
+			"config": {
+				"profile": "custom",
+				"custom": {
+					"apikey": "${ROCKETRIDE_GATEWAY_KEY}",
+					"base_url": "${ROCKETRIDE_GATEWAY_BASE_URL}",
+					"model": "${ROCKETRIDE_GATEWAY_MODEL}",
+					"modelTotalTokens": 16384
+				},
+				"parameters": {}
+			},
+			"control": [
+				{ "classType": "llm", "from": "agent_rocketride_1" },
+				{ "classType": "llm", "from": "db_neo4j_1" }
+			],
+			"ui": { "position": { "x": 60, "y": 380 }, "measured": { "width": 150, "height": 66 } }
+		},
+		{
+			"id": "memory_internal_1",
+			"provider": "memory_internal",
+			"config": { "type": "memory_internal" },
+			"control": [{ "classType": "memory", "from": "agent_rocketride_1" }],
+			"ui": { "position": { "x": 280, "y": 380 }, "measured": { "width": 150, "height": 66 } }
+		},
+		{
+			"id": "db_neo4j_1",
+			"provider": "db_neo4j",
+			"config": {
+				"profile": "default",
+				"default": {
+					"uri": "${ROCKETRIDE_NEO4J_URI}",
+					"auth_method": "userpass",
+					"user": "${ROCKETRIDE_NEO4J_USER}",
+					"password": "${ROCKETRIDE_NEO4J_PASSWORD}",
+					"database": "neo4j",
+					"db_description": "Research knowledge graph linking papers to executable evidence. Nodes: Paper(id,title,year,arxiv,topic), Author(name), Claim(id,text,metric), Method(id,name,description,runnable_hint), Dataset(id,name), Task(id,name), Run(id,backend,exit_code,duration_s,status,metrics), Artifact(id,kind,content). Edges: WROTE, CITES, FROM (claim to paper), DESCRIBED_IN (method to paper), EVALUATED_ON, ADDRESSES, SUPPORTS/CONTRADICTS (claim to claim), IMPLEMENTS (run to method), VALIDATES/REFUTES (run to claim), PRODUCED (run to artifact). NOTE: the instance also contains unrelated SceneStyle/Product/Creator nodes from another project — ignore them.",
+					"allow_execute": false,
+					"max_attempts": 5
+				},
+				"parameters": {}
+			},
+			"control": [{ "classType": "tool", "from": "agent_rocketride_1" }],
+			"ui": { "position": { "x": 500, "y": 380 }, "measured": { "width": 150, "height": 135 } }
+		},
+		{
+			"id": "tool_python_1",
+			"provider": "tool_python",
+			"config": { "type": "tool_python", "timeout": 300 },
+			"control": [{ "classType": "tool", "from": "agent_rocketride_1" }],
+			"ui": { "position": { "x": 720, "y": 380 }, "measured": { "width": 150, "height": 40 } }
+		}
+	],
+	"project_id": "79691f0a-07c6-4e84-bf1f-a97693fbd1f7",
+	"viewport": { "x": 0, "y": 0, "zoom": 1 },
+	"version": 1
+}
