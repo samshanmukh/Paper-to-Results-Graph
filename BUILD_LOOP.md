@@ -48,9 +48,9 @@ This file is the single source of truth for the build loop. Each loop iteration:
 - [x] Golden extraction JSON in `papers/extracted/` — 9 claims, 3 methods, 4 cross-paper CONTRADICTS relations, citation edges
 
 ### M2 — Knowledge graph (Neo4j)
-- [ ] `app/graph.py`: idempotent loader — creates Paper, Claim, Method, Dataset, Task, Run, Artifact nodes + WROTE/CITES/FROM/DESCRIBED_IN/SUPPORTS/CONTRADICTS/IMPLEMENTS/VALIDATES/REFUTES edges
-- [ ] Load extracted JSON into Aura; verify with Cypher counts
-- [ ] `app/queries.py`: canned queries — "claims for topic X", "which claims have executable evidence?", "conflicting claims"
+- [x] `app/graph.py`: idempotent MERGE loader + `app/db.py` shared driver. ⚠️ Aura instance is SHARED with sceneshop (their 36 nodes: SceneStyle/Product/Creator/...) — `--reset` only deletes OUR_LABELS; NEVER run label-less deletes
+- [x] Loaded: 3 Paper, 9 Author, 9 Claim, 3 Method, 3 Dataset, 1 Task; edges WROTE 9, FROM 9, CITES 3, CONTRADICTS 4, DESCRIBED_IN 3, EVALUATED_ON 4, ADDRESSES 3
+- [x] `app/queries.py`: claims / conflicts / methods / evidence queries verified (evidence shows "no runs yet" — flips after M5)
 
 ### M3 — Codegen (needs LLM key; mock fallback = pre-written implementation)
 - [ ] `app/codegen.py`: method node → small runnable Python implementation (single file, stdlib+numpy only, prints a JSON metric line at the end)
@@ -84,5 +84,6 @@ This file is the single source of truth for the build loop. Each loop iteration:
 
 (loop appends: iteration #, what was done, what's verified, what's next)
 
+- **#3 (2026-07-07):** M2 complete. Graph live in Aura with full schema; conflicts query surfaces 4 real cross-paper contradictions. Discovered the Aura instance is shared with sceneshop — all destructive ops restricted to our labels via `OUR_LABELS` in `app/db.py`. Next: M3 codegen (pre-written wilson2017-m1 implementation first, since it's the demo centerpiece and needs no LLM).
 - **#2 (2026-07-07):** M1 complete. Demo topic locked: "Do adaptive optimizers beat SGD?" (Adam vs Wilson-et-al critique vs AdamW — real conflicting claims, sandbox-runnable methods). `extract.py --mock` validates all 3 golden extractions. The Wilson separable-counterexample method (`wilson2017-m1`) is the designated demo method — tiny numpy experiment with a dramatic result (SGD 0% vs Adam ~50% test error). Next: M2 — Neo4j graph loader (inspect the 36 pre-existing nodes first).
 - **#1 (2026-07-07):** M0 complete. Scaffolded dirs, `.env` (Neo4j + Butterbase + RocketRide local), venv with deps, Neo4j Aura smoke test passing (36 pre-existing nodes in instance — inspect/clear before M2 load). Daytona key still missing. Next: M1 — preload papers + extraction (route LLM via local RocketRide engine per user directive; keep `--mock` fallback).
