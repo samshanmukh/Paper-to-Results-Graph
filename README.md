@@ -1,167 +1,146 @@
-# Paper2Result
+# Paper→Results Graph
 
 **Turn research papers into executable evidence.**
 
-Paper2Result (Paper-to-Results Graph) is a hackathon project for [HackwithBay 3.0](https://lu.ma) — *Thoughtful Agents for Productivity*. It goes beyond literature summaries: select a method from a paper, generate runnable code, execute it in a sandbox, and write the result back into a knowledge graph.
+Most research tools stop at summaries. Paper→Results closes the loop between what papers *claim* and what actually *runs*:
 
 > **Paper → Claim → Method → Code → Sandbox Run → Result → Graph Update**
 
----
+Select a method from a paper, generate a runnable implementation, execute it, and watch the result attach itself to the knowledge graph — `VALIDATES` or `REFUTES`, with logs, metrics, and failure data. The graph doesn't just know what papers say. It knows what has been tested.
 
-## The problem
-
-Researchers spend hours reading papers in isolation. Summaries help, but they don't answer:
-
-- Do these papers **agree or contradict** on a specific claim?
-- Can I **run** the method from Paper B without manually reimplementing it?
-- What happened when we tried to reproduce it — and where does that result live?
-
-Paper2Result connects literature, code, and experiment results in one graph — so you see what ran, not just what was claimed.
+Built for **HackwithBay 3.0** (July 7, 2026) — *Thoughtful Agents for Productivity*.
 
 ---
 
-## How it works
+## The demo (2 minutes)
+
+Three real papers that genuinely disagree are preloaded:
+
+| Paper | Claim (short) |
+|---|---|
+| **Adam** (Kingma & Ba, 1412.6980) | Adam converges faster; defaults need no tuning |
+| **Wilson et al.** (1705.08292) | Adaptive methods **generalize worse** than SGD — on a constructed separable problem SGD gets 0% test error, Adam ~50% |
+| **AdamW** (Loshchilov & Hutter, 1711.05101) | Decoupled weight decay fixes Adam's generalization |
+
+The graph shows 4 cross-paper `CONTRADICTS` edges between their claims.
+
+1. Open the UI — graph of papers, claims, methods, citations, conflicts. Evidence table: *"no runs yet"* on all 9 claims.
+2. Click the violet **Linearly separable counterexample** method node → **▶ RUN THIS METHOD**.
+3. Watch the experiment console: code generated → executed → `VALIDATES wilson2017-c2 — GD test error 0.000 vs Adam 0.425`.
+4. A new ⚡ **Run** node appears in the graph, wired `IMPLEMENTS`→Method and `VALIDATES`→Claims. The evidence table flips live.
+5. Ask the agent: *"Which claims now have executable evidence?"* — it queries Neo4j and answers with run ids and exact metrics.
+
+**The result actually reproduces the paper**: Adam's weights equalize exactly as Wilson et al.'s theory predicts (we verified digit-for-digit).
+
+---
+
+## Architecture
 
 ```
-Upload papers → Extract claims, methods, citations
-                    ↓
-              Knowledge graph (Neo4j)
-                    ↓
-         Ask cross-paper questions (cited answers)
-                    ↓
-      Select a method → Generate runnable code (Paper2Code)
-                    ↓
-         Execute in Daytona sandbox → Capture logs & metrics
-                    ↓
-    Link Run node back to graph (VALIDATES / REFUTES claims)
+                       ┌─────────────────────────────────────────────┐
+                       │              demo UI (static/)              │
+                       │  graph viz · RUN button · console · ask box │
+                       └──────────────────┬──────────────────────────┘
+                                          │ FastAPI (app/server.py)
+        ┌─────────────┬───────────────────┼────────────────┬──────────────┐
+        ▼             ▼                   ▼                ▼              ▼
+   /api/graph    /api/evidence      /api/run/{method}   /api/ask     (static)
+        │             │                   │                │
+        │             │       codegen → runner → curator   │
+        ▼             ▼           │  (Daytona sandbox      ▼
+   ┌─────────────────────┐        │   or local fallback)  RocketRide engine
+   │     Neo4j Aura      │◄───────┘                       (localhost:5565)
+   │  papers · claims ·  │                                 agent_rocketride
+   │  methods · runs ·   │◄────── db_neo4j (NL→Cypher) ────┤  + memory
+   │  VALIDATES/REFUTES  │                                 │  + tool_python
+   └─────────────────────┘        LLM: Butterbase AI ──────┘
+                                  gateway (claude-sonnet-4.5)
+   ┌─────────────────────┐
+   │  Butterbase app     │◄────── every run auto-mirrored
+   │  "paper2result"     │        (papers + runs tables)
+   └─────────────────────┘
 ```
 
-### Agent roles
+### Sponsor stack
 
-| Agent | Job |
-|-------|-----|
-| **Extractor** | Parse PDFs → claims, methods, datasets, citations |
-| **Linker** | Connect papers, tasks, supporting/contradicting claims |
-| **Planner** | Choose which method to implement |
-| **Coder** | Paper2Code-style generation → minimal runnable module |
-| **Runner** | Execute in Daytona, capture stdout/stderr/artifacts |
-| **Curator** | Write run results back to graph + backend |
+| Partner | How it's used |
+|---|---|
+| **RocketRide** (local engine) | `pipelines/paper2result.pipe` — wave agent with internal memory, `db_neo4j` tool (natural language → Cypher over the research graph), `tool_python`; LLM routed through one node |
+| **Neo4j Aura** | The product *is* the graph: papers, claims, methods, runs, `CONTRADICTS`/`VALIDATES`/`REFUTES` edges |
+| **Butterbase** | AI gateway (OpenAI-compatible endpoint powers ALL LLM calls — no separate OpenAI key anywhere) + dedicated app `paper2result` storing papers & run history |
+| **Daytona** | Sandbox backend in `app/runner.py` (auto-selected when `DAYTONA_API_KEY` is set; local subprocess fallback keeps the demo unkillable) |
 
 ---
 
-## Stack (HackwithBay partners)
+## Repo map
 
-| Partner | Role |
-|---------|------|
-| [**RocketRide**](https://github.com/rocketride-org/rocketride-server) | Multi-wave agent pipeline — extract → generate → execute → graph update |
-| [**Neo4j**](https://neo4j.com) | Knowledge graph — papers, claims, methods, runs, conflicts |
-| [**Daytona**](https://www.daytona.io) | Sandboxed code execution for generated implementations |
-| [**Butterbase**](https://butterbase.ai) | Backend — papers, runs, artifacts, deployed demo UI |
-
----
-
-## Graph model
-
-**Nodes:** `Paper`, `Author`, `Claim`, `Method`, `Dataset`, `Task`, `Run`, `Artifact`
-
-**Key relationships:**
-
-- `(Author)-[:WROTE]->(Paper)`
-- `(Paper)-[:CITES]->(Paper)`
-- `(Claim)-[:FROM]->(Paper)`
-- `(Method)-[:DESCRIBED_IN]->(Paper)`
-- `(Claim)-[:SUPPORTS|CONTRADICTS]->(Claim)`
-- `(Run)-[:IMPLEMENTS]->(Method)`
-- `(Run)-[:VALIDATES|REFUTES]->(Claim)`
+```
+app/
+  extract.py     paper text → {claims, methods, datasets, citations} JSON
+  graph.py       idempotent Neo4j loader (MERGE everything)
+  queries.py     canned queries: claims / conflicts / methods / evidence
+  codegen.py     method node → runnable single-file experiment
+  runner.py      execute (daytona | local), capture, persist run record
+  curator.py     write Run/Artifact + IMPLEMENTS/VALIDATES/REFUTES back
+  butterbase.py  papers + run history in the paper2result Butterbase app
+  server.py      FastAPI backing the UI
+  db.py          shared driver (Aura is shared with another project —
+                 all destructive ops are label-scoped)
+papers/          3 paper excerpts + golden extractions + curated impls
+pipelines/       paper2result.pipe (RocketRide agent pipeline)
+scripts/         check_neo4j / check_pipeline / demo_loop / reset_demo
+static/          the demo UI
+BUILD_LOOP.md    autonomous build log (this project was built by a
+                 self-pacing Claude agent loop — every milestone verified)
+```
 
 ---
 
-## Demo flow (2 minutes)
-
-1. Select 2–3 papers on the same topic (pre-loaded).
-2. Ask: *"Do these papers agree on [metric/approach]?"* → graph shows cited claims and conflicts.
-3. Click a paper → **Implement method** → RocketRide agent generates code.
-4. Run in Daytona sandbox → live execution log.
-5. New `Run` node appears on the graph with results linked to the source claim.
-
----
-
-## Project status
-
-🚧 **Hackathon build in progress** — HackwithBay 3.0, July 7, 2026.
-
-| Component | Status |
-|-----------|--------|
-| Daytona sandbox (SDK) | ✅ Verified |
-| RocketRide pipeline | 🔲 In progress |
-| Neo4j graph | 🔲 In progress |
-| Butterbase backend + UI | 🔲 In progress |
-| Paper2Code generation loop | 🔲 In progress |
-
----
-
-## Local setup
-
-### Prerequisites
-
-- Python 3.11+
-- [Daytona](https://www.daytona.io) API key
-- RocketRide VS Code extension (for pipeline development)
-- Neo4j Aura or local instance
-- Butterbase account + MCP in Cursor
-
-### Daytona quick test
+## Run it
 
 ```bash
-pip install -r requirements.txt
-cp .env.example .env
-# Add your DAYTONA_API_KEY to .env
-python main.py
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cp .env.example .env   # fill in: Neo4j, Butterbase, ROCKETRIDE_*
+                       # optional: DAYTONA_API_KEY for real sandboxes
+
+.venv/bin/python scripts/check_neo4j.py      # graph connectivity
+.venv/bin/python app/graph.py --reset        # load the 3 papers
+.venv/bin/python scripts/check_pipeline.py   # RocketRide agent smoke test
+
+.venv/bin/uvicorn app.server:app --port 8787 # → http://localhost:8787
 ```
 
-Expected output:
+One-command closed loop without the UI:
 
+```bash
+.venv/bin/python scripts/demo_loop.py wilson2017-m1
+# === graph diff ===
+#   wilson2017-c1: 'no runs yet' -> 'VALIDATES by run-wilson2017-m1-...'
+#   wilson2017-c2: 'no runs yet' -> 'VALIDATES by run-wilson2017-m1-...'
+# loop CLOSED ✓
 ```
-Hello World from code!
-```
 
-### Environment variables
-
-| Variable | Description |
-|----------|-------------|
-| `DAYTONA_API_KEY` | Daytona API key for sandbox execution |
-| `NEO4J_URI` | Neo4j connection URI |
-| `NEO4J_USER` | Neo4j username |
-| `NEO4J_PASSWORD` | Neo4j password |
+Before a live demo: `.venv/bin/python scripts/reset_demo.py` (pristine "no runs yet" state).
 
 ---
 
-## Documentation
+## Status
 
-- [Architecture](./docs/ARCHITECTURE.md) — system diagrams, graph model, sponsor mapping
-- [Execution Plan](./docs/EXECUTION_PLAN.md) — hackathon build plan and task board
+| Component | Status |
+|---|---|
+| Extraction (3 papers, golden JSON + schema validation) | ✅ verified |
+| Neo4j knowledge graph (28 nodes, 4 cross-paper conflicts) | ✅ verified |
+| Codegen + Wilson counterexample (paper effect reproduced) | ✅ verified |
+| Runner — local backend | ✅ verified |
+| Runner — Daytona backend | 🔶 code-complete, needs `DAYTONA_API_KEY` |
+| Closed loop (run → graph update → evidence flip) | ✅ verified |
+| RocketRide agent pipeline (graph Q&A with citations) | ✅ verified |
+| Demo UI | ✅ verified in browser |
+| Butterbase (AI gateway + papers/runs persistence) | ✅ verified |
+| Deployed public URL | 🔶 pending deploy decision |
 
----
+## Why this beats "Paper2Code"
 
-```
-.
-├── README.md           # This file
-├── main.py             # Daytona sandbox verification
-├── requirements.txt    # Python dependencies
-├── .env.example        # Environment template (copy to .env)
-└── pipelines/          # RocketRide .pipe files (coming soon)
-```
+Paper2Code stops at code generation. Here, the code **runs**, and the outcome — success, failure, error, metric — becomes a first-class graph citizen attached to the claims it tests. Failed runs are evidence too.
 
----
-
-## Team
-
-Built for **HackwithBay 3.0** — AWS Builder Loft, San Francisco.
-
-**Theme:** Thoughtful Agents for Productivity
-
----
-
-## License
-
-MIT
+> Research should not end at reading. It should end in evidence.

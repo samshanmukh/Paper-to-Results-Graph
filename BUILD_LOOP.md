@@ -77,14 +77,18 @@ This file is the single source of truth for the build loop. Each loop iteration:
 - [ ] Deployed frontend URL: DECISION NEEDED — UI needs the local FastAPI backend (graph/run/ask), so a Butterbase static deploy would need a read-from-Butterbase-only variant or the demo stays on localhost. Note: one stray `probe1` row in runs table (undeletable via REST, text id) — filter out if it shows anywhere
 
 ### M8 — Demo + submission
-- [ ] Seed demo data end-to-end; rehearse the 2-min flow from README
-- [ ] Update README status table; architecture diagram
-- [ ] Butterbase MCP submission (`prep_and_submit_hackathon_entry`) [BLOCKED: Butterbase]
+- [x] `scripts/reset_demo.py`: pristine pre-demo state (Run/Artifact cleared, papers reloaded, evidence all 'no runs yet') — verified, then loop re-closed cleanly
+- [x] Agent accuracy rule added to pipeline instructions (exact metric quoting)
+- [x] README rewritten: demo script, architecture diagram, sponsor mapping, repo map, verified status table
+- [ ] Deployed public URL [BLOCKED: user decision — static Butterbase variant vs tunnel vs localhost demo]
+- [ ] Hackathon submission [BLOCKED: user input — team names/emails/phone; plus deployed URL]
+- [ ] Daytona live verification [BLOCKED: DAYTONA_API_KEY]
 
 ## Iteration Log
 
 (loop appends: iteration #, what was done, what's verified, what's next)
 
+- **#9 (2026-07-07):** M8 buildable parts complete (reset script, agent accuracy rule, README). ALL remaining tasks are user-blocked: (1) DAYTONA_API_KEY, (2) deploy decision for live URL, (3) submission details (team names/emails/phone). Loop pausing — restart with /loop or just answer the blockers in chat.
 - **#8 (2026-07-07):** M7 complete (minus deploy decision). Instrument-panel UI verified live in Chrome — the killer demo moment (click method → RUN → verdicts stream → graph grows → evidence flips) works visually. Created dedicated Butterbase app paper2result (NOT sceneshop's); papers+runs persisted; server auto-mirrors runs. Butterbase REST quirks learned: primaryKey not primary; jsonb top-level arrays rejected; row-id routes UUID-only. Next: M8 demo prep + README + submission; deploy decision for live URL.
 - **#7 (2026-07-07):** M6 complete. KEY DISCOVERY: Butterbase AI gateway is OpenAI-compatible and our service key works — LLM access unblocked without any OpenAI/Anthropic key (also strengthens Butterbase integration story). Pipeline paper2result.pipe verified live: agent → gateway LLM + memory + db_neo4j(Aura) + tool_python, answers evidence questions citing real run ids. extract.py/codegen.py live modes can now also use the gateway (optional polish). Next: M7 UI + Butterbase backend.
 - **#6 (2026-07-07):** M5 complete — THE CORE LOOP IS CLOSED end-to-end (paper → method → code → run → result → graph update, verified by evidence-query diff). Everything from here is orchestration + presentation. Next: M6 RocketRide pipeline — MUST read .rocketride/docs (README, QUICKSTART, PIPELINE_RULES, COMPONENT_REFERENCE, COMMON_MISTAKES, python_API) before writing the .pipe.
