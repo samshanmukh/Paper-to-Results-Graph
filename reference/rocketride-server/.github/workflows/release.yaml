@@ -1,0 +1,74 @@
+name: Release
+run-name: Release from ${{ github.sha }}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  init:
+    name: Initialize
+    uses: ./.github/workflows/_init.yaml
+    with:
+      check_server_tag: true
+
+  build:
+    name: Build
+    needs: init
+    uses: ./.github/workflows/_build.yaml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      full_version: ${{ needs.init.outputs.full_server_version }}
+      build_hash: ${{ needs.init.outputs.build_hash }}
+      build_stamp: ${{ needs.init.outputs.build_stamp }}
+      nodownload: true
+      package: true
+    secrets: inherit
+
+  release:
+    name: Release
+    needs: [init, build]
+    uses: ./.github/workflows/_release.yaml
+    permissions:
+      contents: write
+      id-token: write
+    with:
+      environment: release
+      server_version: ${{ needs.init.outputs.server_version }}
+      vscode_version: ${{ needs.init.outputs.vscode_version }}
+      client_mcp_version: ${{ needs.init.outputs.client_mcp_version }}
+      client_python_version: ${{ needs.init.outputs.client_python_version }}
+      client_typescript_version: ${{ needs.init.outputs.client_typescript_version }}
+    secrets: inherit
+
+  docker:
+    name: Docker
+    needs: [init, release]
+    if: needs.init.outputs.server_tag_exists == 'false'
+    uses: ./.github/workflows/_docker.yaml
+    permissions:
+      contents: read
+      packages: write
+      # _docker.yaml's docker job declares id-token: write for cosign
+      # keyless Sigstore signing. GitHub validates at workflow-start that
+      # the caller covers every permission the reusable job declares.
+      # Without it the workflow fails with startup_failure — same bug
+      # that broke nightly.yaml in PR #929 / fixed in #955. Latent here
+      # only because this job is gated by `if: server_tag_exists ==
+      # 'false'`, so the misconfiguration only surfaces on a fresh
+      # release cut. Fixing preemptively.
+      id-token: write
+    with:
+      server_version: ${{ needs.init.outputs.server_version }}
+    secrets: inherit

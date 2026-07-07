@@ -1,0 +1,309 @@
+name: Build
+
+# Default least-privilege permissions for the workflow. Individual jobs
+# below raise to write where they actually need it (Docker push, SARIF
+# upload, etc.). Closes Scorecard TokenPermissionsID #513.
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to check out (branch, tag, or sha). Empty uses the default.
+        required: false
+        type: string
+        default: ''
+      full_version:
+        description: Full build version (e.g. 1.2.3.456)
+        required: true
+        type: string
+      build_hash:
+        description: Short commit hash (8 chars)
+        required: true
+        type: string
+      build_stamp:
+        description: Build timestamp (ISO 8601 UTC)
+        required: true
+        type: string
+      codeql:
+        description: Run CodeQL C++ analysis (ubuntu only)
+        required: false
+        type: boolean
+        default: false
+      nodownload:
+        description: Skip downloading pre-built artifacts
+        required: false
+        type: boolean
+        default: false
+      package:
+        description: Run the package step and upload artifacts
+        required: false
+        type: boolean
+        default: false
+      retention_days:
+        # 1 day is enough to chain build → release → docker within the same
+        # workflow run; downloads inside a run work even after "expiry".
+        # Higher retention multiplies the 3-platform artifact set (~2 GB)
+        # against the 0.5 GB org storage cap and overflows it within a day.
+        description: Artifact retention in days
+        required: false
+        type: number
+        default: 1
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    timeout-minutes: 90
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VCPKG_NUGET_USER: ${{ github.repository_owner }}
+      NUGET_FEED_URL: https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json
+      VCPKG_BINARY_SOURCES: clear;nuget,https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json,readwrite
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu
+            label: Ubuntu 22.04
+            runner: ubuntu-22.04
+            builder_cmd: ./builder
+            vcpkg_cmd: ./build/vcpkg/vcpkg
+          - platform: windows
+            label: Windows Server 2022
+            runner: windows-2022
+            builder_cmd: ./builder.cmd
+            vcpkg_cmd: ./build/vcpkg/vcpkg.exe
+          - platform: macos
+            label: macOS (ARM64)
+            runner: macos-14
+            builder_cmd: ./builder
+            vcpkg_cmd: ./build/vcpkg/vcpkg
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ inputs.ref }}
+          submodules: recursive
+      - name: Set up pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4
+        with:
+          version: 10.33.0
+      - name: Set up vcpkg
+        run: ${{ matrix.builder_cmd }} vcpkg:submodule-build
+      - name: Set up vcpkg nuget / Linux/macOS
+        if: matrix.platform != 'windows'
+        run: |
+          NUGET_EXE=$(${{ matrix.vcpkg_cmd }} fetch nuget | tail -n1)
+          mono $NUGET_EXE sources add \
+            -Source "${{ env.NUGET_FEED_URL }}" \
+            -StorePasswordInClearText \
+            -Name GitHubPackages \
+            -UserName "${{ env.VCPKG_NUGET_USER }}" \
+            -Password "${{ secrets.GITHUB_TOKEN }}" || true
+          mono $NUGET_EXE setapikey "${{ secrets.GITHUB_TOKEN }}" \
+            -Source "${{ env.NUGET_FEED_URL }}"
+      - name: Set up vcpkg nuget / Windows
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $NUGET_EXE = $(${{ matrix.vcpkg_cmd }} fetch nuget | Select-Object -Last 1)
+          & $NUGET_EXE sources add `
+            -Source "${{ env.NUGET_FEED_URL }}" `
+            -StorePasswordInClearText `
+            -Name GitHubPackages `
+            -UserName "${{ env.VCPKG_NUGET_USER }}" `
+            -Password "${{ secrets.GITHUB_TOKEN }}"
+          & $NUGET_EXE setapikey "${{ secrets.GITHUB_TOKEN }}" `
+            -Source "${{ env.NUGET_FEED_URL }}"
+
+      - name: Initialize CodeQL
+        if: inputs.codeql && matrix.platform == 'ubuntu'
+        uses: github/codeql-action/init@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          languages: cpp
+          build-mode: manual
+          queries: security-and-quality
+
+      - name: Build
+        # Pass the string inputs as env vars instead of template-interpolating
+        # them into the run: body — GitHub expands ${{ ... }} before the shell
+        # parses, so a value like  1.2"; curl x|sh; #  would inject shell.
+        # Closes CodeQL actions/code-injection/critical #631.
+        #
+        # `shell: bash` is required for windows-2022 — the runner defaults to
+        # PowerShell Core there, and pwsh's $FULL_VERSION resolves a pwsh
+        # variable, not the env var (env vars need $env:FULL_VERSION). Git
+        # Bash is pre-installed on the GitHub-hosted Windows image, and
+        # ./builder.cmd invokes correctly from bash.
+        shell: bash
+        env:
+          FULL_VERSION: ${{ inputs.full_version }}
+          BUILD_HASH: ${{ inputs.build_hash }}
+          BUILD_STAMP: ${{ inputs.build_stamp }}
+          # Production values baked into the VS Code extension at build time.
+          ROCKETRIDE_URI: ${{ vars.ROCKETRIDE_URI }}
+          RR_STRIPE_PUBLISHABLE_KEY: ${{ vars.RR_STRIPE_PUBLISHABLE_KEY }}
+        run: ${{ matrix.builder_cmd }} build --verbose --autoinstall --version="$FULL_VERSION" --hash="$BUILD_HASH" --stamp="$BUILD_STAMP" ${{ inputs.nodownload && '--nodownload' || '' }}
+
+      # MinIO for S3Store integration tests (Linux only). Env vars are exported
+      # to $GITHUB_ENV only after MinIO is healthy; S3 tests gate on those vars
+      # so they skip on win/macOS.
+      - name: Start MinIO for tests / Linux
+        if: matrix.platform == 'ubuntu' && inputs.codeql == false
+        env:
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+          AWS_DEFAULT_REGION: us-east-1
+        run: |
+          set -euo pipefail
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:9000/minio/health/live >/dev/null 2>&1; then ready=1; break; fi
+            sleep 2
+          done
+          [ "${ready:-}" = "1" ] || { echo "MinIO did not become ready"; docker logs minio || true; exit 1; }
+          # Create bucket and smoke put/get.
+          aws --endpoint-url http://localhost:9000 s3 mb s3://rocketride-test
+          printf 'minio smoke\n' > /tmp/minio-smoke.txt
+          aws --endpoint-url http://localhost:9000 s3 cp /tmp/minio-smoke.txt s3://rocketride-test/smoke.txt
+          aws --endpoint-url http://localhost:9000 s3 ls s3://rocketride-test/
+          # Export test vars only once S3 is live.
+          {
+            echo "ROCKETRIDE_TEST_S3_ENDPOINT=http://localhost:9000"
+            echo "ROCKETRIDE_TEST_S3_REGION=us-east-1"
+            echo "ROCKETRIDE_TEST_S3_ACCESS_KEY_ID=minioadmin"
+            echo "ROCKETRIDE_TEST_S3_SECRET_ACCESS_KEY=minioadmin"
+            echo "ROCKETRIDE_TEST_S3_BUCKET=rocketride-test"
+          } >> "$GITHUB_ENV"
+
+      # Azurite for AzureBlobStore integration tests (Linux only). Health check
+      # via nc (no dedicated endpoint). Account key is Azurite's public dev
+      # credential — not a secret. Env vars exported to $GITHUB_ENV only after
+      # Azurite is live; Azure tests gate on those vars, so they skip on win/macOS.
+      - name: Start Azurite for tests / Linux
+        if: matrix.platform == 'ubuntu' && inputs.codeql == false
+        run: |
+          set -euo pipefail
+          docker run -d --name azurite -p 10000:10000 \
+            mcr.microsoft.com/azure-storage/azurite:3.35.0 \
+            azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck
+          for i in $(seq 1 30); do
+            if nc -z localhost 10000 2>/dev/null; then ready=1; break; fi
+            sleep 2
+          done
+          [ "${ready:-}" = "1" ] || { echo "Azurite did not become ready"; docker logs azurite || true; exit 1; }
+          # Smoke-test Azure Blob.
+          AZURITE_ACCOUNT_KEY="Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==" # gitleaks:allow — Azurite's public dev key, documented at learn.microsoft.com/azure/storage/common/storage-use-azurite
+          AZURITE_CONN_STR="DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=${AZURITE_ACCOUNT_KEY};BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
+          az storage container create --name azurite-smoke --connection-string "$AZURITE_CONN_STR"
+          printf 'azurite smoke\n' > /tmp/azurite-smoke.txt
+          az storage blob upload --container-name azurite-smoke --name smoke.txt --file /tmp/azurite-smoke.txt --connection-string "$AZURITE_CONN_STR"
+          az storage blob list --container-name azurite-smoke --connection-string "$AZURITE_CONN_STR" --output table
+          # Export test vars only once Azurite is live.
+          {
+            echo "ROCKETRIDE_TEST_AZURE_DEFAULT_PROTOCOL=http"
+            echo "ROCKETRIDE_TEST_AZURE_ACCOUNT_NAME=devstoreaccount1"
+            echo "ROCKETRIDE_TEST_AZURE_ACCOUNT_KEY=${AZURITE_ACCOUNT_KEY}"
+            echo "ROCKETRIDE_TEST_AZURE_BLOB_ENDPOINT=http://127.0.0.1:10000/devstoreaccount1"
+            echo "ROCKETRIDE_TEST_AZURE_CONTAINER=rocketride-test"
+          } >> "$GITHUB_ENV"
+
+      - name: Test
+        if: inputs.codeql == false
+        # Integration tests boot a local server on :5565 and connect a test
+        # client. Both sides need the same shared secret to authenticate;
+        # without ROCKETRIDE_APIKEY the server raises AuthenticationException
+        # and the client tests fail with "No authentication configured".
+        #
+        # Use a literal CI-only value rather than ${{ secrets.ROCKETRIDE_APIKEY }}.
+        # The original PR #712 wired this through a secret, but as its own
+        # inline comment noted, "the secret value itself doesn't matter — it
+        # just has to match between server and client in this single CI run."
+        # Sourcing it from a secret introduced an empty-string failure mode:
+        # when the secret is unset / cleared / rotated, the workflow silently
+        # passes ROCKETRIDE_APIKEY="" into the test step. The test client
+        # then picks that empty value up via os.getenv (which returns "" —
+        # not the MYAPIKEY default — when the variable is set-but-empty),
+        # and all 48 client-python integration tests fail uniformly with
+        # AuthenticationException. The literal below has no production
+        # significance — it never leaves the runner — and matches the
+        # documented "MYAPIKEY" placeholder used elsewhere in the codebase
+        # (.env.template, the engine's built-in dev key).
+        env:
+          ROCKETRIDE_APIKEY: MYAPIKEY
+          # Force uv to copy rather than hardlink when (re)installing node deps at
+          # test time. On Windows a hardlink over an already-loaded native .pyd
+          # (e.g. cryptography's _rust.pyd) fails with a file lock; copy is atomic.
+          UV_LINK_MODE: copy
+        # note: Sequential execution should be changed to parallel execution
+        #       after the appropriate fixes have been made, see #743 #1048 for details.
+        run: ${{ matrix.builder_cmd }} test --verbose --sequential
+
+      - name: Perform CodeQL Analysis
+        if: inputs.codeql && matrix.platform == 'ubuntu'
+        uses: github/codeql-action/analyze@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          category: /language:cpp
+
+      - name: Package
+        if: inputs.package
+        run: ${{ matrix.builder_cmd }} package --verbose
+
+      - name: Upload server artifacts
+        if: inputs.package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: server-artifacts-${{ matrix.platform }}
+          retention-days: ${{ inputs.retention_days }}
+          path: |
+            ${{ github.workspace }}/dist/artifacts/*.zip
+            ${{ github.workspace }}/dist/artifacts/*.tar.gz
+            ${{ github.workspace }}/dist/artifacts/*.json
+          if-no-files-found: error
+
+      - name: Upload VS Code extension
+        if: inputs.package && matrix.platform == 'ubuntu'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: vscode-artifacts
+          retention-days: ${{ inputs.retention_days }}
+          path: ${{ github.workspace }}/dist/vscode/*.vsix
+          if-no-files-found: error
+
+      - name: Upload MCP client
+        if: inputs.package && matrix.platform == 'ubuntu'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mcp-client-artifacts
+          retention-days: ${{ inputs.retention_days }}
+          path: |
+            ${{ github.workspace }}/dist/clients/mcp/*.whl
+            ${{ github.workspace }}/dist/clients/mcp/*.tar.gz
+          if-no-files-found: error
+
+      - name: Upload Python client
+        if: inputs.package && matrix.platform == 'ubuntu'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: python-client-artifacts
+          retention-days: ${{ inputs.retention_days }}
+          path: |
+            ${{ github.workspace }}/dist/clients/python/*.whl
+            ${{ github.workspace }}/dist/clients/python/*.tar.gz
+          if-no-files-found: error
+
+      - name: Upload TypeScript client
+        if: inputs.package && matrix.platform == 'ubuntu'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: typescript-client-artifacts
+          retention-days: ${{ inputs.retention_days }}
+          path: ${{ github.workspace }}/dist/clients/typescript/*.tgz
+          if-no-files-found: error

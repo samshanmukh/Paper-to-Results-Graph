@@ -1,0 +1,9 @@
+# Core dependencies for Store
+aiofiles
+
+# Retry logic for cloud storage providers (s3, azure)
+tenacity
+
+# Cloud storage backends auto-install their own deps on first import:
+#   store_providers/s3/requirements.txt     (boto3)
+#   store_providers/azure/requirements.txt  (azure-storage-blob, azure-identity)

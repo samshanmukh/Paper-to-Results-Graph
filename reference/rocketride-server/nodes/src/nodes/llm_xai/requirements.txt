@@ -1,0 +1,6 @@
+# Plugin xAI core
+langchain-xai
+
+# LangChain deps
+langchain-core
+langchain
