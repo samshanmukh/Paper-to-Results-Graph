@@ -1,0 +1,7 @@
+# Plugin Qwen (DashScope OpenAI-compatible)
+openai
+langchain-openai
+
+# LangChain deps
+langchain-core
+langchain

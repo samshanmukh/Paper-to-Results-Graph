@@ -1,0 +1,10 @@
+# Plugin Bedrock core
+langchain-aws
+
+# LangChain deps
+langchain-core
+langchain
+
+# AWS SDK deps
+boto3
+botocore

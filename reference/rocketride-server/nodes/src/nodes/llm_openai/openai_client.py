@@ -1,0 +1,109 @@
+# =============================================================================
+# MIT License
+# Copyright (c) 2026 Aparavi Software AG
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# =============================================================================
+
+"""
+OpenAI binding for the ChatLLM.
+"""
+
+from typing import Any, Dict
+from ai.common.chat import ChatBase
+from ai.common.config import Config
+from langchain_openai import ChatOpenAI
+from openai import OpenAI, APIError, AuthenticationError, RateLimitError, APIConnectionError
+
+
+class Chat(ChatBase):
+    """
+    Create an OpenAI chat bot.
+    """
+
+    # Reasoning-capable models route through the OpenAI Responses API so we can
+    # stream the reasoning summary as well as the answer.
+    SUPPORTS_REASONING_STREAMING = True
+
+    _llm: ChatOpenAI
+
+    def __init__(self, provider: str, connConfig: Dict[str, Any], bag: Dict[str, Any]):
+        """
+        Initialize the OpenAI chat bot.
+        """
+        # Init the base
+        super().__init__(provider, connConfig, bag)
+
+        # Get the nodes configuration
+        config = Config.getNodeConfig(provider, connConfig)
+
+        # Get the api key, don't save it
+        apikey = config.get('apikey')
+        self._apikey = apikey
+
+        # Reasoning models stream via the Responses API + max_completion_tokens.
+        if self._is_reasoning:
+            # Raw client for the Responses API path (reasoning models).
+            self._raw_client = OpenAI(api_key=apikey)
+            self._llm = ChatOpenAI(
+                model=self._model,
+                api_key=apikey,
+                model_kwargs={'max_completion_tokens': self._modelOutputTokens},
+            )
+        else:
+            self._raw_client = None
+            self._llm = ChatOpenAI(
+                model=self._model,
+                api_key=apikey,
+                temperature=0,
+                max_tokens=self._modelOutputTokens,
+            )
+
+        # Save our chat class into the bag
+        bag['chat'] = self
+
+    def is_retryable_error(self, error):
+        """
+        Determine if the error is retryable.
+        """
+        if isinstance(error, AuthenticationError):
+            return False
+        elif isinstance(error, APIError):
+            return False
+        elif isinstance(error, RateLimitError):
+            return True
+        elif isinstance(error, APIConnectionError):
+            return True
+        else:
+            return False
+
+    def map_exception(self, error):
+        """
+        Convert unfriendly openai exceptions to friendlier ones.
+        """
+        if isinstance(error, AuthenticationError):
+            return ValueError('Invalid API key.')
+        elif isinstance(error, APIError):
+            return ValueError('An error occurred with the OpenAI API.')
+        elif isinstance(error, RateLimitError):
+            return ValueError('Rate limit exceeded. Please try again later.')
+        elif isinstance(error, APIConnectionError):
+            return ValueError('Failed to connect to the OpenAI API.')
+        else:
+            return super().map_exception(error)

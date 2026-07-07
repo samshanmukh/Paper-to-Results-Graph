@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rocketride-mcp"
+version = "1.2.0"
+description = "RocketRide MCP stdio server that streams local files to RocketRide EaaS"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "RocketRide Development Team", email = "dev@rocketride.ai" }
+]
+license = "MIT"
+dependencies = [
+  "mcp>=1.2.0",
+  "rocketride>=1.0.4",
+]
+
+[project.urls]
+Homepage = "https://rocketride.ai"
+Repository = "https://github.com/rocketride/rocketride-clients"
+
+[project.scripts]
+rocketride-mcp = "rocketride_mcp.server:main"
+rocketride-mcp-sse = "rocketride_mcp.sse_server:main"
+
+[project.optional-dependencies]
+sse = [
+  "uvicorn>=0.30.0",
+  "starlette>=0.38.0",
+]
+dev = [
+  "ruff>=0.8.0",
+  "pytest>=7.0.0",
+  "pytest-asyncio>=0.21.0",
+  "python-dotenv>=1.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["rocketride_mcp*"]
+
+[tool.setuptools.package-data]
+rocketride_mcp = ["pipelines/*.json"]
