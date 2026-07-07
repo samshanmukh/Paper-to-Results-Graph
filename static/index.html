@@ -75,7 +75,7 @@ a:hover{color:var(--purple-dim)}
   color:var(--dim);text-transform:uppercase}
 .legend-item{display:flex;align-items:center;gap:7px}
 .legend-paper{width:12px;height:12px;border-radius:4px;background:#fff;border:1px solid rgba(20,20,26,0.3)}
-.legend-claim{width:12px;height:12px;border-radius:4px;background:var(--claim-bg);border:1px solid var(--claim-bd)}
+.legend-claim{width:12px;height:12px;border-radius:999px;background:var(--claim-bg);border:1px solid var(--claim-bd)}
 .legend-method{width:12px;height:12px;border-radius:3px;transform:rotate(45deg);background:var(--purple)}
 .legend-contradicts{width:20px;height:0;border-top:2px dashed #D8A21C}
 .legend-validates{width:20px;height:0;border-top:2px solid var(--green)}
@@ -377,11 +377,13 @@ div.vis-tooltip{font-size:11px!important;color:var(--ink)!important;background:#
 <script>
 const ROW_Y = {paper: 0};
 const COL_GAP = 280, LAYOUT_PAD = 100;
-const PAPER_BOX_H = 72, CLAIM_PAD = 14, METHOD_GAP = 76, RUN_PAD = 100;
+const PAPER_BOX_H = 72, CLAIM_PAD = 18, METHOD_GAP = 80, RUN_PAD = 110;
+const CLAIM_DOT = 12, METHOD_DOT = 22, RUN_DOT = 17;
+const LABEL_LINE_H = 13;
 const DEMO_METHOD_ID = "wilson2017-m1";
 let network, nodesDS, edgesDS, selectedMethod=null, running=false, activeTab='evidence';
 let methodParams = [], lastEvidence = {}, guidedDemoRunning = false, panelCollapsed = false;
-let prevEvidenceValid = 0;
+let prevEvidenceValid = 0, graphAnimating = false;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -505,13 +507,139 @@ document.querySelectorAll(".tab-btn").forEach(b=>{
   b.addEventListener("click", ()=>setTab(b.dataset.tab));
 });
 
-function claimBoxLabel(text){
-  return wrap(claimShortLabel(text), 22);
+function claimLabel(text){
+  return wrap(claimShortLabel(text), 20);
 }
 
-function claimBoxHeight(text){
-  const lines = claimBoxLabel(text).split("\n").length;
-  return Math.max(38, 18 + lines * 15);
+function labelHeight(text, wrapW=20){
+  return claimLabel(text).split("\n").length * LABEL_LINE_H + 8;
+}
+
+function claimSlot(text){
+  return CLAIM_DOT + labelHeight(text) + CLAIM_PAD;
+}
+
+function methodSlot(name){
+  const label = "◆ " + wrap(name || "", 16);
+  return METHOD_DOT + label.split("\n").length * LABEL_LINE_H + 12 + METHOD_GAP;
+}
+
+function animTier(raw){
+  if(!raw) return 99;
+  if(raw.label === "Paper") return 0;
+  if(raw.label === "Claim") return 1;
+  if(raw.label === "Method") return 2;
+  if(raw.label === "Run") return 3;
+  return 4;
+}
+
+function hiddenColor(c){
+  return {
+    background: c.background, border: c.border,
+    highlight: c.highlight,
+    hover: c.hover, opacity: 0.04,
+  };
+}
+
+async function revealNodes(nodeList, stagger=42){
+  const sorted = [...nodeList].sort((a,b)=>{
+    const ta = animTier(a._raw), tb = animTier(b._raw);
+    return ta !== tb ? ta - tb : (a.x||0) - (b.x||0);
+  });
+  for(const n of sorted){
+    if(!nodesDS.get(n.id)) continue;
+    const full = n._fullColor || n.color;
+    const size = n._fullSize ?? n.size ?? 12;
+    nodesDS.update({id:n.id, color:full, size, opacity:1});
+    await sleep(stagger);
+  }
+}
+
+async function tweenPositions(targets, ms=420){
+  const jobs = targets.map(n=>{
+    const cur = nodesDS.get(n.id);
+    if(!cur || cur.x === n.x && cur.y === n.y) return null;
+    const sx = cur.x, sy = cur.y;
+    return new Promise(resolve=>{
+      const t0 = performance.now();
+      function frame(now){
+        const t = Math.min(1, (now - t0) / ms);
+        const e = 1 - Math.pow(1 - t, 3);
+        nodesDS.update({id:n.id, x:sx + (n.x - sx) * e, y:sy + (n.y - sy) * e});
+        if(t < 1) requestAnimationFrame(frame);
+        else resolve();
+      }
+      requestAnimationFrame(frame);
+    });
+  }).filter(Boolean);
+  await Promise.all(jobs);
+}
+
+async function animateGraph(nodes, edges, {initial=false, focusNew=false, existing=new Set()}={}){
+  if(graphAnimating) return;
+  graphAnimating = true;
+  const newRuns = nodes.filter(n=>!existing.has(n.id) && n._raw?.label==="Run").map(n=>n.id);
+
+  if(initial || !network){
+    const staged = nodes.map((n,i)=>({
+      ...n,
+      _fullColor: n.color,
+      _fullSize: n.size,
+      color: hiddenColor(n.color),
+      size: Math.max(4, (n.size||12) * 0.25),
+      _animIdx: i,
+    }));
+    nodesDS = new vis.DataSet(staged);
+    edgesDS = new vis.DataSet([]);
+    network = new vis.Network(document.getElementById("net"), {nodes:nodesDS, edges:edgesDS}, {
+      physics:false,
+      interaction:{hover:true, tooltipDelay:120, dragNodes:false},
+      edges:{smooth:{type:"dynamic"}},
+    });
+    network.on("click", p=>{
+      if(!p.nodes.length) return;
+      const n = nodesDS.get(p.nodes[0]);
+      if(n._raw?.label==="Method") selectMethod(n._raw);
+    });
+    network.on("hoverNode", ()=>document.body.style.cursor="pointer");
+    network.on("blurNode", ()=>document.body.style.cursor="default");
+    await revealNodes(staged, 38);
+    edgesDS.add(edges);
+    network.fit({animation:{duration:700, easingFunction:"easeInOutCubic"}});
+  } else {
+    const fresh = new Set(nodes.map(n=>n.id));
+    nodesDS.getIds().filter(id=>!fresh.has(id)).forEach(id=>nodesDS.remove(id));
+    const newcomers = nodes.filter(n=>!existing.has(n.id));
+    const movers = nodes.filter(n=>existing.has(n.id));
+
+    movers.forEach(n=>nodesDS.update({...n, _fullColor:n.color, _fullSize:n.size}));
+    await tweenPositions(movers);
+
+    newcomers.forEach(n=>{
+      const staged = {
+        ...n,
+        _fullColor: n.color,
+        _fullSize: n.size,
+        color: hiddenColor(n.color),
+        size: Math.max(4, (n.size||12) * 0.25),
+      };
+      if(nodesDS.get(n.id)) nodesDS.update(staged);
+      else nodesDS.add(staged);
+    });
+    edges.forEach(e=>edgesDS.update(e));
+    await revealNodes(newcomers, 55);
+
+    if(focusNew && newRuns.length){
+      network.selectNodes(newRuns);
+      network.focus(newRuns[0], {scale:1.1, animation:{duration:900, easingFunction:"easeInOutCubic"}});
+      setTimeout(()=>network.fit({animation:{duration:1100, easingFunction:"easeInOutCubic"}}), 2400);
+    } else if(newcomers.length){
+      network.fit({animation:{duration:750, easingFunction:"easeInOutCubic"}});
+    } else {
+      network.fit({animation:{duration:500, easingFunction:"easeInOutCubic"}});
+    }
+  }
+  graphAnimating = false;
 }
 
 function buildLayout(g){
@@ -547,43 +675,43 @@ function buildLayout(g){
       _raw:p,
     });
 
-    let y = ROW_Y.paper + PAPER_BOX_H;
+    let y = ROW_Y.paper + PAPER_BOX_H + 16;
     claims.forEach((c, ci)=>{
-      const label = claimBoxLabel(c.props.text);
-      const h = claimBoxHeight(c.props.text);
-      y += CLAIM_PAD;
-      const cy = y + h / 2;
-      pos[c.eid] = {x, y: cy};
+      const n = claims.length;
+      const cx = x + (ci - (n - 1) / 2) * 30;
+      const label = claimLabel(c.props.text);
+      const slot = claimSlot(c.props.text);
+      const cy = y + CLAIM_DOT / 2;
+      pos[c.eid] = {x: cx, y: cy};
       nodes.push({
-        id:c.eid, x, y:cy, fixed:true, shape:"box",
+        id:c.eid, x:cx, y:cy, fixed:true, shape:"dot", size:CLAIM_DOT,
         label,
         color:{background:"#FDF6E3", border:"#EAD59A", highlight:{background:"#E7F6EC", border:"#6C4CF1"}},
-        font:{color:"#8A6410", size:10, face:"IBM Plex Sans"},
-        margin:8, borderWidth:1.5, borderRadius:10,
-        widthConstraint:{minimum:150, maximum:175},
-        heightConstraint:{minimum:h},
+        font:{color:"#8A6410", size:10, face:"IBM Plex Sans", vadjust:6},
         title: (c.key ? c.key + " — " : "") + (c.props.text || ""), _raw:c,
       });
-      y += h;
+      y += slot;
     });
 
-    const methodStart = y + (claims.length ? 44 : 28);
+    let methodY = y + 36;
     methods.forEach((m, mi)=>{
-      const mx = x + (mi - (methods.length - 1) / 2) * 40;
-      const my = methodStart + mi * METHOD_GAP;
+      const mx = x + (mi - (methods.length - 1) / 2) * 44;
+      const mLabel = "◆ " + wrap(m.props.name||m.key, 16);
+      const my = methodY + mi * methodSlot(m.props.name||m.key);
       pos[m.eid] = {x: mx, y: my};
       nodes.push({
-        id:m.eid, x:mx, y:my, fixed:true, shape:"dot", size:20,
-        label:"◆ " + wrap(m.props.name||m.key, 16),
-        font:{color:"#fff", size:11, face:"IBM Plex Sans", bold:true, vadjust:-2},
+        id:m.eid, x:mx, y:my, fixed:true, shape:"dot", size:METHOD_DOT,
+        label: mLabel,
+        font:{color:"#fff", size:10.5, face:"IBM Plex Sans", bold:true, vadjust:8},
         color:{background:"#6C4CF1", border:"#5636d6", highlight:{background:"#5636d6", border:"#3A1F9E"}},
         borderWidth:2, title:m.props.runnable_hint||m.props.description, _raw:m,
       });
     });
 
     const colBottom = methods.length
-      ? methodStart + (methods.length - 1) * METHOD_GAP + 36
-      : y + 20;
+      ? methodY + methods.reduce((max, m, mi) =>
+          Math.max(max, mi * methodSlot(m.props.name||m.key) + METHOD_DOT + 28), 0)
+      : y + 16;
     maxColumnBottom = Math.max(maxColumnBottom, colBottom);
   });
 
@@ -603,11 +731,12 @@ function buildLayout(g){
     const ok = r.props.status==="success";
     const verdict = runVerdict[r.eid];
     nodes.push({
-      id:r.eid, x:pos[r.eid].x, y:runY, fixed:true, shape:"dot", size:17,
+      id:r.eid, x:pos[r.eid].x, y:runY, fixed:true, shape:"dot", size:RUN_DOT,
       label: runShortLabel(r, verdict),
       color:{background:ok?"#1F9D5B":"#D9483B", border:ok?"#17784a":"#a83228",
         highlight:{background:ok?"#17784a":"#a83228", border:ok?"#1F9D5B":"#D9483B"}},
-      font:{color:"#fff", size:10.5, face:"IBM Plex Mono", bold:true},
+      font:{color:ok?"#17784a":"#a83228", size:10, face:"IBM Plex Mono", bold:true, vadjust:8,
+        strokeWidth:4, strokeColor:"#FBFBF9"},
       borderWidth:2, shadow:{enabled:true, color:ok?"rgba(31,157,91,.35)":"rgba(217,72,59,.35)", size:16, x:0, y:0},
       title:`${r.key} · ${verdict||"run"} · ${r.props.backend} · ${r.props.status} · ${r.props.duration_s}s`,
       _raw:r,
@@ -620,7 +749,7 @@ const EDGE_STYLE = {
   FROM:        {color:"#E0E0E4", opacity:.9,  width:1,   arrows:false, smooth:{type:"cubicBezier", roundness:.3}},
   DESCRIBED_IN:{color:"#DADAD0", opacity:.8,  width:1,   arrows:false, dashes:[2,4], smooth:{type:"cubicBezier", roundness:.25}},
   CITES:       {color:"#C9C9D0", opacity:.8,  width:1,   arrows:true,  dashes:[2,4], smooth:{type:"curvedCW", roundness:.7}},
-  CONTRADICTS: {color:"#D8A21C", opacity:1,   width:2,   arrows:true,  dashes:[6,5], label:true, smooth:{type:"curvedCW", roundness:.55}},
+  CONTRADICTS: {color:"#D8A21C", opacity:1,   width:2,   arrows:true,  dashes:[6,5], label:true, smooth:{type:"curvedCW", roundness:.82}},
   IMPLEMENTS:  {color:"#6C4CF1", opacity:.95, width:2,   arrows:true,  smooth:{type:"cubicBezier", roundness:.3}},
   VALIDATES:   {color:"#1F9D5B", opacity:1,   width:2.6, arrows:true,  label:true, smooth:{type:"cubicBezier", roundness:.35}},
   REFUTES:     {color:"#D9483B", opacity:1,   width:2.6, arrows:true,  label:true, smooth:{type:"cubicBezier", roundness:.35}},
@@ -662,36 +791,11 @@ async function loadGraph(focusNew=false){
   const nodes = buildLayout(g);
   const edges = g.edges.map(edgeStyle).filter(Boolean);
 
-  if(!network){
-    nodesDS = new vis.DataSet(nodes); edgesDS = new vis.DataSet(edges);
-    network = new vis.Network(document.getElementById("net"), {nodes:nodesDS, edges:edgesDS}, {
-      physics:false,
-      interaction:{hover:true, tooltipDelay:120, dragNodes:false},
-    });
-    network.once("afterDrawing", ()=>network.fit({animation:false}));
-    network.on("click", p=>{
-      if(!p.nodes.length) return;
-      const n = nodesDS.get(p.nodes[0]);
-      if(n._raw?.label==="Method") selectMethod(n._raw);
-    });
-    network.on("hoverNode", ()=>document.body.style.cursor="pointer");
-    network.on("blurNode", ()=>document.body.style.cursor="default");
-  } else {
-    const fresh = new Set(nodes.map(n=>n.id));
-    nodesDS.getIds().filter(id=>!fresh.has(id)).forEach(id=>nodesDS.remove(id));
-    nodes.forEach(n=>nodesDS.update(n));
-    edges.forEach(e=>edgesDS.update(e));
-    const newIds = nodes.filter(n=>!existing.has(n.id) && n._raw).map(n=>n.id);
-    const newRuns = nodes.filter(n=>!existing.has(n.id) && n._raw?.label==="Run").map(n=>n.id);
-    if(focusNew && newRuns.length){
-      network.selectNodes(newRuns);
-      network.focus(newRuns[0], {scale:1.1, animation:{duration:900, easingFunction:"easeInOutCubic"}});
-      setTimeout(()=>network.fit({animation:{duration:1100, easingFunction:"easeInOutCubic"}}), 2400);
-    } else if(newIds.length){
-      network.selectNodes(newIds);
-      network.fit({animation:{duration:800, easingFunction:"easeInOutCubic"}});
-    } else network.fit({animation:{duration:500, easingFunction:"easeInOutCubic"}});
-  }
+  await animateGraph(nodes, edges, {
+    initial: !network,
+    focusNew,
+    existing,
+  });
 }
 
 function renderParams(){
