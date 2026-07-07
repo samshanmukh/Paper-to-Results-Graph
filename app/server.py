@@ -29,6 +29,16 @@ from app.runner import execute
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC = os.path.join(ROOT, "static")
 PIPE = os.path.join(ROOT, "pipelines", "verigraph.pipe")
+PIPE_LEGACY = os.path.join(ROOT, "pipelines", "paper2result.pipe")
+
+
+def _pipe_path() -> str:
+    """Prefer verigraph.pipe; accept legacy symlink/name for running engines."""
+    if os.path.isfile(PIPE):
+        return PIPE
+    if os.path.isfile(PIPE_LEGACY):
+        return PIPE_LEGACY
+    return PIPE
 
 app = FastAPI(title="Verigraph")
 
@@ -215,13 +225,14 @@ async def _pipeline_token():
         _rr["client"] = client
     client = _rr["client"]
     if _rr["token"] is None:
+        pipe = _pipe_path()
         try:
-            result = await client.use(filepath=PIPE)
+            result = await client.use(filepath=pipe)
             _rr["token"] = result["token"]
         except RuntimeError as e:
             if "already running" not in str(e).lower():
                 raise
-            with open(PIPE) as f:
+            with open(pipe) as f:
                 project_id = _json.load(f)["project_id"]
             _rr["token"] = await client.get_task_token(project_id, "chat_1")
             if not _rr["token"]:
