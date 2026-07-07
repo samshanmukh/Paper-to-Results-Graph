@@ -73,7 +73,7 @@ header .tag{color:var(--dim);font-size:10px;letter-spacing:.14em;text-transform:
 .chip.runs{border-color:var(--ok)}
 .chip.runs b{color:var(--ok)}
 /* ============ layout ============ */
-main{position:relative;z-index:1;display:grid;grid-template-columns:400px 1fr 420px;height:calc(100vh - 60px)}
+main{position:relative;z-index:1;display:grid;grid-template-columns:360px 1fr 385px;height:calc(100vh - 60px)}
 #graph{position:relative;animation:fadeIn .9s .25s both}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 #net{position:absolute;inset:0}
@@ -407,8 +407,8 @@ div.vis-tooltip{
 </div>
 <script>
 /* ================= evidence-flow graph (light) ================= */
-const COL = {paper:0, claim:430, method:880, run:1290};
-const ROW = 92, GROUP_GAP = 70;
+const COL = {paper:0, claim:340, method:620, run:880};
+const ROW = 62, GROUP_GAP = 42;
 let network, nodesDS, edgesDS, selectedMethod=null, running=false;
 
 const logEl = document.getElementById("log");
@@ -455,7 +455,7 @@ function buildLayout(g){
       id:p.eid, x:COL.paper, y:centerY, fixed:true, shape:"box",
       label:wrap(p.caption, 20) + "\n" + (p.props.year||""),
       color:{background:"#fdf3d7", border:"#a87708", highlight:{background:"#fff", border:"#a87708"}},
-      font:{color:"#7a5606", size:13, face:"IBM Plex Sans"},
+      font:{color:"#7a5606", size:16, face:"IBM Plex Sans"},
       margin:10, borderWidth:1.5, widthConstraint:{maximum:185},
       title:(p.props.title||"") + " (" + (p.props.arxiv||"") + ")",
       _raw:p,
@@ -464,9 +464,9 @@ function buildLayout(g){
       const cy = y + i*ROW;
       pos[c.eid] = {x:COL.claim, y:cy};
       nodes.push({
-        id:c.eid, x:COL.claim, y:cy, fixed:true, shape:"dot", size:10,
+        id:c.eid, x:COL.claim, y:cy, fixed:true, shape:"dot", size:13,
         label:c.key, color:{background:"#0d7d9e", border:"#0d7d9e", highlight:{background:"#23271d", border:"#0d7d9e"}},
-        font:{color:"#0d7d9e", size:10.5, face:"IBM Plex Sans"},
+        font:{color:"#0d7d9e", size:13, face:"IBM Plex Sans"},
         title:c.props.text, _raw:c,
       });
     });
@@ -474,10 +474,10 @@ function buildLayout(g){
       const my = centerY + (i - (methods.length-1)/2) * ROW;
       pos[m.eid] = {x:COL.method, y:my};
       nodes.push({
-        id:m.eid, x:COL.method, y:my, fixed:true, shape:"dot", size:17,
-        label:wrap(m.props.name||m.key, 20),
+        id:m.eid, x:COL.method, y:my, fixed:true, shape:"dot", size:21,
+        label:wrap(m.props.name||m.key, 18),
         color:{background:"#7350cf", border:"#5636b8", highlight:{background:"#23271d", border:"#7350cf"}},
-        font:{color:"#5636b8", size:11.5, face:"IBM Plex Sans", bold:true},
+        font:{color:"#5636b8", size:14, face:"IBM Plex Sans", bold:true},
         borderWidth:1.5, title:m.props.runnable_hint||m.props.description, _raw:m,
       });
     });
@@ -493,24 +493,35 @@ function buildLayout(g){
     pos[r.eid] = {x:COL.run, y:ry + (i%2 ? 26 : -26)};
     const ok = r.props.status==="success";
     nodes.push({
-      id:r.eid, x:COL.run, y:pos[r.eid].y, fixed:true, shape:"dot", size:15,
+      id:r.eid, x:COL.run, y:pos[r.eid].y, fixed:true, shape:"dot", size:18,
       label:"⚡ " + (r.key||"").replace("run-","").slice(0,22),
       color:{background:ok?"#1ea45c":"#bb3434", border:ok?"#0c5a30":"#7e2020",
         highlight:{background:"#23271d", border:ok?"#1ea45c":"#bb3434"}},
-      font:{color:ok?"#157f46":"#bb3434", size:10.5, face:"IBM Plex Sans"},
+      font:{color:ok?"#157f46":"#bb3434", size:13, face:"IBM Plex Sans"},
       borderWidth:2, shadow:{enabled:true, color:ok?"rgba(30,164,92,.5)":"rgba(187,52,52,.45)", size:18, x:0, y:0},
       title:`${r.key} · ${r.props.backend} · ${r.props.status} · ${r.props.duration_s}s`,
       _raw:r,
     });
   });
-  const headY = -130;
+  const headY = -110;
   [["PAPERS",COL.paper],["CLAIMS",COL.claim],["METHODS",COL.method],["EXPERIMENT RUNS",COL.run]]
     .forEach(([t,x],i)=>nodes.push({
       id:"__h"+i, x, y:headY, fixed:true, shape:"text",
       label:t.split("").join(" "), physics:false,
-      font:{color:"#9a937c", size:13, face:"IBM Plex Sans"},
+      font:{color:"#9a937c", size:16, face:"IBM Plex Sans"},
     }));
-  return nodes;
+  return {nodes, height:y};
+}
+
+/* fit the COLUMNS to the canvas width and anchor near the top — a tall
+   graph stays readable; pan/zoom (or ⛶) reaches the rest */
+function fitWidth(){
+  const el = document.getElementById("net");
+  const scale = Math.min(Math.max((el.clientWidth - 60) / (COL.run + 340), .5), 1.15);
+  network.moveTo({
+    position:{x:(COL.run + 150) / 2, y:(el.clientHeight / scale) / 2 - 150},
+    scale, animation:{duration:400, easingFunction:"easeInOutCubic"},
+  });
 }
 
 const EDGE_STYLE = {
@@ -528,7 +539,7 @@ function edgeStyle(e){
   return {
     id:`${e.src}|${e.rel}|${e.dst}`, from:e.src, to:e.dst,
     label:s.label ? e.rel : "",
-    font:{size:8.5, color:s.color, face:"IBM Plex Sans", strokeWidth:5, strokeColor:"#f6f2e8"},
+    font:{size:11, color:s.color, face:"IBM Plex Sans", strokeWidth:6, strokeColor:"#f6f2e8"},
     color:{color:s.color, opacity:s.opacity},
     width:s.width, dashes:s.dashes||false, smooth:s.smooth,
     arrows:{to:{enabled:!!s.arrows, scaleFactor:.45}},
@@ -549,7 +560,7 @@ async function loadGraph(focusNew=false){
   document.getElementById("st-conf").textContent = g.edges.filter(e=>e.rel==="CONTRADICTS").length;
 
   const existing = nodesDS ? new Set(nodesDS.getIds()) : new Set();
-  const nodes = buildLayout(g);
+  const {nodes} = buildLayout(g);
   const edges = g.edges.map(edgeStyle).filter(Boolean);
 
   if(!network){
@@ -558,7 +569,7 @@ async function loadGraph(focusNew=false){
       physics:false,
       interaction:{hover:true, tooltipDelay:120, dragNodes:false},
     });
-    network.once("afterDrawing", ()=>network.fit({animation:false}));
+    network.once("afterDrawing", ()=>fitWidth());
     network.on("click", p=>{
       if(!p.nodes.length) return;
       const n = nodesDS.get(p.nodes[0]);
@@ -576,11 +587,12 @@ async function loadGraph(focusNew=false){
     if(focusNew && newRuns.length){
       network.selectNodes(newRuns);
       network.focus(newRuns[0], {scale:1.1, animation:{duration:900, easingFunction:"easeInOutCubic"}});
-      setTimeout(()=>network.fit({animation:{duration:1100, easingFunction:"easeInOutCubic"}}), 2400);
+      setTimeout(fitWidth, 2400);
     } else if(newIds.length){
       network.selectNodes(newIds);
-      network.fit({animation:{duration:800, easingFunction:"easeInOutCubic"}});
-    } else network.fit({animation:{duration:500, easingFunction:"easeInOutCubic"}});
+      network.focus(newIds[0], {scale:1.0, animation:{duration:800, easingFunction:"easeInOutCubic"}});
+      setTimeout(fitWidth, 2200);
+    }
   }
 }
 
