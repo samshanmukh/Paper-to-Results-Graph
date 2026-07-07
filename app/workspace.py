@@ -16,6 +16,9 @@ BUNDLED_EXTRACTED = os.path.join(BUNDLED_DIR, "extracted")
 BUNDLED_TEXTS = os.path.join(BUNDLED_DIR, "texts")
 BUNDLED_IMPL = os.path.join(BUNDLED_DIR, "impl")
 
+# Core hackathon demo: three papers that disagree about Adam
+DEMO_PAPER_IDS = ("adam2014", "wilson2017", "adamw2017")
+
 
 def _clear_dir(path: str) -> None:
     if not os.path.isdir(path):
@@ -42,26 +45,39 @@ def clear_run_dirs() -> None:
             shutil.rmtree(path)
 
 
-def copy_bundled_to_workspace() -> int:
-    """Restore bundled demo papers into the active workspace. Returns paper count."""
+def copy_bundled_to_workspace(paper_ids: tuple[str, ...] | None = DEMO_PAPER_IDS) -> int:
+    """Restore bundled papers into the active workspace. Returns paper count."""
     if not os.path.isdir(BUNDLED_EXTRACTED):
         raise FileNotFoundError(f"bundled papers missing: {BUNDLED_EXTRACTED}")
+    allowed = set(paper_ids) if paper_ids is not None else None
     os.makedirs(EXTRACTED_DIR, exist_ok=True)
     os.makedirs(IMPL_DIR, exist_ok=True)
     count = 0
     for name in sorted(os.listdir(BUNDLED_EXTRACTED)):
         if not name.endswith(".json"):
             continue
+        pid = name[:-5]
+        if allowed is not None and pid not in allowed:
+            continue
         shutil.copy2(os.path.join(BUNDLED_EXTRACTED, name), os.path.join(EXTRACTED_DIR, name))
         count += 1
     if os.path.isdir(BUNDLED_TEXTS):
         for name in os.listdir(BUNDLED_TEXTS):
-            if name.endswith(".txt"):
-                shutil.copy2(os.path.join(BUNDLED_TEXTS, name), os.path.join(PAPERS_DIR, name))
+            if not name.endswith(".txt"):
+                continue
+            pid = name[:-4]
+            if allowed is not None and pid not in allowed:
+                continue
+            shutil.copy2(os.path.join(BUNDLED_TEXTS, name), os.path.join(PAPERS_DIR, name))
     if os.path.isdir(BUNDLED_IMPL):
         for name in os.listdir(BUNDLED_IMPL):
-            if name.endswith(".py"):
-                shutil.copy2(os.path.join(BUNDLED_IMPL, name), os.path.join(IMPL_DIR, name))
+            if not name.endswith(".py"):
+                continue
+            mid = name[:-3]
+            paper_prefix = mid.rsplit("-", 1)[0] if "-m" in name else mid
+            if allowed is not None and paper_prefix not in allowed:
+                continue
+            shutil.copy2(os.path.join(BUNDLED_IMPL, name), os.path.join(IMPL_DIR, name))
     return count
 
 
@@ -120,5 +136,5 @@ def load_demo_workspace() -> dict:
     stats = load_extracted_to_graph()
     stats["empty"] = False
     stats["bundled"] = bundled
-    stats["message"] = f"Demo workspace loaded — {stats['papers']} papers, no runs yet."
+    stats["message"] = f"Demo loaded — {stats['papers']} papers (Adam · Wilson · AdamW), no runs yet."
     return stats

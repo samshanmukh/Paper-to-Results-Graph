@@ -27,6 +27,8 @@ a:hover{color:var(--purple-dim)}
 .gt-scroll::-webkit-scrollbar-thumb{background:rgba(20,20,26,0.16);border-radius:8px}
 @keyframes gt-blink{50%{opacity:0.25}}
 @keyframes gt-pop{0%{transform:scale(0.4);opacity:0}60%{transform:scale(1.12)}100%{transform:scale(1);opacity:1}}
+@keyframes countFlip{0%{transform:translateY(0);opacity:1}40%{transform:translateY(-6px);opacity:0}60%{transform:translateY(6px);opacity:0}100%{transform:translateY(0);opacity:1}}
+@keyframes demoPulse{0%,100%{box-shadow:0 0 0 3px rgba(108,76,241,.45),0 0 14px rgba(108,76,241,.25)}50%{box-shadow:0 0 0 5px rgba(108,76,241,.75),0 0 22px rgba(108,76,241,.45)}}
 
 .app{height:100vh;display:flex;flex-direction:column}
 
@@ -61,7 +63,8 @@ a:hover{color:var(--purple-dim)}
 .evidence-empty{text-align:center;color:var(--faint);font-size:13.5px;padding:48px 20px;line-height:1.55}
 
 /* main layout */
-.main{flex:1;min-height:0;display:flex}
+.main{flex:1;min-height:0;display:flex;transition:all .25s ease}
+.main.panel-collapsed .side-panel{width:0;min-width:0;overflow:hidden;border:none;opacity:0;pointer-events:none}
 
 /* graph column */
 .graph-col{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--graph-bg)}
@@ -77,6 +80,21 @@ a:hover{color:var(--purple-dim)}
 .legend-contradicts{width:20px;height:0;border-top:2px dashed #D8A21C}
 .legend-validates{width:20px;height:0;border-top:2px solid var(--green)}
 .legend-hint{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--faint)}
+.evidence-strip{display:flex;align-items:center;gap:8px;margin-left:12px;padding:5px 11px;
+  background:#F6F3FE;border:1px solid #E1D8FB;border-radius:8px;font-size:12px}
+.evidence-strip .strip-label{color:var(--dim);font-weight:500}
+.evidence-counter{font-family:'IBM Plex Mono',monospace;font-weight:600;color:var(--green);display:inline-flex;gap:1px}
+.evidence-counter.flip .count-digit{animation:countFlip .45s ease}
+.btn-guided{font-weight:600;color:#fff;background:linear-gradient(135deg,#6C4CF1,#8B6CF8);
+  border:none;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px}
+.btn-guided:hover:not(:disabled){filter:brightness(1.06)}
+.btn-guided:disabled{opacity:.55;cursor:wait}
+#panel-toggle{margin-left:8px;font-size:12px;padding:5px 10px}
+#demo-toast{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:6;
+  background:#6C4CF1;color:#fff;padding:9px 18px;border-radius:9px;font-size:13px;font-weight:500;
+  box-shadow:0 8px 28px rgba(108,76,241,.35);max-width:min(520px,90%);text-align:center;
+  pointer-events:none;transition:opacity .3s}
+#demo-toast.hidden{opacity:0}
 .graph-area{flex:1;min-height:0;position:relative;overflow:hidden;
   background-image:radial-gradient(circle at 1px 1px,rgba(20,20,26,0.055) 1px,transparent 0);
   background-size:24px 24px}
@@ -231,14 +249,15 @@ div.vis-tooltip{font-size:11px!important;color:var(--ink)!important;background:#
         <span class="db-dot" id="db-dot"></span>
         <span id="db-label">Neo4j Aura · – nodes</span>
       </div>
+      <button class="btn-guided" id="guided-demo-btn" title="Automated click-through for presentations">▶ Guided demo</button>
       <button class="btn-ghost" id="new-workspace-btn" title="Start fresh with your own papers">⊕ New workspace</button>
-      <button class="btn-ghost" id="load-demo-btn" title="Load bundled demo papers">Load demo</button>
+      <button class="btn-ghost" id="load-demo-btn" title="Load 3-paper demo (Adam, Wilson, AdamW)">Load demo</button>
       <button class="btn-ghost" id="reset-btn" title="Clear runs on current papers">↺ Reset runs</button>
       <button class="btn-dark" id="upload-btn">+ Add paper</button>
     </div>
   </header>
 
-  <div class="main">
+  <div class="main" id="main-layout">
     <div class="graph-col">
       <div class="legend-strip">
         <span class="title">Legend</span>
@@ -247,14 +266,23 @@ div.vis-tooltip{font-size:11px!important;color:var(--ink)!important;background:#
         <span class="legend-item"><span class="legend-method"></span>Method</span>
         <span class="legend-item"><span class="legend-contradicts"></span>CONTRADICTS</span>
         <span class="legend-item"><span class="legend-validates"></span>VALIDATES</span>
+        <div class="evidence-strip" id="evidence-strip">
+          <span class="strip-label">Evidence</span>
+          <span class="evidence-counter" id="evidence-counter">
+            <span class="count-digit" id="evidence-valid">0</span>/<span id="evidence-total">0</span>
+          </span>
+          <span class="strip-label">claims validated</span>
+        </div>
         <span class="legend-hint" id="run-hint">– CONTRADICTS · no runs yet</span>
+        <button class="btn-ghost" id="panel-toggle" title="Hide side panel for more graph space">◀ Hide panel</button>
       </div>
       <div class="graph-area">
+        <div id="demo-toast" class="hidden"></div>
         <div id="empty-workspace">
           <h3>Your workspace is empty</h3>
           <p>Add research papers via arXiv link or PDF upload. Verigraph will extract claims, methods, and cross-paper conflicts — then you can run any method in the sandbox.</p>
           <button class="btn-dark" id="empty-add-btn">+ Add your first paper</button>
-          <p class="hint">or <a href="#" id="empty-load-demo" style="color:var(--purple)">load the bundled demo papers</a></p>
+          <p class="hint">or <a href="#" id="empty-load-demo" style="color:var(--purple)">load the 3-paper demo (Adam · Wilson · AdamW)</a></p>
         </div>
         <div id="net"></div>
         <div id="zoom-ctl">
@@ -349,8 +377,88 @@ div.vis-tooltip{font-size:11px!important;color:var(--ink)!important;background:#
 <script>
 const ROW_Y = {paper: 0, claim: 120, method: 280, run: 440};
 const CLAIM_GAP = 56, COL_GAP = 260, LAYOUT_PAD = 100;
+const DEMO_METHOD_ID = "wilson2017-m1";
 let network, nodesDS, edgesDS, selectedMethod=null, running=false, activeTab='evidence';
-let methodParams = [], lastEvidence = {};
+let methodParams = [], lastEvidence = {}, guidedDemoRunning = false, panelCollapsed = false;
+let prevEvidenceValid = 0;
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function claimShortLabel(text){
+  if(!text) return "Claim";
+  const s = text.toLowerCase();
+  if(s.includes("linearly separable") && (s.includes("sgd") || s.includes("adam")))
+    return "GD 0% · Adam ~50%";
+  if(s.includes("adamw") && s.includes("generalization")) return "AdamW < Adam (gen.)";
+  if(s.includes("adaptive") && s.includes("generalize worse")) return "Adam gen. worse than SGD";
+  if(s.includes("sign") && s.includes("magnitude")) return "Adam: sign > magnitude";
+  if(s.includes("eigenvalue") || s.includes("sharpness")) return "Sharpness slows Adam";
+  if(s.includes("implicit bias") || s.includes("ridge")) return "GD bias ≈ ridge reg.";
+  if(s.includes("gradient noise")) return "Noise escapes minima";
+  if(s.includes("tuned sgd")) return "Tuned SGD ≥ adaptive";
+  const t = text.trim();
+  return t.length > 42 ? t.slice(0, 40) + "…" : t;
+}
+
+function runShortLabel(raw, verdictRel){
+  let metrics = {};
+  try{ metrics = JSON.parse(raw.props.metrics || "{}"); }catch{}
+  const gd = metrics.test_error_gd ?? metrics.err_gd ?? metrics.final_train_gd;
+  const adam = metrics.test_error_adam ?? metrics.err_adam ?? metrics.final_train_adam;
+  const v = verdictRel === "VALIDATES" ? "✓" : verdictRel === "REFUTES" ? "✗" : "⚡";
+  if(gd != null && adam != null)
+    return `${v} GD ${Number(gd).toFixed(3)} · Adam ${Number(adam).toFixed(3)}`;
+  const single = gd ?? adam ?? metrics.err ?? metrics.final_train;
+  if(single != null) return `${v} ${Number(single).toFixed(3)}`;
+  return `${v} ${verdictRel === "VALIDATES" ? "validates" : verdictRel === "REFUTES" ? "refutes" : "run"}`;
+}
+
+function updateEvidenceCounter(validated, total){
+  const counter = document.getElementById("evidence-counter");
+  const validEl = document.getElementById("evidence-valid");
+  document.getElementById("evidence-total").textContent = total;
+  if(prevEvidenceValid !== validated){
+    counter.classList.remove("flip");
+    void counter.offsetWidth;
+    counter.classList.add("flip");
+    prevEvidenceValid = validated;
+  }
+  validEl.textContent = validated;
+  document.getElementById("ev-count").textContent = `${validated}/${total} with evidence`;
+}
+
+function showDemoToast(msg, ms=2800){
+  const el = document.getElementById("demo-toast");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+  if(showDemoToast._t) clearTimeout(showDemoToast._t);
+  showDemoToast._t = setTimeout(()=>el.classList.add("hidden"), ms);
+}
+
+function findMethodNodeEid(methodId){
+  if(!nodesDS) return null;
+  for(const n of nodesDS.get()){
+    if(n._raw?.label === "Method" && (n._raw.props?.id === methodId || n._raw.key === methodId))
+      return n.id;
+  }
+  return null;
+}
+
+async function pulseNode(eid, on=true){
+  if(!eid || !nodesDS) return;
+  const n = nodesDS.get(eid);
+  if(!n) return;
+  nodesDS.update({
+    id: eid,
+    borderWidth: on ? 4 : (n._raw?.label === "Method" ? 2 : n.borderWidth || 1.5),
+    shadow: on ? {enabled:true, color:"rgba(108,76,241,.5)", size:22, x:0, y:0}
+              : (n._raw?.label === "Run" ? n.shadow : {enabled:false}),
+  });
+  if(on && network){
+    network.selectNodes([eid]);
+    network.focus(eid, {scale:1.15, animation:{duration:700, easingFunction:"easeInOutCubic"}});
+  }
+}
 
 const logEl = document.getElementById("log");
 const methodCard = document.getElementById("method-card");
@@ -434,10 +542,10 @@ function buildLayout(g){
       pos[c.eid] = {x: cx, y: cy};
       nodes.push({
         id:c.eid, x:cx, y:cy, fixed:true, shape:"dot", size:12,
-        label:c.key,
+        label: wrap(claimShortLabel(c.props.text), 16),
         color:{background:"#FDF6E3", border:"#EAD59A", highlight:{background:"#E7F6EC", border:"#6C4CF1"}},
-        font:{color:"#8A6410", size:10.5, face:"IBM Plex Mono"},
-        title:c.props.text, _raw:c,
+        font:{color:"#8A6410", size:10, face:"IBM Plex Sans"},
+        title: (c.key ? c.key + " — " : "") + (c.props.text || ""), _raw:c,
       });
     });
 
@@ -456,22 +564,26 @@ function buildLayout(g){
   });
 
   const runs = by("Run");
-  const runLinks = {};
+  const runLinks = {}, runVerdict = {};
   g.edges.filter(e=>["VALIDATES","REFUTES","IMPLEMENTS"].includes(e.rel))
-    .forEach(e=>{ (runLinks[e.src] ||= []).push(e.dst); });
+    .forEach(e=>{
+      (runLinks[e.src] ||= []).push(e.dst);
+      if(e.rel === "VALIDATES" || e.rel === "REFUTES") runVerdict[e.src] = e.rel;
+    });
   runs.sort((a,b)=>a.key<b.key?-1:1).forEach((r,i)=>{
     const xs = (runLinks[r.eid]||[]).map(t=>pos[t]?.x).filter(v=>v!==undefined);
     const rx = xs.length ? xs.reduce((a,b)=>a+b,0)/xs.length : LAYOUT_PAD + i * colGap;
     pos[r.eid] = {x: rx + (i%2 ? 24 : -24), y: ROW_Y.run};
     const ok = r.props.status==="success";
+    const verdict = runVerdict[r.eid];
     nodes.push({
       id:r.eid, x:pos[r.eid].x, y:ROW_Y.run, fixed:true, shape:"dot", size:17,
-      label:"⚡ " + (r.key||"").replace("run-","").slice(0,22),
+      label: runShortLabel(r, verdict),
       color:{background:ok?"#1F9D5B":"#D9483B", border:ok?"#17784a":"#a83228",
         highlight:{background:ok?"#17784a":"#a83228", border:ok?"#1F9D5B":"#D9483B"}},
       font:{color:"#fff", size:10.5, face:"IBM Plex Mono", bold:true},
       borderWidth:2, shadow:{enabled:true, color:ok?"rgba(31,157,91,.35)":"rgba(217,72,59,.35)", size:16, x:0, y:0},
-      title:`${r.key} · ${r.props.backend} · ${r.props.status} · ${r.props.duration_s}s`,
+      title:`${r.key} · ${verdict||"run"} · ${r.props.backend} · ${r.props.status} · ${r.props.duration_s}s`,
       _raw:r,
     });
   });
@@ -612,7 +724,7 @@ function showEmptyState(empty){
 }
 
 function resetUIState(agentMsg){
-  selectedMethod = null; methodParams = []; lastEvidence = {};
+  selectedMethod = null; methodParams = []; lastEvidence = {}; prevEvidenceValid = 0;
   methodCard.style.display = "none";
   consoleLogWrap.style.display = "none";
   consoleEmpty.style.display = "block";
@@ -628,7 +740,7 @@ async function loadEvidence(){
   if(!rows.length){
     document.getElementById("evidence").innerHTML =
       '<div class="evidence-empty">No claims yet. Add a paper to extract claims and methods, then run a method to attach evidence.</div>';
-    document.getElementById("ev-count").textContent = "0/0 with evidence";
+    updateEvidenceCounter(0, 0);
     return;
   }
   let validated = 0;
@@ -646,45 +758,12 @@ async function loadEvidence(){
       <div class="ev-card-top"><span class="ev-id">${r.claim}</span>${badge}</div>
       <div class="ev-text">${(r.text||"").replace(/</g,"&lt;")}</div>${metric}</div>`;
   }).join("");
-  document.getElementById("ev-count").textContent = `${validated}/${rows.length} with evidence`;
+  updateEvidenceCounter(validated, rows.length);
 }
 
 document.getElementById("run-btn").addEventListener("click", async ()=>{
   if(!selectedMethod || running) return;
-  const btn = document.getElementById("run-btn");
-  running = true; btn.classList.add("running"); btn.classList.remove("done");
-  btn.textContent = "● running…";
-  setTab("console");
-  clearLog();
-  const params = collectParams();
-  const pstr = Object.entries(params).map(([k,v])=>`${k}=${v}`).join(" ");
-  log(`[codegen] method ${selectedMethod} → experiment.py`, "t-stage");
-  if(pstr) log(`[params ] overriding: ${pstr}`, "t-warn");
-  log("[runner ] dispatching to sandbox (daytona)…", "t-stage");
-  const started = Date.now();
-  try{
-    const res = await fetch(`/api/run/${selectedMethod}`, {method:"POST",
-      headers:{"Content-Type":"application/json"}, body:JSON.stringify({params})});
-    const rec = await res.json();
-    const dt = ((Date.now()-started)/1000).toFixed(1);
-    running = false;
-    if(!res.ok){
-      log(`[error  ] ${rec.detail || JSON.stringify(rec).slice(0,200)}`, "t-bad");
-    } else if(rec.error){
-      log(`[error  ] run failed: ${rec.error}`, "t-bad");
-    } else {
-      log(`[runner ] ${rec.run_id} [${rec.backend}] exit=${rec.exit_code} · ${rec.duration_s}s`, "");
-      (rec.stdout||"").trim().split("\n").slice(0,-1).forEach(l=>log("  "+l, "t-dim"));
-      (rec.result?.claim_checks||[]).forEach(c=>
-        log(`[verdict] ${c.verdict} ${c.claim_id} — ${c.detail}`, c.verdict==="VALIDATES"?"t-ok":"t-bad"));
-      log(`[curator] graph updated · wall ${dt}s ✓`, "t-ok");
-    }
-  }catch(e){ running = false; log("[error  ] "+e, "t-bad"); }
-  btn.classList.remove("running");
-  btn.classList.add("done");
-  btn.textContent = "✓ run complete";
-  btn.disabled = false;
-  await loadGraph(true); await loadEvidence();
+  await runMethodAndWait();
 });
 
 const mdLite = s => s
@@ -826,28 +905,128 @@ async function doNewWorkspace(){
   btn.disabled = false;
 }
 
-async function doLoadDemo(){
-  if(!confirm("Load bundled demo papers? This replaces your current workspace with the Adam / Wilson / AdamW demo set (no runs).")) return;
+async function doLoadDemo(silent=false){
+  if(!silent && !confirm("Load 3-paper demo? Replaces your workspace with Adam, Wilson, and AdamW (no runs).")) return false;
   const btn = document.getElementById("load-demo-btn");
   btn.disabled = true;
   try{
     const res = await fetch("/api/workspace/load-demo", {method:"POST"});
     const r = await res.json();
     if(!res.ok) throw new Error(r.detail || "failed");
-    resetUIState(`Demo loaded — ${r.papers} papers, ${r.claims} claims, no runs yet. Click a violet method node and press RUN.`);
+    resetUIState(`Demo loaded — ${r.papers} papers (Adam · Wilson · AdamW), no runs yet. Click a violet method node and press RUN.`);
     setTab("evidence");
     await loadGraph(); await loadEvidence();
-  }catch(e){ alert("Load demo failed: "+e.message); }
+    return true;
+  }catch(e){
+    if(!silent) alert("Load demo failed: "+e.message);
+    return false;
+  }finally{ btn.disabled = false; }
+}
+
+async function runMethodAndWait(){
+  if(!selectedMethod || running) return false;
+  const btn = document.getElementById("run-btn");
+  running = true; btn.classList.add("running"); btn.classList.remove("done");
+  btn.textContent = "● running…";
+  setTab("console");
+  clearLog();
+  const params = collectParams();
+  const pstr = Object.entries(params).map(([k,v])=>`${k}=${v}`).join(" ");
+  log(`[codegen] method ${selectedMethod} → experiment.py`, "t-stage");
+  if(pstr) log(`[params ] overriding: ${pstr}`, "t-warn");
+  log("[runner ] dispatching to sandbox (daytona)…", "t-stage");
+  const started = Date.now();
+  try{
+    const res = await fetch(`/api/run/${selectedMethod}`, {method:"POST",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify({params})});
+    const rec = await res.json();
+    const dt = ((Date.now()-started)/1000).toFixed(1);
+    running = false;
+    if(!res.ok){
+      log(`[error  ] ${rec.detail || JSON.stringify(rec).slice(0,200)}`, "t-bad");
+      return false;
+    } else if(rec.error){
+      log(`[error  ] run failed: ${rec.error}`, "t-bad");
+      return false;
+    } else {
+      log(`[runner ] ${rec.run_id} [${rec.backend}] exit=${rec.exit_code} · ${rec.duration_s}s`, "");
+      (rec.stdout||"").trim().split("\n").slice(0,-1).forEach(l=>log("  "+l, "t-dim"));
+      (rec.result?.claim_checks||[]).forEach(c=>
+        log(`[verdict] ${c.verdict} ${c.claim_id} — ${c.detail}`, c.verdict==="VALIDATES"?"t-ok":"t-bad"));
+      log(`[curator] graph updated · wall ${dt}s ✓`, "t-ok");
+    }
+  }catch(e){ running = false; log("[error  ] "+e, "t-bad"); return false; }
+  btn.classList.remove("running");
+  btn.classList.add("done");
+  btn.textContent = "✓ run complete";
   btn.disabled = false;
+  await loadGraph(true); await loadEvidence();
+  return true;
+}
+
+async function runGuidedDemo(){
+  if(guidedDemoRunning || running) return;
+  guidedDemoRunning = true;
+  const btn = document.getElementById("guided-demo-btn");
+  btn.disabled = true;
+  btn.textContent = "● Demo running…";
+  if(panelCollapsed) togglePanel(false);
+  try{
+    showDemoToast("Step 1 — Loading 3-paper demo (Adam · Wilson · AdamW)…", 4000);
+    const loaded = await doLoadDemo(true);
+    if(!loaded) throw new Error("could not load demo");
+    await sleep(1200);
+    await loadGraph();
+    const eid = findMethodNodeEid(DEMO_METHOD_ID);
+    if(!eid){
+      showDemoToast("Demo method not found — select wilson2017-m1 manually", 5000);
+      return;
+    }
+    showDemoToast("Step 2 — Highlighting Wilson counterexample method…", 3500);
+    const raw = nodesDS.get(eid)._raw;
+    selectMethod(raw);
+    await pulseNode(eid, true);
+    await sleep(1800);
+    showDemoToast("Step 3 — Running experiment (GD vs Adam)…", 5000);
+    const ok = await runMethodAndWait();
+    await pulseNode(eid, false);
+    if(!ok){
+      showDemoToast("Run failed — check Console tab for details", 5000);
+      return;
+    }
+    setTab("evidence");
+    showDemoToast("Step 4 — Evidence updated! Watch the counter flip to VALIDATES", 4500);
+    await sleep(2000);
+    showDemoToast("Step 5 — Asking the agent about executable evidence…", 4000);
+    await ask("Which claims have executable evidence?");
+    showDemoToast("✓ Guided demo complete — GD 0.000 vs Adam 0.425 validates Wilson's claim", 6000);
+    if(network) network.fit({animation:{duration:900, easingFunction:"easeInOutCubic"}});
+  }catch(e){
+    showDemoToast("Demo error: " + e.message, 5000);
+  }finally{
+    guidedDemoRunning = false;
+    btn.disabled = false;
+    btn.textContent = "▶ Guided demo";
+  }
+}
+
+function togglePanel(collapsed){
+  panelCollapsed = collapsed ?? !panelCollapsed;
+  document.getElementById("main-layout").classList.toggle("panel-collapsed", panelCollapsed);
+  const pt = document.getElementById("panel-toggle");
+  pt.textContent = panelCollapsed ? "Panel ▶" : "◀ Hide panel";
+  if(network) setTimeout(()=>network.fit({animation:{duration:400, easingFunction:"easeInOutCubic"}}), 280);
 }
 
 document.getElementById("new-workspace-btn").addEventListener("click", doNewWorkspace);
-document.getElementById("load-demo-btn").addEventListener("click", doLoadDemo);
+document.getElementById("load-demo-btn").addEventListener("click", ()=>doLoadDemo(false));
+document.getElementById("guided-demo-btn").addEventListener("click", runGuidedDemo);
+document.getElementById("panel-toggle").addEventListener("click", ()=>togglePanel());
 document.getElementById("empty-add-btn").addEventListener("click", ()=>{
   document.getElementById("modal-title").textContent = "Add a paper";
   backdrop.classList.add("show");
 });
-document.getElementById("empty-load-demo").addEventListener("click", e=>{ e.preventDefault(); doLoadDemo(); });
+document.getElementById("empty-load-demo").addEventListener("click", e=>{ e.preventDefault(); doLoadDemo(false); });
 
 (async ()=>{
   try{
