@@ -75,7 +75,7 @@ a:hover{color:var(--purple-dim)}
   color:var(--dim);text-transform:uppercase}
 .legend-item{display:flex;align-items:center;gap:7px}
 .legend-paper{width:12px;height:12px;border-radius:4px;background:#fff;border:1px solid rgba(20,20,26,0.3)}
-.legend-claim{width:12px;height:12px;border-radius:999px;background:var(--claim-bg);border:1px solid var(--claim-bd)}
+.legend-claim{width:12px;height:12px;border-radius:4px;background:var(--claim-bg);border:1px solid var(--claim-bd)}
 .legend-method{width:12px;height:12px;border-radius:3px;transform:rotate(45deg);background:var(--purple)}
 .legend-contradicts{width:20px;height:0;border-top:2px dashed #D8A21C}
 .legend-validates{width:20px;height:0;border-top:2px solid var(--green)}
@@ -375,8 +375,9 @@ div.vis-tooltip{font-size:11px!important;color:var(--ink)!important;background:#
 </div>
 
 <script>
-const ROW_Y = {paper: 0, claim: 120, method: 280, run: 440};
-const CLAIM_GAP = 56, COL_GAP = 260, LAYOUT_PAD = 100;
+const ROW_Y = {paper: 0};
+const COL_GAP = 280, LAYOUT_PAD = 100;
+const PAPER_BOX_H = 72, CLAIM_PAD = 14, METHOD_GAP = 76, RUN_PAD = 100;
 const DEMO_METHOD_ID = "wilson2017-m1";
 let network, nodesDS, edgesDS, selectedMethod=null, running=false, activeTab='evidence';
 let methodParams = [], lastEvidence = {}, guidedDemoRunning = false, panelCollapsed = false;
@@ -504,6 +505,15 @@ document.querySelectorAll(".tab-btn").forEach(b=>{
   b.addEventListener("click", ()=>setTab(b.dataset.tab));
 });
 
+function claimBoxLabel(text){
+  return wrap(claimShortLabel(text), 22);
+}
+
+function claimBoxHeight(text){
+  const lines = claimBoxLabel(text).split("\n").length;
+  return Math.max(38, 18 + lines * 15);
+}
+
 function buildLayout(g){
   const by = l => g.nodes.filter(n=>n.label===l);
   const edge = r => g.edges.filter(e=>e.rel===r);
@@ -515,10 +525,12 @@ function buildLayout(g){
   edge("DESCRIBED_IN").forEach(e=>{ (methodsOf[e.dst] ||= []).push(eidOf[e.src]); });
 
   const colGap = papers.length > 1
-    ? Math.min(COL_GAP, Math.max(200, (papers.length - 1) * COL_GAP > 0 ? 1100 / (papers.length - 1) : COL_GAP))
+    ? Math.max(210, Math.min(COL_GAP, 1300 / (papers.length - 1)))
     : COL_GAP;
 
   const nodes=[], pos={};
+  let maxColumnBottom = ROW_Y.paper + PAPER_BOX_H;
+
   papers.forEach((p, pi)=>{
     const x = LAYOUT_PAD + pi * colGap;
     const claims = (claimsOf[p.eid]||[]).sort((a,b)=>a.key<b.key?-1:1);
@@ -535,33 +547,47 @@ function buildLayout(g){
       _raw:p,
     });
 
+    let y = ROW_Y.paper + PAPER_BOX_H;
     claims.forEach((c, ci)=>{
-      const n = claims.length;
-      const cx = x + (ci - (n - 1) / 2) * 28;
-      const cy = ROW_Y.claim + ci * CLAIM_GAP;
-      pos[c.eid] = {x: cx, y: cy};
+      const label = claimBoxLabel(c.props.text);
+      const h = claimBoxHeight(c.props.text);
+      y += CLAIM_PAD;
+      const cy = y + h / 2;
+      pos[c.eid] = {x, y: cy};
       nodes.push({
-        id:c.eid, x:cx, y:cy, fixed:true, shape:"dot", size:12,
-        label: wrap(claimShortLabel(c.props.text), 16),
+        id:c.eid, x, y:cy, fixed:true, shape:"box",
+        label,
         color:{background:"#FDF6E3", border:"#EAD59A", highlight:{background:"#E7F6EC", border:"#6C4CF1"}},
         font:{color:"#8A6410", size:10, face:"IBM Plex Sans"},
+        margin:8, borderWidth:1.5, borderRadius:10,
+        widthConstraint:{minimum:150, maximum:175},
+        heightConstraint:{minimum:h},
         title: (c.key ? c.key + " — " : "") + (c.props.text || ""), _raw:c,
       });
+      y += h;
     });
 
+    const methodStart = y + (claims.length ? 44 : 28);
     methods.forEach((m, mi)=>{
-      const mx = x + (mi - (methods.length - 1) / 2) * 36;
-      const my = ROW_Y.method + mi * 64;
+      const mx = x + (mi - (methods.length - 1) / 2) * 40;
+      const my = methodStart + mi * METHOD_GAP;
       pos[m.eid] = {x: mx, y: my};
       nodes.push({
         id:m.eid, x:mx, y:my, fixed:true, shape:"dot", size:20,
-        label:"◆ " + wrap(m.props.name||m.key, 18),
+        label:"◆ " + wrap(m.props.name||m.key, 16),
+        font:{color:"#fff", size:11, face:"IBM Plex Sans", bold:true, vadjust:-2},
         color:{background:"#6C4CF1", border:"#5636d6", highlight:{background:"#5636d6", border:"#3A1F9E"}},
-        font:{color:"#fff", size:11.5, face:"IBM Plex Sans", bold:true},
         borderWidth:2, title:m.props.runnable_hint||m.props.description, _raw:m,
       });
     });
+
+    const colBottom = methods.length
+      ? methodStart + (methods.length - 1) * METHOD_GAP + 36
+      : y + 20;
+    maxColumnBottom = Math.max(maxColumnBottom, colBottom);
   });
+
+  const runY = maxColumnBottom + RUN_PAD;
 
   const runs = by("Run");
   const runLinks = {}, runVerdict = {};
@@ -573,11 +599,11 @@ function buildLayout(g){
   runs.sort((a,b)=>a.key<b.key?-1:1).forEach((r,i)=>{
     const xs = (runLinks[r.eid]||[]).map(t=>pos[t]?.x).filter(v=>v!==undefined);
     const rx = xs.length ? xs.reduce((a,b)=>a+b,0)/xs.length : LAYOUT_PAD + i * colGap;
-    pos[r.eid] = {x: rx + (i%2 ? 24 : -24), y: ROW_Y.run};
+    pos[r.eid] = {x: rx + (i%2 ? 24 : -24), y: runY};
     const ok = r.props.status==="success";
     const verdict = runVerdict[r.eid];
     nodes.push({
-      id:r.eid, x:pos[r.eid].x, y:ROW_Y.run, fixed:true, shape:"dot", size:17,
+      id:r.eid, x:pos[r.eid].x, y:runY, fixed:true, shape:"dot", size:17,
       label: runShortLabel(r, verdict),
       color:{background:ok?"#1F9D5B":"#D9483B", border:ok?"#17784a":"#a83228",
         highlight:{background:ok?"#17784a":"#a83228", border:ok?"#1F9D5B":"#D9483B"}},
