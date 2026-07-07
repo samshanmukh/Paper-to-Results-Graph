@@ -283,6 +283,24 @@ async def ask(body: Ask):
 
 INVESTIGATE_PIPE = os.path.join(ROOT, "pipelines", "paper-investigate.pipe")
 BRIEF_PIPE = os.path.join(ROOT, "pipelines", "paper-brief.pipe")
+EXECUTE_PIPE = os.path.join(ROOT, "pipelines", "paper-execute.pipe")
+
+
+class ExecuteBody(BaseModel):
+    method_id: str
+    params: dict = {}
+
+
+@app.post("/api/execute")
+async def execute_agent(body: ExecuteBody):
+    """Executor sub-agent path: agent drives POST /api/run via its HTTP tool."""
+    prompt = (f"Run method {body.method_id} now"
+              + (f" with parameter overrides {body.params}" if body.params else "")
+              + ". Use your HTTP tool against the canonical API and report exactly.")
+    answer = await _agent_chat(EXECUTE_PIPE, prompt)
+    parsed = _parse_p2r_block(answer)
+    return {"answer": parsed["prose"] or answer, **{k: parsed[k] for k in
+            ("agent", "status", "payload", "header_present")}}
 
 INVESTIGATE_PROMPT = ("Audit the graph: list all cross-paper CONTRADICTS conflicts and "
                       "untested claims, then recommend exactly one method to run next.")
