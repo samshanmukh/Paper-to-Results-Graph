@@ -1,0 +1,93 @@
+{
+	"components": [
+		{
+			"id": "chat_1",
+			"provider": "chat",
+			"config": { "hideForm": true, "mode": "Source", "parameters": {}, "type": "chat" },
+			"ui": { "position": { "x": 20, "y": 200 }, "measured": { "width": 150, "height": 66 } }
+		},
+		{
+			"id": "agent_rocketride_1",
+			"provider": "agent_rocketride",
+			"config": {
+				"instructions": [
+					"You are the REPORTER for Paper-to-Results Graph. Your single job: synthesize an evidence brief covering every experiment Run in the graph — what was validated, what was refuted, what remains untested.",
+					"Graph schema: Paper, Claim, Method, Run nodes. (Run)-[:VALIDATES|REFUTES]->(Claim), (Run)-[:IMPLEMENTS]->(Method), Run.metrics is a JSON string of measured values, Run.params the experiment parameters.",
+					"MANDATORY waves: (1) query all Run nodes with status, metrics, params; (2) query VALIDATES/REFUTES edges to claims with claim text; (3) query claims with no runs (untested); (4) if runs contain comparable numeric metrics, use the chart tool to render a comparison chart; (5) synthesize.",
+					"Your response MUST START with this exact machine block, then the brief:",
+					"---P2R---\nagent: reporter\nstatus: ok\nchecks:\n  - R1_runs_covered: pass\n  - R2_partition_complete: pass\npayload: {\"run_ids_covered\": [\"...\"], \"claims_validated\": [\"...\"], \"claims_refuted\": [\"...\"], \"claims_untested\": [\"...\"], \"chart_generated\": false, \"headline\": \"...\"}\n---END---",
+					"payload must be ONE single-line JSON object; ids only from query results. headline must state what the EVIDENCE shows (metrics, verdicts), not just paper titles. Quote all metrics digit-for-digit from Run.metrics.",
+					"The brief after the block: headline, then per-run findings (method, params, metrics, verdicts), then untested claims as next steps. Keep it under 250 words."
+				],
+				"max_waves": 8,
+				"parameters": {}
+			},
+			"input": [{ "lane": "questions", "from": "chat_1" }],
+			"ui": { "position": { "x": 240, "y": 200 }, "measured": { "width": 150, "height": 86 } }
+		},
+		{
+			"id": "response_answers_1",
+			"provider": "response_answers",
+			"config": { "laneName": "answers" },
+			"input": [{ "lane": "answers", "from": "agent_rocketride_1" }],
+			"ui": { "position": { "x": 460, "y": 200 }, "measured": { "width": 150, "height": 66 } }
+		},
+		{
+			"id": "llm_openai_api_1",
+			"provider": "llm_openai_api",
+			"config": {
+				"profile": "custom",
+				"custom": {
+					"apikey": "${ROCKETRIDE_GATEWAY_KEY}",
+					"base_url": "${ROCKETRIDE_GATEWAY_BASE_URL}",
+					"model": "${ROCKETRIDE_GATEWAY_MODEL}",
+					"modelTotalTokens": 16384
+				},
+				"parameters": {}
+			},
+			"control": [
+				{ "classType": "llm", "from": "agent_rocketride_1" },
+				{ "classType": "llm", "from": "db_neo4j_1" },
+				{ "classType": "llm", "from": "tool_chartjs_1" }
+			],
+			"ui": { "position": { "x": 60, "y": 380 }, "measured": { "width": 150, "height": 66 } }
+		},
+		{
+			"id": "memory_internal_1",
+			"provider": "memory_internal",
+			"config": { "type": "memory_internal" },
+			"control": [{ "classType": "memory", "from": "agent_rocketride_1" }],
+			"ui": { "position": { "x": 280, "y": 380 }, "measured": { "width": 150, "height": 66 } }
+		},
+		{
+			"id": "db_neo4j_1",
+			"provider": "db_neo4j",
+			"config": {
+				"profile": "default",
+				"default": {
+					"uri": "${ROCKETRIDE_NEO4J_URI}",
+					"auth_method": "userpass",
+					"user": "${ROCKETRIDE_NEO4J_USER}",
+					"password": "${ROCKETRIDE_NEO4J_PASSWORD}",
+					"database": "neo4j",
+					"db_description": "Research evidence graph. Nodes: Paper(id,title,year), Claim(id,text), Method(id,name), Run(id,status,backend,duration_s,metrics,params — metrics/params are JSON strings). Edges: FROM, CONTRADICTS, DESCRIBED_IN, IMPLEMENTS (run->method), VALIDATES/REFUTES (run->claim) with detail property. Ignore unrelated SceneStyle/Product/Creator nodes.",
+					"allow_execute": false,
+					"max_attempts": 5
+				},
+				"parameters": {}
+			},
+			"control": [{ "classType": "tool", "from": "agent_rocketride_1" }],
+			"ui": { "position": { "x": 500, "y": 380 }, "measured": { "width": 150, "height": 135 } }
+		},
+		{
+			"id": "tool_chartjs_1",
+			"provider": "tool_chartjs",
+			"config": { "type": "tool_chartjs" },
+			"control": [{ "classType": "tool", "from": "agent_rocketride_1" }],
+			"ui": { "position": { "x": 720, "y": 380 }, "measured": { "width": 150, "height": 40 } }
+		}
+	],
+	"project_id": "da253a74-f5f8-49f2-a398-b8db9c53cdde",
+	"viewport": { "x": 0, "y": 0, "zoom": 1 },
+	"version": 1
+}

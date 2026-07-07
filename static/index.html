@@ -240,6 +240,8 @@ tr.flash-row{animation:rowFlash 1s ease-out 2}
   background:rgba(13,125,158,.06);border-radius:20px;padding:4px 11px;cursor:pointer;
   letter-spacing:.03em;transition:all .15s;}
 .sug:hover{background:rgba(13,125,158,.14)}
+.sug.act{border-color:rgba(21,127,70,.5);background:rgba(30,164,92,.07);color:var(--ok);font-weight:600}
+.sug.act:hover{background:rgba(30,164,92,.15)}
 #ask-row{display:flex;border-top:1.5px solid var(--line-strong)}
 #ask-input{flex:1;padding:13px 16px;background:var(--panel);border:none;outline:none;
   color:var(--ink);font-size:12.5px}
@@ -370,8 +372,9 @@ div.vis-tooltip{
       <div class="head">Ask the research agent <span class="idx">rocketride × neo4j</span></div>
       <div id="qa-log"></div>
       <div id="suggest">
+        <span class="sug act" data-act="investigate">🔎 Investigate: what should we test?</span>
+        <span class="sug act" data-act="brief">📋 Evidence brief</span>
         <span class="sug">Which claims have executable evidence?</span>
-        <span class="sug">Do these papers agree on Adam?</span>
         <span class="sug">What contradicts adam2014?</span>
       </div>
       <div id="ask-row">
@@ -715,7 +718,30 @@ async function ask(q){
 }
 document.getElementById("ask-btn").addEventListener("click", ()=>ask());
 document.getElementById("ask-input").addEventListener("keydown", e=>{ if(e.key==="Enter") ask(); });
-document.querySelectorAll(".sug").forEach(s=>s.addEventListener("click", ()=>ask(s.textContent)));
+document.querySelectorAll(".sug:not(.act)").forEach(s=>s.addEventListener("click", ()=>ask(s.textContent)));
+
+/* specialist agent actions (investigator / reporter sub-pipelines) */
+const AGENT_LABEL = {investigate:"investigator", brief:"reporter"};
+document.querySelectorAll(".sug.act").forEach(s=>s.addEventListener("click", async ()=>{
+  const act = s.dataset.act;
+  const qaLog = document.getElementById("qa-log");
+  const box = document.createElement("div");
+  box.className = "qa";
+  box.innerHTML = `<div class="q">${s.textContent}</div>
+    <div class="a"><span class="thinking"><i></i><i></i><i></i></span> ${AGENT_LABEL[act]} agent: graph audit in progress…</div>`;
+  qaLog.appendChild(box); qaLog.scrollTop = qaLog.scrollHeight;
+  const a = box.querySelector(".a");
+  try{
+    const res = await fetch(`/api/${act}`, {method:"POST"});
+    const r = await res.json();
+    if(!res.ok) throw new Error(r.detail || "failed");
+    const badge = r.header_present ? `[${r.agent||AGENT_LABEL[act]}] checks parsed ✓\n\n` : "";
+    a.innerHTML = mdLite(badge + (r.answer||""));
+    if(r.payload?.recommended_method_id)
+      a.innerHTML += mdLite(`\n\n→ recommended next run: **${r.payload.recommended_method_id}** (select it in the graph and press Run)`);
+  }catch(e){ a.textContent = `${AGENT_LABEL[act]} error: ${e.message}`; }
+  qaLog.scrollTop = qaLog.scrollHeight;
+}));
 
 /* ---------- console minimize ---------- */
 const logPanel = document.getElementById("log-panel");

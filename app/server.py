@@ -187,13 +187,13 @@ class Ask(BaseModel):
     question: str
 
 
-# One shared RocketRide connection + pipeline token. The engine refuses a
-# second `use` of a running pipeline ("Pipeline is already running"), so we
-# start it once and attach to the existing task on subsequent requests.
-_rr: dict = {"client": None, "token": None}
+# One shared RocketRide connection; one cached task token per .pipe file.
+# The engine refuses a second `use` of a running pipeline ("Pipeline is
+# already running"), so we start each once and attach on later requests.
+_rr: dict = {"client": None, "tokens": {}}
 
 
-async def _pipeline_token():
+async def _pipeline_token(pipe_path: str):
     import json as _json
 
     from rocketride import RocketRideClient
@@ -203,40 +203,40 @@ async def _pipeline_token():
         await client.connect()
         _rr["client"] = client
     client = _rr["client"]
-    if _rr["token"] is None:
+    if pipe_path not in _rr["tokens"]:
         try:
-            result = await client.use(filepath=PIPE)
-            _rr["token"] = result["token"]
+            result = await client.use(filepath=pipe_path)
+            _rr["tokens"][pipe_path] = result["token"]
         except RuntimeError as e:
             if "already running" not in str(e).lower():
                 raise
-            with open(PIPE) as f:
+            with open(pipe_path) as f:
                 project_id = _json.load(f)["project_id"]
-            _rr["token"] = await client.get_task_token(project_id, "chat_1")
-            if not _rr["token"]:
+            token = await client.get_task_token(project_id, "chat_1")
+            if not token:
                 raise
-    return client, _rr["token"]
+            _rr["tokens"][pipe_path] = token
+    return client, _rr["tokens"][pipe_path]
 
 
-@app.post("/api/ask")
-async def ask(body: Ask):
+async def _agent_chat(pipe_path: str, question_text: str) -> str:
     from rocketride.schema import Question
 
     try:
-        client, token = await _pipeline_token()
+        client, token = await _pipeline_token(pipe_path)
         q = Question()
-        q.addQuestion(body.question)
+        q.addQuestion(question_text)
         response = await client.chat(token=token, question=q)
     except Exception as e:
-        # drop the cached session so the next ask reconnects fresh
+        # drop the cached session so the next request reconnects fresh
         stale = _rr.pop("client", None)
-        _rr.update({"client": None, "token": None})
+        _rr.update({"client": None, "tokens": {}})
         if stale is not None:
             try:
                 await stale.disconnect()
             except Exception:
                 pass
-        return {"answer": f"(agent unavailable: {type(e).__name__}: {e})"}
+        return f"(agent unavailable: {type(e).__name__}: {e})"
 
     answers = response.get("answers", [])
     if not answers:
@@ -244,4 +244,68 @@ async def ask(body: Ask):
             if lane == "answers":
                 answers = response.get(key, [])
                 break
-    return {"answer": answers[0] if answers else "(no answer from agent)"}
+    return answers[0] if answers else "(no answer from agent)"
+
+
+def _parse_p2r_block(answer: str) -> dict:
+    """Parse the ---P2R--- machine header sub-agents are contracted to emit."""
+    import json as _json
+    import re
+
+    out = {"agent": None, "status": None, "payload": None,
+           "prose": answer, "header_present": False}
+    m = re.search(r"---P2R---(.*?)---END---", answer, re.DOTALL)
+    if not m:
+        return out
+    out["header_present"] = True
+    block = m.group(1)
+    out["prose"] = answer[m.end():].strip()
+    if am := re.search(r"agent:\s*(\w+)", block):
+        out["agent"] = am.group(1)
+    if sm := re.search(r"status:\s*(\w+)", block):
+        out["status"] = sm.group(1)
+    if pm := re.search(r"payload:\s*(\{.*)", block, re.DOTALL):
+        try:
+            raw = pm.group(1).strip().splitlines()[0]
+            out["payload"] = _json.loads(raw)
+        except Exception:
+            try:  # payload may span lines up to ---END---
+                out["payload"] = _json.loads(pm.group(1).strip())
+            except Exception:
+                out["payload"] = None
+    return out
+
+
+@app.post("/api/ask")
+async def ask(body: Ask):
+    return {"answer": await _agent_chat(PIPE, body.question)}
+
+
+INVESTIGATE_PIPE = os.path.join(ROOT, "pipelines", "paper-investigate.pipe")
+BRIEF_PIPE = os.path.join(ROOT, "pipelines", "paper-brief.pipe")
+
+INVESTIGATE_PROMPT = ("Audit the graph: list all cross-paper CONTRADICTS conflicts and "
+                      "untested claims, then recommend exactly one method to run next.")
+BRIEF_PROMPT = ("Generate the evidence brief covering all experiment runs: validated, "
+                "refuted, untested claims, with exact metrics.")
+
+
+@app.post("/api/investigate")
+async def investigate():
+    answer = await _agent_chat(INVESTIGATE_PIPE, INVESTIGATE_PROMPT)
+    parsed = _parse_p2r_block(answer)
+    return {"answer": parsed["prose"] or answer, **{k: parsed[k] for k in
+            ("agent", "status", "payload", "header_present")}}
+
+
+@app.post("/api/brief")
+async def brief():
+    with get_driver() as driver:
+        recs, _, _ = driver.execute_query(
+            "MATCH (r:Run) RETURN count(r) AS c", database_=DATABASE)
+        if recs[0]["c"] == 0:
+            raise HTTPException(409, "no runs in the graph yet — run a method first")
+    answer = await _agent_chat(BRIEF_PIPE, BRIEF_PROMPT)
+    parsed = _parse_p2r_block(answer)
+    return {"answer": parsed["prose"] or answer, **{k: parsed[k] for k in
+            ("agent", "status", "payload", "header_present")}}
