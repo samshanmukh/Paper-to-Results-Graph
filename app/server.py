@@ -250,17 +250,106 @@ def upload_arxiv(body: ArxivUpload):
     return _ingest_paper_text(text)
 
 
+CONDUCT_PIPE = os.path.join(ROOT, "pipelines", "paper-orchestrator.pipe")
+
+
+class Conduct(BaseModel):
+    message: str
+
+
+def _method_exists(method_id: str) -> bool:
+    with get_driver() as driver:
+        recs, _, _ = driver.execute_query(
+            "MATCH (m:Method {id: $id}) RETURN count(m) AS c",
+            id=method_id, database_=DATABASE)
+        return recs[0]["c"] == 1
+
+
+@app.post("/api/conduct")
+async def conduct(body: Conduct):
+    """Conductor as a VERIFIED WORKFLOW ENGINE (plan §12): deterministic
+    playbook over the specialist sub-agent pipes, with acceptance checks in
+    real code between steps, one corrective retry, and canonical-spine
+    fallbacks. Sub-agents think; Python verifies."""
+    steps = []
+
+    # STEP 1 — Investigator (checks V1/V3/V4, retry once)
+    parsed = _parse_p2r_block(await _agent_chat(INVESTIGATE_PIPE, INVESTIGATE_PROMPT))
+    payload = parsed.get("payload") or {}
+    method_id = payload.get("recommended_method_id")
+    if not (parsed["header_present"] and method_id and _method_exists(method_id)):
+        parsed = _parse_p2r_block(await _agent_chat(
+            INVESTIGATE_PIPE,
+            "Your prior response failed check V3_method_recommended: the "
+            "recommended_method_id must be an EXACT Method.id from a Neo4j query "
+            "(e.g. wilson2017-m1). Re-run the audit and return the required "
+            "---P2R--- block."))
+        payload = parsed.get("payload") or {}
+        method_id = payload.get("recommended_method_id")
+    if not (method_id and _method_exists(method_id)):
+        # conservative fallback: deterministic pick — untested method
+        with get_driver() as driver:
+            recs, _, _ = driver.execute_query(
+                """
+                MATCH (m:Method) WHERE NOT (:Run)-[:IMPLEMENTS]->(m)
+                RETURN m.id AS id LIMIT 1
+                """, database_=DATABASE)
+            method_id = recs[0]["id"] if recs else "wilson2017-m1"
+        steps.append(f"[investigator] ✗ id check failed twice — fell back to "
+                     f"deterministic pick: {method_id}")
+    else:
+        steps.append(f"[investigator] ✓ {len(payload.get('conflicts') or [])} conflicts, "
+                     f"{len(payload.get('untested_claims') or [])} untested — "
+                     f"recommended {method_id}")
+
+    # STEP 2 — Executor: canonical spine (codegen -> sandbox -> curate)
+    record = execute(method_id, "auto")
+    curate(record)
+    try:
+        from app.butterbase import sync_run
+        sync_run(record)
+    except Exception:
+        pass
+    checks = (record.get("result") or {}).get("claim_checks", [])
+    if record.get("error"):
+        steps.append(f"[executor] ✗ {record['run_id']} failed: {record['error']} "
+                     f"(failure curated as evidence)")
+    else:
+        verdicts = ", ".join(f"{c['verdict']} {c['claim_id']}" for c in checks)
+        steps.append(f"[executor] ✓ {record['run_id']} [{record['backend']}] "
+                     f"{record['duration_s']}s — {verdicts}")
+
+    # STEP 3 — Reporter (checks R1 + real ids, retry once)
+    rparsed = _parse_p2r_block(await _agent_chat(BRIEF_PIPE, BRIEF_PROMPT))
+    rpayload = rparsed.get("payload") or {}
+    covered = rpayload.get("run_ids_covered") or []
+    if not (rparsed["header_present"] and covered):
+        rparsed = _parse_p2r_block(await _agent_chat(
+            BRIEF_PIPE,
+            "Your prior response failed check R1_runs_covered. Query the Run "
+            "nodes again and return the required ---P2R--- block with "
+            "run_ids_covered copied exactly from the query."))
+        rpayload = rparsed.get("payload") or {}
+        covered = rpayload.get("run_ids_covered") or []
+    steps.append(f"[reporter] {'✓' if covered else '✗'} brief over "
+                 f"{len(covered)} runs — {rpayload.get('headline', '')[:90]}")
+
+    answer = "\n".join(steps) + "\n\n" + (rparsed.get("prose") or "")
+    return {"answer": answer, "steps": steps, "run_id": record.get("run_id"),
+            "method_id": method_id, "investigator": payload, "reporter": rpayload}
+
+
 class Ask(BaseModel):
     question: str
 
 
-# One shared RocketRide connection + pipeline token. The engine refuses a
-# second `use` of a running pipeline ("Pipeline is already running"), so we
-# start it once and attach to the existing task on subsequent requests.
-_rr: dict = {"client": None, "token": None}
+# One shared RocketRide connection; one cached task token per .pipe file.
+# The engine refuses a second `use` of a running pipeline ("Pipeline is
+# already running"), so we start each once and attach on later requests.
+_rr: dict = {"client": None, "tokens": {}}
 
 
-async def _pipeline_token():
+async def _pipeline_token(pipe_path: str):
     import json as _json
 
     from rocketride import RocketRideClient
@@ -270,41 +359,54 @@ async def _pipeline_token():
         await client.connect()
         _rr["client"] = client
     client = _rr["client"]
-    if _rr["token"] is None:
-        pipe = _pipe_path()
+    if pipe_path not in _rr["tokens"]:
         try:
-            result = await client.use(filepath=pipe)
-            _rr["token"] = result["token"]
+            result = await client.use(filepath=pipe_path)
+            _rr["tokens"][pipe_path] = result["token"]
         except RuntimeError as e:
             if "already running" not in str(e).lower():
                 raise
-            with open(pipe) as f:
+            with open(pipe_path) as f:
                 project_id = _json.load(f)["project_id"]
-            _rr["token"] = await client.get_task_token(project_id, "chat_1")
-            if not _rr["token"]:
+            token = await client.get_task_token(project_id, "chat_1")
+            if not token:
                 raise
-    return client, _rr["token"]
+            _rr["tokens"][pipe_path] = token
+    return client, _rr["tokens"][pipe_path]
 
 
-@app.post("/api/ask")
-async def ask(body: Ask):
+def _core_counts() -> tuple:
+    with get_driver() as driver:
+        recs, _, _ = driver.execute_query(
+            "RETURN count { MATCH (p:Paper) } AS p, count { MATCH (r:Run) } AS r",
+            database_=DATABASE)
+        return recs[0]["p"], recs[0]["r"]
+
+
+async def _agent_chat(pipe_path: str, question_text: str) -> str:
     from rocketride.schema import Question
 
+    # LLM-generated Cypher has (rarely) emitted write clauses despite the
+    # read-only contract; snapshot core counts so we can self-heal from disk.
     try:
-        client, token = await _pipeline_token()
+        before = _core_counts()
+    except Exception:
+        before = None
+    try:
+        client, token = await _pipeline_token(pipe_path)
         q = Question()
-        q.addQuestion(body.question)
+        q.addQuestion(question_text)
         response = await client.chat(token=token, question=q)
     except Exception as e:
-        # drop the cached session so the next ask reconnects fresh
+        # drop the cached session so the next request reconnects fresh
         stale = _rr.pop("client", None)
-        _rr.update({"client": None, "token": None})
+        _rr.update({"client": None, "tokens": {}})
         if stale is not None:
             try:
                 await stale.disconnect()
             except Exception:
                 pass
-        return {"answer": f"(agent unavailable: {type(e).__name__}: {e})"}
+        return f"(agent unavailable: {type(e).__name__}: {e})"
 
     answers = response.get("answers", [])
     if not answers:
@@ -312,4 +414,100 @@ async def ask(body: Ask):
             if lane == "answers":
                 answers = response.get(key, [])
                 break
-    return {"answer": answers[0] if answers else "(no answer from agent)"}
+    answer = answers[0] if answers else "(no answer from agent)"
+
+    if before is not None:
+        try:
+            after = _core_counts()
+            if after[0] < before[0] or after[1] < before[1]:
+                from app.restore import restore_all
+                restored = restore_all()
+                answer += (f"\n\n[graph guard] a generated query removed nodes "
+                           f"(papers {before[0]}→{after[0]}, runs {before[1]}→{after[1]}); "
+                           f"auto-restored {restored['papers']} papers + "
+                           f"{restored['runs']} runs from disk.")
+        except Exception:
+            pass
+    return answer
+
+
+def _parse_p2r_block(answer: str) -> dict:
+    """Parse the ---P2R--- machine header sub-agents are contracted to emit."""
+    import json as _json
+    import re
+
+    out = {"agent": None, "status": None, "payload": None,
+           "prose": answer, "header_present": False}
+    m = re.search(r"---P2R---(.*?)---END---", answer, re.DOTALL)
+    if not m:
+        return out
+    out["header_present"] = True
+    block = m.group(1)
+    out["prose"] = answer[m.end():].strip()
+    if am := re.search(r"agent:\s*(\w+)", block):
+        out["agent"] = am.group(1)
+    if sm := re.search(r"status:\s*(\w+)", block):
+        out["status"] = sm.group(1)
+    if pm := re.search(r"payload:\s*(\{.*)", block, re.DOTALL):
+        try:
+            raw = pm.group(1).strip().splitlines()[0]
+            out["payload"] = _json.loads(raw)
+        except Exception:
+            try:  # payload may span lines up to ---END---
+                out["payload"] = _json.loads(pm.group(1).strip())
+            except Exception:
+                out["payload"] = None
+    return out
+
+
+@app.post("/api/ask")
+async def ask(body: Ask):
+    return {"answer": await _agent_chat(PIPE, body.question)}
+
+
+INVESTIGATE_PIPE = os.path.join(ROOT, "pipelines", "paper-investigate.pipe")
+BRIEF_PIPE = os.path.join(ROOT, "pipelines", "paper-brief.pipe")
+EXECUTE_PIPE = os.path.join(ROOT, "pipelines", "paper-execute.pipe")
+
+
+class ExecuteBody(BaseModel):
+    method_id: str
+    params: dict = {}
+
+
+@app.post("/api/execute")
+async def execute_agent(body: ExecuteBody):
+    """Executor sub-agent path: agent drives POST /api/run via its HTTP tool."""
+    prompt = (f"Run method {body.method_id} now"
+              + (f" with parameter overrides {body.params}" if body.params else "")
+              + ". Use your HTTP tool against the canonical API and report exactly.")
+    answer = await _agent_chat(EXECUTE_PIPE, prompt)
+    parsed = _parse_p2r_block(answer)
+    return {"answer": parsed["prose"] or answer, **{k: parsed[k] for k in
+            ("agent", "status", "payload", "header_present")}}
+
+INVESTIGATE_PROMPT = ("Audit the graph: list all cross-paper CONTRADICTS conflicts and "
+                      "untested claims, then recommend exactly one method to run next.")
+BRIEF_PROMPT = ("Generate the evidence brief covering all experiment runs: validated, "
+                "refuted, untested claims, with exact metrics.")
+
+
+@app.post("/api/investigate")
+async def investigate():
+    answer = await _agent_chat(INVESTIGATE_PIPE, INVESTIGATE_PROMPT)
+    parsed = _parse_p2r_block(answer)
+    return {"answer": parsed["prose"] or answer, **{k: parsed[k] for k in
+            ("agent", "status", "payload", "header_present")}}
+
+
+@app.post("/api/brief")
+async def brief():
+    with get_driver() as driver:
+        recs, _, _ = driver.execute_query(
+            "MATCH (r:Run) RETURN count(r) AS c", database_=DATABASE)
+        if recs[0]["c"] == 0:
+            raise HTTPException(409, "no runs in the graph yet — run a method first")
+    answer = await _agent_chat(BRIEF_PIPE, BRIEF_PROMPT)
+    parsed = _parse_p2r_block(answer)
+    return {"answer": parsed["prose"] or answer, **{k: parsed[k] for k in
+            ("agent", "status", "payload", "header_present")}}

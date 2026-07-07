@@ -1,0 +1,85 @@
+{
+	"components": [
+		{
+			"id": "chat_1",
+			"provider": "chat",
+			"config": { "hideForm": true, "mode": "Source", "parameters": {}, "type": "chat" },
+			"ui": { "position": { "x": 20, "y": 200 }, "measured": { "width": 150, "height": 66 } }
+		},
+		{
+			"id": "agent_rocketride_1",
+			"provider": "agent_rocketride",
+			"config": {
+				"instructions": [
+					"You are the INVESTIGATOR for Paper-to-Results Graph. Your single job: audit the research knowledge graph for cross-paper conflicts and untested claims, then recommend exactly ONE runnable method to test next.",
+					"Graph schema: Paper, Claim, Method, Run nodes. (Claim)-[:FROM]->(Paper), (Claim)-[:CONTRADICTS]->(Claim), (Method)-[:DESCRIBED_IN]->(Paper), (Run)-[:VALIDATES|REFUTES]->(Claim), (Run)-[:IMPLEMENTS]->(Method).",
+					"MANDATORY waves: (1) query all CONTRADICTS pairs with their papers; (2) query claims that have NO Run attached (untested); (3) query Method ids available; (4) rank: prefer a method whose paper's claims are involved in cross-paper conflicts AND untested; (5) emit recommendation.",
+					"Your response MUST START with this exact machine block, then prose:",
+					"---P2R---\nagent: investigator\nstatus: ok\nchecks:\n  - V1_conflicts_found: pass\n  - V3_method_recommended: pass\npayload: {\"conflicts\": [{\"from_claim\": \"...\", \"to_claim\": \"...\", \"from_paper\": \"...\", \"to_paper\": \"...\"}], \"untested_claims\": [\"...\"], \"recommended_method_id\": \"...\", \"recommended_claim_ids\": [\"...\"], \"rationale\": \"...\"}\n---END---",
+					"payload must be ONE single-line JSON object. Every id in the payload MUST come from your Neo4j query results — never invent ids. If the graph truly has no conflicts, set status: partial and explain.",
+					"ACCURACY: quote ids and counts exactly as the queries returned them."
+				],
+				"max_waves": 8,
+				"parameters": {}
+			},
+			"input": [{ "lane": "questions", "from": "chat_1" }],
+			"ui": { "position": { "x": 240, "y": 200 }, "measured": { "width": 150, "height": 86 } }
+		},
+		{
+			"id": "response_answers_1",
+			"provider": "response_answers",
+			"config": { "laneName": "answers" },
+			"input": [{ "lane": "answers", "from": "agent_rocketride_1" }],
+			"ui": { "position": { "x": 460, "y": 200 }, "measured": { "width": 150, "height": 66 } }
+		},
+		{
+			"id": "llm_openai_api_1",
+			"provider": "llm_openai_api",
+			"config": {
+				"profile": "custom",
+				"custom": {
+					"apikey": "${ROCKETRIDE_GATEWAY_KEY}",
+					"base_url": "${ROCKETRIDE_GATEWAY_BASE_URL}",
+					"model": "${ROCKETRIDE_GATEWAY_MODEL}",
+					"modelTotalTokens": 16384
+				},
+				"parameters": {}
+			},
+			"control": [
+				{ "classType": "llm", "from": "agent_rocketride_1" },
+				{ "classType": "llm", "from": "db_neo4j_1" }
+			],
+			"ui": { "position": { "x": 60, "y": 380 }, "measured": { "width": 150, "height": 66 } }
+		},
+		{
+			"id": "memory_internal_1",
+			"provider": "memory_internal",
+			"config": { "type": "memory_internal" },
+			"control": [{ "classType": "memory", "from": "agent_rocketride_1" }],
+			"ui": { "position": { "x": 280, "y": 380 }, "measured": { "width": 150, "height": 66 } }
+		},
+		{
+			"id": "db_neo4j_1",
+			"provider": "db_neo4j",
+			"config": {
+				"profile": "default",
+				"default": {
+					"uri": "${ROCKETRIDE_NEO4J_URI}",
+					"auth_method": "userpass",
+					"user": "${ROCKETRIDE_NEO4J_USER}",
+					"password": "${ROCKETRIDE_NEO4J_PASSWORD}",
+					"database": "neo4j",
+					"db_description": "STRICT READ-ONLY: generate ONLY MATCH/RETURN/WITH/ORDER/COUNT queries. NEVER generate CREATE, MERGE, DELETE, DETACH, SET, or REMOVE clauses — any write corrupts irreplaceable research evidence and is forbidden. Research evidence graph. Nodes: Paper(id,title,year), Claim(id,text), Method(id,name,runnable_hint,params), Run(id,status,metrics), Artifact. Edges: FROM (claim->paper), CONTRADICTS/SUPPORTS (claim->claim), DESCRIBED_IN (method->paper), IMPLEMENTS (run->method), VALIDATES/REFUTES (run->claim), CITES (paper->paper). Ignore unrelated SceneStyle/Product/Creator nodes.",
+					"allow_execute": false,
+					"max_attempts": 5
+				},
+				"parameters": {}
+			},
+			"control": [{ "classType": "tool", "from": "agent_rocketride_1" }],
+			"ui": { "position": { "x": 500, "y": 380 }, "measured": { "width": 150, "height": 135 } }
+		}
+	],
+	"project_id": "0447f558-f4e0-478a-ab5d-b9e9b3306cba",
+	"viewport": { "x": 0, "y": 0, "zoom": 1 },
+	"version": 1
+}
