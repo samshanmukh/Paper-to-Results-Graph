@@ -6,3 +6,5 @@ daytona-sdk>=0.10
 fastapi>=0.110
 uvicorn>=0.29
 certifi>=2024.0
+numpy>=1.26
+rocketride>=1.3
