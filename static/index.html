@@ -329,8 +329,8 @@ div.vis-tooltip{font-size:11px!important;color:var(--ink)!important;background:#
 </div>
 
 <script>
-const COL = {paper:0, claim:430, method:880, run:1290};
-const ROW = 92, GROUP_GAP = 70;
+const ROW_Y = {paper: 0, claim: 120, method: 280, run: 440};
+const CLAIM_GAP = 56, COL_GAP = 260, LAYOUT_PAD = 100;
 let network, nodesDS, edgesDS, selectedMethod=null, running=false, activeTab='evidence';
 let methodParams = [], lastEvidence = {};
 
@@ -388,16 +388,19 @@ function buildLayout(g){
   edge("FROM").forEach(e=>{ (claimsOf[e.dst] ||= []).push(eidOf[e.src]); });
   edge("DESCRIBED_IN").forEach(e=>{ (methodsOf[e.dst] ||= []).push(eidOf[e.src]); });
 
+  const colGap = papers.length > 1
+    ? Math.min(COL_GAP, Math.max(200, (papers.length - 1) * COL_GAP > 0 ? 1100 / (papers.length - 1) : COL_GAP))
+    : COL_GAP;
+
   const nodes=[], pos={};
-  let y = 0;
-  for(const p of papers){
+  papers.forEach((p, pi)=>{
+    const x = LAYOUT_PAD + pi * colGap;
     const claims = (claimsOf[p.eid]||[]).sort((a,b)=>a.key<b.key?-1:1);
     const methods = methodsOf[p.eid]||[];
-    const groupH = Math.max(claims.length, 1) * ROW;
-    const centerY = y + groupH/2 - ROW/2;
-    pos[p.eid] = {x:COL.paper, y:centerY};
+
+    pos[p.eid] = {x, y: ROW_Y.paper};
     nodes.push({
-      id:p.eid, x:COL.paper, y:centerY, fixed:true, shape:"box",
+      id:p.eid, x, y:ROW_Y.paper, fixed:true, shape:"box",
       label:wrap(p.caption, 20) + "\n" + (p.props.year||""),
       color:{background:"#fff", border:"rgba(20,20,26,0.22)", highlight:{background:"#F6F3FE", border:"#6C4CF1"}},
       font:{color:"#16161A", size:13, face:"IBM Plex Mono"},
@@ -405,41 +408,46 @@ function buildLayout(g){
       title:(p.props.title||"") + " (" + (p.props.arxiv||"") + ")",
       _raw:p,
     });
-    claims.forEach((c,i)=>{
-      const cy = y + i*ROW;
-      pos[c.eid] = {x:COL.claim, y:cy};
+
+    claims.forEach((c, ci)=>{
+      const n = claims.length;
+      const cx = x + (ci - (n - 1) / 2) * 28;
+      const cy = ROW_Y.claim + ci * CLAIM_GAP;
+      pos[c.eid] = {x: cx, y: cy};
       nodes.push({
-        id:c.eid, x:COL.claim, y:cy, fixed:true, shape:"dot", size:12,
+        id:c.eid, x:cx, y:cy, fixed:true, shape:"dot", size:12,
         label:c.key,
         color:{background:"#FDF6E3", border:"#EAD59A", highlight:{background:"#E7F6EC", border:"#6C4CF1"}},
         font:{color:"#8A6410", size:10.5, face:"IBM Plex Mono"},
         title:c.props.text, _raw:c,
       });
     });
-    methods.forEach((m,i)=>{
-      const my = centerY + (i - (methods.length-1)/2) * ROW;
-      pos[m.eid] = {x:COL.method, y:my};
+
+    methods.forEach((m, mi)=>{
+      const mx = x + (mi - (methods.length - 1) / 2) * 36;
+      const my = ROW_Y.method + mi * 64;
+      pos[m.eid] = {x: mx, y: my};
       nodes.push({
-        id:m.eid, x:COL.method, y:my, fixed:true, shape:"dot", size:20,
+        id:m.eid, x:mx, y:my, fixed:true, shape:"dot", size:20,
         label:"◆ " + wrap(m.props.name||m.key, 18),
         color:{background:"#6C4CF1", border:"#5636d6", highlight:{background:"#5636d6", border:"#3A1F9E"}},
         font:{color:"#fff", size:11.5, face:"IBM Plex Sans", bold:true},
         borderWidth:2, title:m.props.runnable_hint||m.props.description, _raw:m,
       });
     });
-    y += groupH + GROUP_GAP;
-  }
+  });
+
   const runs = by("Run");
   const runLinks = {};
   g.edges.filter(e=>["VALIDATES","REFUTES","IMPLEMENTS"].includes(e.rel))
     .forEach(e=>{ (runLinks[e.src] ||= []).push(e.dst); });
   runs.sort((a,b)=>a.key<b.key?-1:1).forEach((r,i)=>{
-    const ys = (runLinks[r.eid]||[]).map(t=>pos[t]?.y).filter(v=>v!==undefined);
-    const ry = ys.length ? ys.reduce((a,b)=>a+b,0)/ys.length : i*ROW;
-    pos[r.eid] = {x:COL.run, y:ry + (i%2 ? 26 : -26)};
+    const xs = (runLinks[r.eid]||[]).map(t=>pos[t]?.x).filter(v=>v!==undefined);
+    const rx = xs.length ? xs.reduce((a,b)=>a+b,0)/xs.length : LAYOUT_PAD + i * colGap;
+    pos[r.eid] = {x: rx + (i%2 ? 24 : -24), y: ROW_Y.run};
     const ok = r.props.status==="success";
     nodes.push({
-      id:r.eid, x:COL.run, y:pos[r.eid].y, fixed:true, shape:"dot", size:17,
+      id:r.eid, x:pos[r.eid].x, y:ROW_Y.run, fixed:true, shape:"dot", size:17,
       label:"⚡ " + (r.key||"").replace("run-","").slice(0,22),
       color:{background:ok?"#1F9D5B":"#D9483B", border:ok?"#17784a":"#a83228",
         highlight:{background:ok?"#17784a":"#a83228", border:ok?"#1F9D5B":"#D9483B"}},
