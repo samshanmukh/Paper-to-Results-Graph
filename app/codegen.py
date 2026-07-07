@@ -21,7 +21,7 @@ IMPL_DIR = os.path.join(ROOT, "papers", "impl")
 GENERATED_DIR = os.path.join(ROOT, "generated")
 
 
-CODEGEN_PROMPT = """You are the codegen stage of Groundtruth.
+CODEGEN_PROMPT = """You are the codegen stage of Verigraph.
 Write ONE self-contained Python file (numpy + stdlib ONLY, no downloads, no
 network, finishes in under 60 seconds) that reproduces this method from a
 research paper as a small experiment.

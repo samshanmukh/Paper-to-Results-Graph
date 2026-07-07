@@ -1,4 +1,4 @@
-"""Smoke test: start pipelines/groundtruth.pipe on the local RocketRide
+"""Smoke test: start pipelines/verigraph.pipe on the local RocketRide
 engine and ask the agent a graph question.
 
 Usage: python scripts/check_pipeline.py ["question"]
@@ -18,7 +18,7 @@ load_dotenv(os.path.join(ROOT, ".env"))
 from rocketride import RocketRideClient
 from rocketride.schema import Question
 
-PIPE = os.path.join(ROOT, "pipelines", "groundtruth.pipe")
+PIPE = os.path.join(ROOT, "pipelines", "verigraph.pipe")
 DEFAULT_QUESTION = "Which claims currently have executable evidence attached, and what did the runs show?"
 
 

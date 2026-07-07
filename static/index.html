@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Groundtruth — live demo</title>
+<title>Verigraph — live demo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -212,7 +212,7 @@ div.vis-tooltip{font-size:11px!important;color:var(--ink)!important;background:#
     <div class="brand">
       <a href="/">
         <span class="brand-dot"></span>
-        <span class="brand-name">Groundtruth</span>
+        <span class="brand-name">Verigraph</span>
       </a>
       <span class="badge">live demo</span>
     </div>
@@ -692,7 +692,7 @@ async function ingest(promise, label){
   status.textContent = `reading ${label} & extracting claims via the AI gateway…`;
   setTab("console");
   clearLog();
-  log(`[upload ] groundtruth add ${label}`, "t-warn");
+  log(`[upload ] verigraph add ${label}`, "t-warn");
   try{
     const res = await promise;
     const r = await res.json();

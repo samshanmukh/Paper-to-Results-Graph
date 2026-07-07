@@ -1,4 +1,4 @@
-"""Canned Cypher queries over the Groundtruth knowledge graph.
+"""Canned Cypher queries over the Verigraph knowledge graph.
 
 Usage: python app/queries.py <claims|conflicts|methods|evidence> [--json]
 """

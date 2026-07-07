@@ -1,4 +1,4 @@
-"""Butterbase persistence for Groundtruth: papers + run history.
+"""Butterbase persistence for Verigraph: papers + run history.
 
 The project has its own Butterbase app (created via POST /init, separate from
 sceneshop's): tables `papers` and `runs`. Uses the account API key from .env.

@@ -1,8 +1,8 @@
-# Groundtruth
+# Verigraph
 
 **Turn research papers into executable evidence.**
 
-Most research tools stop at summaries. **Groundtruth** closes the loop between what papers *claim* and what actually *runs*:
+Most research tools stop at summaries. **Verigraph** closes the loop between what papers *claim* and what actually *runs*:
 
 > **Paper → Claim → Method → Code → Sandbox Run → Result → Graph Update**
 
@@ -38,7 +38,7 @@ The graph shows 4 cross-paper `CONTRADICTS` edges between their claims.
 
 ```
                        ┌─────────────────────────────────────────────┐
-                       │         Groundtruth UI (static/)            │
+                       │         Verigraph UI (static/)            │
                        │  graph viz · RUN button · console · ask box │
                        └──────────────────┬──────────────────────────┘
                                           │ FastAPI (app/server.py)
@@ -65,7 +65,7 @@ The graph shows 4 cross-paper `CONTRADICTS` edges between their claims.
 
 | Partner | How it's used |
 |---|---|
-| **RocketRide** (local engine) | `pipelines/groundtruth.pipe` — wave agent with internal memory, `db_neo4j` tool (natural language → Cypher over the research graph), `tool_python`; LLM routed through one node |
+| **RocketRide** (local engine) | `pipelines/verigraph.pipe` — wave agent with internal memory, `db_neo4j` tool (natural language → Cypher over the research graph), `tool_python`; LLM routed through one node |
 | **Neo4j Aura** | The product *is* the graph: papers, claims, methods, runs, `CONTRADICTS`/`VALIDATES`/`REFUTES` edges |
 | **Butterbase** | AI gateway (OpenAI-compatible endpoint powers ALL LLM calls) + dedicated app storing papers & run history |
 | **Daytona** | Sandbox backend in `app/runner.py` (auto-selected when `DAYTONA_API_KEY` is set; local subprocess fallback keeps the demo unkillable) |
@@ -87,7 +87,7 @@ app/
   db.py          shared driver (Aura is shared with another project —
                  all destructive ops are label-scoped)
 papers/          3 paper excerpts + golden extractions + curated impls
-pipelines/       groundtruth.pipe (RocketRide agent pipeline)
+pipelines/       verigraph.pipe (RocketRide agent pipeline)
 scripts/         check_neo4j / check_pipeline / demo_loop / reset_demo
 static/          landing page + live demo UI
 BUILD_LOOP.md    autonomous build log (every milestone verified)
@@ -140,6 +140,6 @@ Before a live demo: `.venv/bin/python scripts/reset_demo.py` (pristine "no runs 
 
 ## Why this beats "Paper2Code"
 
-Paper2Code stops at code generation. Groundtruth runs the code, and the outcome — success, failure, error, metric — becomes a first-class graph citizen attached to the claims it tests. Failed runs are evidence too.
+Paper2Code stops at code generation. Verigraph runs the code, and the outcome — success, failure, error, metric — becomes a first-class graph citizen attached to the claims it tests. Failed runs are evidence too.
 
 > Research should not end at reading. It should end in evidence.
