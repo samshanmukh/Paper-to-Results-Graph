@@ -120,7 +120,12 @@ section > .head{
 section > .head::before{content:"";width:14px;height:2px;background:var(--ok)}
 section > .head .idx{margin-left:auto;color:var(--faint);letter-spacing:.05em;font-size:10px}
 /* ============ method panel ============ */
-#method-body{padding:14px 16px 16px;background:var(--panel)}
+#method-panel{flex:1 1 50%}
+#method-body{
+  padding:14px 16px 16px;background:var(--panel);
+  flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;
+}
+#run-btn{margin-top:auto}
 #m-paper{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--paper);
   margin-bottom:3px;min-height:11px;font-weight:600}
 #m-name{font-size:17px;font-weight:600;color:var(--ink);
@@ -163,8 +168,8 @@ section > .head .idx{margin-left:auto;color:var(--faint);letter-spacing:.05em;fo
 }
 @keyframes stripes{to{background-position:-34px 0}}
 /* ============ console (dark instrument in the light page) ============ */
-#log-panel{flex:1 1 auto;min-height:140px;border-bottom:none}
-#log-panel.min{flex:0 0 auto;min-height:0}
+#log-panel{flex:1 1 50%;min-height:0;border-bottom:none;border-top:1px solid var(--line)}
+#log-panel.min{flex:0 0 auto}
 #log-panel.min #log{display:none}
 #log-toggle{
   margin-left:10px;border:none;background:none;cursor:pointer;color:#8fa583;
