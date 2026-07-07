@@ -62,7 +62,10 @@ def _method_context(method_id: str) -> dict:
             id=method_id, database_=DATABASE,
         )
     if not recs:
-        raise NotImplementedError(f"method '{method_id}' not found in the graph")
+        raise NotImplementedError(
+            f"method '{method_id}' not found in the graph — "
+            "re-upload the paper or check that extraction produced methods"
+        )
     return dict(recs[0])
 
 
