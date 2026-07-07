@@ -71,8 +71,8 @@ header .tag{color:var(--text-dim);font-size:10.5px;letter-spacing:.14em;text-tra
 .chip b{font-size:15px;color:var(--text);font-weight:600;letter-spacing:0}
 .chip.runs b{color:var(--run-ok);text-shadow:0 0 10px rgba(74,222,128,.5)}
 /* ============ layout ============ */
-main{position:relative;z-index:1;display:grid;grid-template-columns:1fr 440px;height:calc(100vh - 58px)}
-#graph{position:relative;border-right:1px solid var(--bezel);animation:fadeIn .9s .25s both}
+main{position:relative;z-index:1;display:grid;grid-template-columns:400px 1fr 420px;height:calc(100vh - 58px)}
+#graph{position:relative;animation:fadeIn .9s .25s both}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 #net{position:absolute;inset:0}
 /* edge legend strip (bottom of canvas) */
@@ -90,16 +90,18 @@ main{position:relative;z-index:1;display:grid;grid-template-columns:1fr 440px;he
 #edge-legend .hint{color:var(--text-faint);border-left:1px solid var(--bezel);padding-left:14px}
 #edge-legend .hint b{color:var(--method);font-weight:500}
 aside{display:flex;flex-direction:column;overflow:hidden;background:rgba(9,13,23,.4)}
+aside.left{border-right:1px solid var(--bezel)}
+aside.right{border-left:1px solid var(--bezel)}
 section{
   position:relative;border-bottom:1px solid var(--bezel);
   display:flex;flex-direction:column;min-height:0;
-  animation:slideIn .55s cubic-bezier(.2,.9,.3,1) both;
 }
-section:nth-of-type(1){animation-delay:.12s}
-section:nth-of-type(2){animation-delay:.22s}
-section:nth-of-type(3){animation-delay:.32s}
-section:nth-of-type(4){animation-delay:.42s}
-@keyframes slideIn{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:translateX(0)}}
+aside.left section{animation:slideInL .55s cubic-bezier(.2,.9,.3,1) both}
+aside.right section{animation:slideInR .55s cubic-bezier(.2,.9,.3,1) both}
+aside section:nth-of-type(1){animation-delay:.12s}
+aside section:nth-of-type(2){animation-delay:.24s}
+@keyframes slideInR{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideInL{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:translateX(0)}}
 section > .head{
   display:flex;align-items:center;gap:9px;padding:9px 16px;
   border-bottom:1px solid var(--bezel);
@@ -164,7 +166,8 @@ section > .head .idx{margin-left:auto;color:var(--text-faint);letter-spacing:.05
 }
 @keyframes stripes{to{background-position:-34px 0}}
 /* ============ console ============ */
-#log-panel{flex:1 1 30%}
+#method-panel{flex:0 0 auto}
+#log-panel{flex:1 1 auto;min-height:140px;border-bottom:none}
 #log{
   flex:1;overflow-y:auto;padding:11px 16px;background:#03050a;
   font-size:11.5px;line-height:1.75;white-space:pre-wrap;word-break:break-word;
@@ -181,7 +184,7 @@ section > .head .idx{margin-left:auto;color:var(--text-faint);letter-spacing:.05
   box-shadow:0 0 8px var(--accent)}
 @keyframes blink{50%{opacity:0}}
 /* ============ evidence ============ */
-#evidence-panel{flex:0 1 auto;max-height:24%}
+#evidence-panel{flex:0 1 auto;max-height:42%}
 #evidence{flex:1;overflow-y:auto}
 #evidence table{width:100%;border-collapse:collapse;font-size:11px}
 #evidence td{padding:6px 12px;border-bottom:1px solid rgba(28,37,64,.55);vertical-align:middle}
@@ -197,7 +200,7 @@ section > .head .idx{margin-left:auto;color:var(--text-faint);letter-spacing:.05
 tr.flash-row{animation:rowFlash 1s ease-out 2}
 @keyframes rowFlash{0%{background:rgba(74,222,128,.22)}100%{background:transparent}}
 /* ============ ask — conversation ============ */
-#ask-panel{flex:1 1 46%;border-bottom:none}
+#ask-panel{flex:1 1 auto;border-bottom:none}
 #qa-log{flex:1;overflow-y:auto;padding:6px 16px 10px;background:#070b14}
 #qa-log:empty::before{
   content:"ask the agent about conflicts, evidence, methods — it queries the live graph.";
@@ -268,16 +271,7 @@ div.vis-tooltip{
   </div>
 </header>
 <main>
-  <div id="graph">
-    <div id="net"></div>
-    <div id="edge-legend">
-      <span class="contradicts"><span class="sw"></span>contradicts</span>
-      <span class="validates"><span class="sw"></span>validates</span>
-      <span class="implements"><span class="sw"></span>implements</span>
-      <span class="hint">click a <b>method</b> · then RUN</span>
-    </div>
-  </div>
-  <aside>
+  <aside class="left">
     <section id="method-panel">
       <div class="head">Selected method <span class="idx">01</span></div>
       <div id="method-body">
@@ -295,6 +289,17 @@ div.vis-tooltip{
       <div class="head">Experiment console <span class="idx">02</span></div>
       <div id="log"></div>
     </section>
+  </aside>
+  <div id="graph">
+    <div id="net"></div>
+    <div id="edge-legend">
+      <span class="contradicts"><span class="sw"></span>contradicts</span>
+      <span class="validates"><span class="sw"></span>validates</span>
+      <span class="implements"><span class="sw"></span>implements</span>
+      <span class="hint">click a <b>method</b> · then RUN</span>
+    </div>
+  </div>
+  <aside class="right">
     <section id="evidence-panel">
       <div class="head">Claims × executable evidence <span class="idx">03</span></div>
       <div id="evidence"></div>
