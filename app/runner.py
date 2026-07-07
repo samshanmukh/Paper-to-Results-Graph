@@ -35,10 +35,16 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(ROOT, ".env"))
 
 
-def run_local(code_path: str, timeout: int = 300) -> dict:
+def _param_env(params: dict | None) -> dict:
+    """{"steps": 500} -> {"P2R_STEPS": "500"} (experiment param contract)."""
+    return {f"P2R_{k.upper()}": str(v) for k, v in (params or {}).items()}
+
+
+def run_local(code_path: str, timeout: int = 300, params: dict | None = None) -> dict:
     started = time.monotonic()
     proc = subprocess.run(
-        [sys.executable, code_path], capture_output=True, text=True, timeout=timeout
+        [sys.executable, code_path], capture_output=True, text=True, timeout=timeout,
+        env={**os.environ, **_param_env(params)},
     )
     return {
         "backend": "local",
@@ -49,32 +55,40 @@ def run_local(code_path: str, timeout: int = 300) -> dict:
     }
 
 
-def run_daytona(code_path: str, timeout: int = 300) -> dict:
-    from daytona_sdk import Daytona, DaytonaConfig
+def run_daytona(code_path: str, timeout: int = 300, params: dict | None = None,
+                run_id: str = "run") -> dict:
+    from daytona_sdk import (CodeRunParams, CreateSandboxFromSnapshotParams,
+                             Daytona, DaytonaConfig)
 
     with open(code_path) as f:
         code = f.read()
 
     daytona = Daytona(DaytonaConfig(api_key=os.environ["DAYTONA_API_KEY"]))
     started = time.monotonic()
-    sandbox = daytona.create()
-    try:
-        # default sandbox image may lack numpy; install quietly first
-        sandbox.process.exec("pip install -q numpy", timeout=180)
-        response = sandbox.process.code_run(code, timeout=timeout)
-        return {
-            "backend": "daytona",
-            "sandbox_id": getattr(sandbox, "id", None),
-            "exit_code": response.exit_code,
-            "stdout": response.result or "",
-            "stderr": "",
-            "duration_s": round(time.monotonic() - started, 2),
-        }
-    finally:
-        sandbox.delete()
+    # Named + labeled so runs are visible in the Daytona dashboard; auto_stop /
+    # auto_delete clean up instead of an instant delete() judges never see.
+    sandbox = daytona.create(CreateSandboxFromSnapshotParams(
+        name=run_id[:60],
+        labels={"app": "paper2result", "run_id": run_id},
+        auto_stop_interval=10,    # stop 10 min after last activity
+        auto_delete_interval=120, # delete 2 h after stop
+    ))
+    # default sandbox image may lack numpy; install quietly first
+    sandbox.process.exec("pip install -q numpy", timeout=180)
+    response = sandbox.process.code_run(
+        code, params=CodeRunParams(env=_param_env(params)), timeout=timeout
+    )
+    return {
+        "backend": "daytona",
+        "sandbox_id": getattr(sandbox, "id", None),
+        "exit_code": response.exit_code,
+        "stdout": response.result or "",
+        "stderr": "",
+        "duration_s": round(time.monotonic() - started, 2),
+    }
 
 
-def execute(method_id: str, backend: str = "auto") -> dict:
+def execute(method_id: str, backend: str = "auto", params: dict | None = None) -> dict:
     if backend == "auto":
         backend = "daytona" if os.environ.get("DAYTONA_API_KEY") else "local"
 
@@ -83,12 +97,14 @@ def execute(method_id: str, backend: str = "auto") -> dict:
     record = {
         "run_id": run_id,
         "method_id": method_id,
+        "params": params or {},
         "created_at": datetime.now(timezone.utc).isoformat(),
         "result": None,
         "error": None,
     }
     try:
-        outcome = run_daytona(code_path) if backend == "daytona" else run_local(code_path)
+        outcome = (run_daytona(code_path, params=params, run_id=run_id)
+                   if backend == "daytona" else run_local(code_path, params=params))
         record.update(outcome)
         if record["exit_code"] == 0:
             try:

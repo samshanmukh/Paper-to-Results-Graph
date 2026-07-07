@@ -25,15 +25,23 @@ claim verdicts.
 """
 
 import json
+import os
 
 import numpy as np
 
 rng = np.random.default_rng(0)
 
-N_TRAIN = 200
-N_TEST = 200
-STEPS = 4000
-P_POS = 0.6
+# Paper experiment parameters — overridable via P2R_<NAME> env vars so the
+# UI / runner can re-run the experiment under different settings.
+_p = lambda name, default, cast: cast(os.environ.get(f"P2R_{name}", default))
+N_TRAIN = _p("N_TRAIN", 200, int)
+N_TEST = _p("N_TEST", 200, int)
+STEPS = _p("STEPS", 4000, int)
+P_POS = _p("P_POS", 0.6, float)
+LR_GD = _p("LR_GD", 1.0, float)
+LR_ADAM = _p("LR_ADAM", 0.01, float)
+BETA1 = _p("BETA1", 0.9, float)
+BETA2 = _p("BETA2", 0.999, float)
 
 
 def make_data(n, offset):
@@ -62,14 +70,14 @@ def error_rate(w, X, y):
     return float((pred != y).mean())
 
 
-def train_gd(X, y, lr=1.0):
+def train_gd(X, y, lr=LR_GD):
     w = np.zeros(X.shape[1])
     for _ in range(STEPS):
         w -= lr * logistic_grad(w, X, y)
     return w
 
 
-def train_adam(X, y, lr=0.01, b1=0.9, b2=0.999, eps=1e-8):
+def train_adam(X, y, lr=LR_ADAM, b1=BETA1, b2=BETA2, eps=1e-8):
     w = np.zeros(X.shape[1])
     m = np.zeros_like(w)
     v = np.zeros_like(w)
@@ -103,6 +111,8 @@ def main():
     validated = err_gd <= 0.05 and err_adam >= 0.30
     result = {
         "method_id": "wilson2017-m1",
+        "params": {"n_train": N_TRAIN, "n_test": N_TEST, "steps": STEPS, "p_pos": P_POS,
+                   "lr_gd": LR_GD, "lr_adam": LR_ADAM, "beta1": BETA1, "beta2": BETA2},
         "metrics": {
             "train_error_gd": err_gd_train,
             "train_error_adam": err_adam_train,
@@ -116,7 +126,7 @@ def main():
                 "detail": (
                     f"GD test error {err_gd:.3f} vs Adam test error "
                     f"{err_adam:.3f} on the separable construction "
-                    f"(n_train={N_TRAIN}, steps={STEPS})"
+                    f"(n_train={N_TRAIN}, steps={STEPS}, p_pos={P_POS}, lr_adam={LR_ADAM})"
                 ),
             },
             {

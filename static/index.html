@@ -115,8 +115,34 @@ section > .head .idx{margin-left:auto;color:var(--text-faint);letter-spacing:.05
 #m-name{font-family:"Fraunces",serif;font-size:18px;font-weight:700;color:#f2f5ff;
   margin-bottom:6px;line-height:1.2}
 #m-name.empty{color:var(--text-faint);font-style:italic;font-weight:500}
-#m-desc{color:var(--text-dim);font-size:11.5px;line-height:1.6;margin-bottom:12px;
-  max-height:58px;overflow:auto}
+#m-desc{color:var(--text-dim);font-size:11.5px;line-height:1.6;margin-bottom:10px;
+  max-height:44px;overflow:auto}
+#m-params{display:none;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:11px}
+#m-params.show{display:grid}
+#m-params label{display:flex;flex-direction:column;gap:2px}
+#m-params .pname{
+  font-size:8.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--text-faint);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+#m-params input{
+  width:100%;padding:5px 6px;background:#0a0f1c;border:1px solid var(--bezel);
+  border-radius:2px;color:var(--paper);font-family:"IBM Plex Mono",monospace;
+  font-size:11px;outline:none;transition:border-color .15s;
+}
+#m-params input:focus{border-color:var(--paper);box-shadow:0 0 8px rgba(232,182,76,.2)}
+#m-params input.dirty{border-color:var(--paper);color:#ffd97a}
+#params-head{
+  display:none;align-items:center;gap:7px;margin-bottom:7px;
+  font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-dim);
+}
+#params-head.show{display:flex}
+#params-head::after{content:"";flex:1;height:1px;background:var(--bezel)}
+#params-reset{
+  cursor:pointer;color:var(--text-faint);border:none;background:none;
+  font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.1em;
+  text-transform:uppercase;padding:0;
+}
+#params-reset:hover{color:var(--paper)}
 #run-btn{
   position:relative;width:100%;padding:12px;overflow:hidden;
   border:1px solid var(--accent);border-radius:2px;
@@ -258,6 +284,10 @@ div.vis-tooltip{
         <div id="m-paper"></div>
         <div id="m-name" class="empty">awaiting selection…</div>
         <div id="m-desc">Click a violet method node in the graph to load its runnable specification.</div>
+        <div id="params-head">paper experiment parameters
+          <button id="params-reset" title="restore the paper's values">↺ paper defaults</button>
+        </div>
+        <div id="m-params"></div>
         <button id="run-btn" disabled>▶ Run this method</button>
       </div>
     </section>
@@ -467,6 +497,37 @@ async function loadGraph(focusNew=false){
   }
 }
 
+let methodParams = [];
+function renderParams(){
+  const grid = document.getElementById("m-params");
+  const head = document.getElementById("params-head");
+  grid.innerHTML = "";
+  if(!methodParams.length){ grid.classList.remove("show"); head.classList.remove("show"); return; }
+  grid.classList.add("show"); head.classList.add("show");
+  for(const p of methodParams){
+    const label = document.createElement("label");
+    label.innerHTML = `<span class="pname" title="${p.description||p.name}">${p.name}</span>`;
+    const input = document.createElement("input");
+    input.value = p.default;
+    input.dataset.name = p.name; input.dataset.def = p.default;
+    input.title = p.description || p.name;
+    input.addEventListener("input", ()=>input.classList.toggle("dirty", input.value != input.dataset.def));
+    label.appendChild(input);
+    grid.appendChild(label);
+  }
+}
+function collectParams(){
+  const out = {};
+  document.querySelectorAll("#m-params input").forEach(i=>{
+    if(i.value !== "" && i.value != i.dataset.def) out[i.dataset.name] = i.value;
+  });
+  return out;
+}
+document.getElementById("params-reset").addEventListener("click", ()=>{
+  document.querySelectorAll("#m-params input").forEach(i=>{
+    i.value = i.dataset.def; i.classList.remove("dirty");
+  });
+});
 function selectMethod(raw){
   selectedMethod = raw.props.id;
   document.getElementById("m-paper").textContent = "method · " + (raw.props.id||"");
@@ -474,6 +535,8 @@ function selectMethod(raw){
   name.textContent = raw.props.name || raw.props.id;
   name.classList.remove("empty");
   document.getElementById("m-desc").textContent = raw.props.runnable_hint || raw.props.description || "";
+  try{ methodParams = JSON.parse(raw.props.params || "[]"); }catch{ methodParams = []; }
+  renderParams();
   document.getElementById("run-btn").disabled = running;
 }
 
@@ -499,12 +562,17 @@ document.getElementById("run-btn").addEventListener("click", async ()=>{
   const btn = document.getElementById("run-btn");
   running = true; btn.classList.add("running"); btn.textContent = "◉ SANDBOX ACTIVE";
   clearLog();
-  log(`$ paper2result run ${selectedMethod}`, "t-warn");
+  const params = collectParams();
+  const pstr = Object.entries(params).map(([k,v])=>`${k}=${v}`).join(" ");
+  log(`$ paper2result run ${selectedMethod}${pstr ? " " + pstr : ""}`, "t-warn");
+  if(pstr) log(`  overriding paper defaults: ${pstr}`, "t-warn");
   log("① generating implementation from method node…", "t-stage");
   log("② dispatching to sandbox (daytona)…", "t-stage");
   const started = Date.now();
   try{
-    const rec = await (await fetch(`/api/run/${selectedMethod}`, {method:"POST"})).json();
+    const rec = await (await fetch(`/api/run/${selectedMethod}`, {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({params})})).json();
     const dt = ((Date.now()-started)/1000).toFixed(1);
     running = false;
     if(rec.error){

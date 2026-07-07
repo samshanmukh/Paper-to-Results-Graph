@@ -31,7 +31,7 @@ def curate_run(tx, record: dict):
         SET r.backend = $backend, r.exit_code = $exit_code,
             r.duration_s = $duration_s, r.created_at = $created_at,
             r.status = $status, r.error = $error,
-            r.metrics = $metrics
+            r.metrics = $metrics, r.params = $params
         WITH r
         MATCH (m:Method {id: $method_id})
         MERGE (r)-[:IMPLEMENTS]->(m)
@@ -41,6 +41,8 @@ def curate_run(tx, record: dict):
         created_at=record.get("created_at"), status=status,
         error=record.get("error"),
         metrics=json.dumps((record.get("result") or {}).get("metrics", {})),
+        params=json.dumps((record.get("result") or {}).get("params",
+                          record.get("params", {}))),
         method_id=record["method_id"],
     )
     tx.run(

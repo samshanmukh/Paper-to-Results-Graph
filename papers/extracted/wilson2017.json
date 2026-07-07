@@ -29,7 +29,17 @@
       "id": "wilson2017-m1",
       "name": "Linearly separable counterexample",
       "description": "Construct a synthetic linearly separable binary classification problem with sparse informative features and many redundant dimensions; train linear classifiers with SGD vs Adam; compare test error to show adaptive methods generalize worse.",
-      "runnable_hint": "Generate the synthetic separable dataset in numpy; implement SGD and Adam for a linear classifier; train both to near-zero training error; report test error for each. Metric: test_error_sgd vs test_error_adam."
+      "runnable_hint": "Generate the synthetic separable dataset in numpy; implement SGD and Adam for a linear classifier; train both to near-zero training error; report test error for each. Metric: test_error_sgd vs test_error_adam.",
+      "params": [
+        {"name": "n_train", "default": 200, "description": "training set size n (paper §3.3)"},
+        {"name": "n_test", "default": 200, "description": "held-out test set size"},
+        {"name": "steps", "default": 4000, "description": "optimization steps per trainer"},
+        {"name": "p_pos", "default": 0.6, "description": "class imbalance P[y=+1] (paper: b > 1/2)"},
+        {"name": "lr_gd", "default": 1.0, "description": "gradient descent step size"},
+        {"name": "lr_adam", "default": 0.01, "description": "Adam step size alpha"},
+        {"name": "beta1", "default": 0.9, "description": "Adam first-moment decay (paper default)"},
+        {"name": "beta2", "default": 0.999, "description": "Adam second-moment decay (paper default)"}
+      ]
     }
   ],
   "datasets": [

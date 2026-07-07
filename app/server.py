@@ -71,12 +71,16 @@ def evidence():
         return run_query(driver, "evidence")
 
 
+class RunBody(BaseModel):
+    params: dict = {}
+
+
 @app.post("/api/run/{method_id}")
-def run_method(method_id: str, backend: str = "auto"):
+def run_method(method_id: str, backend: str = "auto", body: RunBody | None = None):
     if backend not in ("auto", "local", "daytona"):
         raise HTTPException(400, "backend must be auto|local|daytona")
     try:
-        record = execute(method_id, backend)
+        record = execute(method_id, backend, params=(body.params if body else None))
     except NotImplementedError as e:
         raise HTTPException(404, str(e))
     curate(record)

@@ -60,13 +60,14 @@ def load_paper(tx, data: dict):
             """
             MERGE (m:Method {id: $id})
             SET m.name = $name, m.description = $description,
-                m.runnable_hint = $runnable_hint
+                m.runnable_hint = $runnable_hint, m.params = $params
             WITH m MATCH (paper:Paper {id: $pid})
             MERGE (m)-[:DESCRIBED_IN]->(paper)
             """,
             id=method["id"], name=method["name"],
             description=method["description"],
-            runnable_hint=method["runnable_hint"], pid=p["id"],
+            runnable_hint=method["runnable_hint"],
+            params=json.dumps(method.get("params", [])), pid=p["id"],
         )
     for ds in data.get("datasets", []):
         tx.run(
