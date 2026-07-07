@@ -1,0 +1,49 @@
+Title: The Marginal Value of Adaptive Gradient Methods in Machine Learning
+Authors: Ashia C. Wilson, Rebecca Roelofs, Mitchell Stern, Nathan Srebro, Benjamin Recht
+Year: 2017
+arXiv: 1705.08292
+
+[Excerpt — abstract and key sections condensed for hackathon demo]
+
+ABSTRACT
+Adaptive optimization methods, which perform local optimization with a metric
+constructed from the history of iterates, are becoming increasingly popular
+for training deep neural networks. Examples include AdaGrad, RMSProp, and
+Adam. We show that for simple overparameterized problems, adaptive methods
+often find drastically different solutions than gradient descent (GD) or
+stochastic gradient descent (SGD). We construct an illustrative binary
+classification problem where the data is linearly separable, GD and SGD
+achieve zero test error, and AdaGrad, Adam, and RMSProp attain test errors
+arbitrarily close to half. We additionally study empirical performance on
+several state-of-the-art deep learning models and find that the solutions
+found by adaptive methods generalize worse (often significantly worse) than
+SGD, even when these solutions have better training performance.
+
+METHOD
+We construct a synthetic linearly-separable binary classification problem
+with sparse informative features and many duplicated/noise dimensions. We
+train linear classifiers with SGD and with adaptive methods (Adam, AdaGrad,
+RMSProp) and compare generalization (test error) rather than training loss.
+For deep learning experiments we tune learning rates for all optimizers and
+compare development/test set performance on CIFAR-10, character-level
+language modeling, and parsing.
+
+CLAIMS
+1. Adaptive gradient methods (including Adam) generalize worse than SGD:
+   solutions found by adaptive methods have higher test error even when
+   training performance is better.
+2. On a constructed linearly separable problem, SGD achieves zero test error
+   while Adam/AdaGrad/RMSProp approach 50% test error.
+3. Adaptive methods do not remove the need for learning-rate tuning; tuned
+   SGD matches or beats tuned adaptive methods on all tested deep learning
+   tasks.
+
+EXPERIMENTS
+CIFAR-10 image classification, character-level language modeling on War and
+Peace, and constituency parsing. In all cases tuned SGD (with momentum)
+achieved equal or better held-out performance than Adam, AdaGrad, RMSProp.
+
+CITATIONS
+- Kingma & Ba 2014 (Adam)
+- Duchi et al. 2011 (AdaGrad)
+- Tieleman & Hinton 2012 (RMSProp)

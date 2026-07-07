@@ -1,0 +1,44 @@
+{
+  "paper": {
+    "id": "wilson2017",
+    "title": "The Marginal Value of Adaptive Gradient Methods in Machine Learning",
+    "authors": ["Ashia C. Wilson", "Rebecca Roelofs", "Mitchell Stern", "Nathan Srebro", "Benjamin Recht"],
+    "year": 2017,
+    "arxiv": "1705.08292",
+    "topic": "adaptive-optimizers"
+  },
+  "claims": [
+    {
+      "id": "wilson2017-c1",
+      "text": "Adaptive gradient methods (including Adam) generalize worse than SGD: higher test error even with better training performance.",
+      "metric": "test error"
+    },
+    {
+      "id": "wilson2017-c2",
+      "text": "On a constructed linearly separable problem, SGD achieves zero test error while Adam/AdaGrad/RMSProp approach 50% test error.",
+      "metric": "test error on synthetic separable data"
+    },
+    {
+      "id": "wilson2017-c3",
+      "text": "Tuned SGD matches or beats tuned adaptive methods on all tested deep learning tasks; adaptive methods do not remove learning-rate tuning.",
+      "metric": "dev/test performance"
+    }
+  ],
+  "methods": [
+    {
+      "id": "wilson2017-m1",
+      "name": "Linearly separable counterexample",
+      "description": "Construct a synthetic linearly separable binary classification problem with sparse informative features and many redundant dimensions; train linear classifiers with SGD vs Adam; compare test error to show adaptive methods generalize worse.",
+      "runnable_hint": "Generate the synthetic separable dataset in numpy; implement SGD and Adam for a linear classifier; train both to near-zero training error; report test error for each. Metric: test_error_sgd vs test_error_adam."
+    }
+  ],
+  "datasets": [
+    {"id": "synthetic-separable", "name": "Synthetic linearly separable dataset"},
+    {"id": "cifar10", "name": "CIFAR-10"}
+  ],
+  "cites": ["adam2014"],
+  "claim_relations": [
+    {"from": "wilson2017-c1", "to": "adam2014-c1", "type": "CONTRADICTS"},
+    {"from": "wilson2017-c3", "to": "adam2014-c2", "type": "CONTRADICTS"}
+  ]
+}

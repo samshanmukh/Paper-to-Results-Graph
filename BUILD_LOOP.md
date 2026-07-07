@@ -13,7 +13,7 @@ This file is the single source of truth for the build loop. Each loop iteration:
 - Scope discipline: build ONE closed loop — one paper → one method → one runnable experiment → one result → graph update. Nothing more.
 - Verify as you go: every component gets a smoke test before its box is checked.
 - If blocked on a missing credential, mark the task `[BLOCKED: <what>]`, add it to "Blockers" below, and move to the next unblocked task. NEVER invent keys.
-- Commit to git after each completed milestone with a clear message.
+- Commit to git after each completed milestone with a clear message, then **push to GitHub** (`git push origin HEAD` — branch is `master`).
 
 ## User directives (2026-07-07)
 
@@ -42,10 +42,10 @@ This file is the single source of truth for the build loop. Each loop iteration:
 - [x] Write `.env` with Neo4j creds + Butterbase/RocketRide keys from sceneshop
 - [x] Verify Neo4j Aura connectivity with a Python smoke test (`scripts/check_neo4j.py`) — passing; NOTE: must set `SSL_CERT_FILE` to certifi bundle before neo4j driver connects (macOS Python lacks system CAs)
 
-### M1 — Papers + extraction (needs LLM key; build mock-mode fallback)
-- [ ] Preload 2–3 short papers on one topic (use arXiv abstracts/sections as text files in `papers/` — do NOT build a PDF parser)
-- [ ] `app/extract.py`: paper text → structured JSON {claims[], methods[], datasets[], citations[]} via LLM; include a `--mock` mode with hand-written JSON for the 3 papers so downstream work never blocks
-- [ ] Golden extraction JSON files checked into `papers/extracted/`
+### M1 — Papers + extraction
+- [x] Preload 3 papers on topic "adaptive optimizers vs SGD": `adam2014`, `wilson2017`, `adamw2017` (condensed excerpts in `papers/*.txt`) — claims genuinely conflict, methods runnable in numpy
+- [x] `app/extract.py`: schema validation + `--mock` mode working; live mode intentionally deferred to M6 (routes via local RocketRide pipeline)
+- [x] Golden extraction JSON in `papers/extracted/` — 9 claims, 3 methods, 4 cross-paper CONTRADICTS relations, citation edges
 
 ### M2 — Knowledge graph (Neo4j)
 - [ ] `app/graph.py`: idempotent loader — creates Paper, Claim, Method, Dataset, Task, Run, Artifact nodes + WROTE/CITES/FROM/DESCRIBED_IN/SUPPORTS/CONTRADICTS/IMPLEMENTS/VALIDATES/REFUTES edges
@@ -84,4 +84,5 @@ This file is the single source of truth for the build loop. Each loop iteration:
 
 (loop appends: iteration #, what was done, what's verified, what's next)
 
+- **#2 (2026-07-07):** M1 complete. Demo topic locked: "Do adaptive optimizers beat SGD?" (Adam vs Wilson-et-al critique vs AdamW — real conflicting claims, sandbox-runnable methods). `extract.py --mock` validates all 3 golden extractions. The Wilson separable-counterexample method (`wilson2017-m1`) is the designated demo method — tiny numpy experiment with a dramatic result (SGD 0% vs Adam ~50% test error). Next: M2 — Neo4j graph loader (inspect the 36 pre-existing nodes first).
 - **#1 (2026-07-07):** M0 complete. Scaffolded dirs, `.env` (Neo4j + Butterbase + RocketRide local), venv with deps, Neo4j Aura smoke test passing (36 pre-existing nodes in instance — inspect/clear before M2 load). Daytona key still missing. Next: M1 — preload papers + extraction (route LLM via local RocketRide engine per user directive; keep `--mock` fallback).
