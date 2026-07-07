@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper→Results Graph — Evidence Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<style>
+:root{
+  --bg:#f6f2e8; --panel:#fffdf6; --panel-2:#fbf8ee;
+  --line:#e2dac6; --line-strong:#cfc5a9;
+  --ink:#23271d; --dim:#7c765f; --faint:#b0a88d;
+  --paper:#a87708; --claim:#0d7d9e; --method:#7350cf;
+  --ok:#157f46; --ok-bright:#1ea45c; --bad:#bb3434;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",sans-serif;font-size:13.5px;overflow:hidden}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:linear-gradient(rgba(140,125,80,.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(140,125,80,.055) 1px, transparent 1px);
+  background-size:26px 26px}
+header{position:relative;z-index:6;display:flex;align-items:center;gap:16px;
+  padding:0 22px;height:60px;border-bottom:2px solid var(--ink);background:var(--panel)}
+.led{width:9px;height:9px;border-radius:50%;background:var(--ok-bright);
+  box-shadow:0 0 0 3px rgba(30,164,92,.18);animation:breathe 2.4s ease-in-out infinite}
+@keyframes breathe{50%{opacity:.5}}
+h1{font-weight:700;font-size:20px;white-space:nowrap}
+h1 .arrow{color:var(--ok);font-weight:600}
+header .tag{color:var(--dim);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+  border-left:1px solid var(--line-strong);padding-left:16px;line-height:1.5}
+#gh{margin-left:auto;font-size:11px;color:var(--claim);text-decoration:none;border:1px solid rgba(13,125,158,.4);
+  padding:6px 12px;border-radius:2px;font-weight:600}
+#gh:hover{background:rgba(13,125,158,.08)}
+#stats{display:flex;gap:8px}
+.chip{display:flex;align-items:baseline;gap:6px;padding:5px 11px;border:1px solid var(--line-strong);
+  border-radius:2px;background:var(--panel-2);font-size:9.5px;letter-spacing:.1em;color:var(--dim);text-transform:uppercase}
+.chip b{font-size:15px;color:var(--ink);font-weight:600}
+.chip.runs{border-color:var(--ok)} .chip.runs b{color:var(--ok)}
+main{position:relative;z-index:1;display:grid;grid-template-columns:1fr 420px;height:calc(100vh - 60px)}
+#graph{position:relative}
+#net{position:absolute;inset:0}
+#edge-legend{position:absolute;left:16px;bottom:14px;z-index:5;display:flex;gap:16px;color:var(--dim);
+  font-size:10px;background:rgba(255,253,246,.92);padding:7px 12px;border:1px solid var(--line-strong);
+  border-radius:2px;align-items:center;box-shadow:2px 2px 0 rgba(35,39,29,.08)}
+#edge-legend .sw{display:inline-block;width:22px;height:0;margin-right:6px;vertical-align:middle;border-top:2.5px solid}
+#edge-legend .contradicts .sw{border-top-style:dashed;border-color:var(--paper)}
+#edge-legend .validates .sw{border-color:var(--ok-bright)}
+#edge-legend .refutes .sw{border-color:var(--bad)}
+#edge-legend .implements .sw{border-color:var(--method)}
+#zoom-ctl{position:absolute;right:16px;top:14px;z-index:5;display:flex;flex-direction:column;gap:6px}
+#zoom-ctl button{width:34px;height:34px;border:1.5px solid var(--ink);border-radius:2px;background:var(--panel);
+  color:var(--ink);font-size:16px;font-weight:600;cursor:pointer;box-shadow:2px 2px 0 rgba(35,39,29,.15);transition:all .12s;font-family:inherit}
+#zoom-ctl button:hover{background:var(--ink);color:var(--panel)}
+#zoom-ctl button.fit{font-size:12px}
+#note{position:absolute;left:50%;transform:translateX(-50%);bottom:14px;z-index:5;
+  background:rgba(35,39,29,.92);color:#f6f2e8;font-size:11px;padding:7px 14px;border-radius:2px}
+#note b{color:#7ee0a3}
+aside{display:flex;flex-direction:column;overflow:hidden;background:var(--panel);border-left:1.5px solid var(--line-strong)}
+section{border-bottom:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+section > .head{display:flex;align-items:center;gap:9px;padding:10px 16px;border-bottom:1px solid var(--line);
+  font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);background:var(--panel-2)}
+section > .head::before{content:"";width:14px;height:2px;background:var(--ok)}
+#about{padding:13px 16px;font-size:12.5px;line-height:1.6;color:#4d5142}
+#about b{color:var(--ink)}
+#evidence-panel{flex:1}
+#evidence{flex:1;overflow-y:auto}
+#evidence table{width:100%;border-collapse:collapse;font-size:11px}
+#evidence td{padding:7px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+#evidence td:first-child{width:64%}
+#evidence .cid{color:var(--claim);font-weight:600;font-size:10px}
+#evidence .ctext{display:block;color:#4d5142;font-size:12px;line-height:1.45;margin-top:2px}
+#evidence td:last-child{text-align:right}
+.pill{display:inline-block;padding:2.5px 9px;border-radius:20px;font-size:9px;letter-spacing:.1em;font-weight:600;text-transform:uppercase}
+.pill.none{border:1px dashed var(--faint);color:var(--faint)}
+.pill.validates{background:rgba(30,164,92,.12);border:1px solid var(--ok);color:var(--ok)}
+.pill.refutes{background:rgba(187,52,52,.1);border:1px solid var(--bad);color:var(--bad)}
+.run-ref{color:var(--faint);font-size:9px;display:block;margin-top:2px}
+div.vis-tooltip{font-family:"IBM Plex Sans",sans-serif !important;font-size:11px !important;color:var(--ink) !important;
+  background:var(--panel) !important;border:1.5px solid var(--ink) !important;border-radius:2px !important;
+  padding:8px 11px !important;max-width:340px;white-space:normal !important;box-shadow:4px 4px 0 rgba(35,39,29,.15) !important;line-height:1.55}
+::-webkit-scrollbar{width:9px}::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:5px}
+</style>
+</head>
+<body>
+<header>
+  <div class="led"></div>
+  <h1>PAPER<span class="arrow">→</span>RESULTS</h1>
+  <span class="tag">executable evidence graph<br>hackwithbay 3.0 · live explorer</span>
+  <a id="gh" href="https://github.com/samshanmukh/Paper-to-Results-Graph" target="_blank">GitHub ↗</a>
+  <div id="stats">
+    <div class="chip">papers <b id="st-papers">–</b></div>
+    <div class="chip">claims <b id="st-claims">–</b></div>
+    <div class="chip">conflicts <b id="st-conf">–</b></div>
+    <div class="chip runs">runs <b id="st-runs">–</b></div>
+  </div>
+</header>
+<main>
+  <div id="graph">
+    <div id="net"></div>
+    <div id="zoom-ctl">
+      <button id="zoom-in">+</button><button id="zoom-out">−</button><button id="zoom-fit" class="fit">⛶</button>
+    </div>
+    <div id="edge-legend">
+      <span class="contradicts"><span class="sw"></span>contradicts</span>
+      <span class="validates"><span class="sw"></span>validates</span>
+      <span class="refutes"><span class="sw"></span>refutes</span>
+      <span class="implements"><span class="sw"></span>implements</span>
+    </div>
+    <div id="note">read-only explorer — live data from Butterbase · <b>runs execute in the local demo</b> (Daytona sandboxes)</div>
+  </div>
+  <aside>
+    <section><div class="head">About</div>
+      <div id="about">
+        Papers are extracted into <b>claims</b> and <b>methods</b>. Methods are turned into runnable
+        code, executed in <b>Daytona sandboxes</b>, and each result attaches back to the graph as a
+        <b>Run</b> with a <b>VALIDATES</b> / <b>REFUTES</b> verdict computed from measured metrics.
+        Dashed amber arcs are papers <b>contradicting each other</b>. This page renders the live
+        research graph mirrored to <b>Butterbase</b>.
+      </div>
+    </section>
+    <section id="evidence-panel"><div class="head">Claims × executable evidence</div>
+      <div id="evidence"></div>
+    </section>
+  </aside>
+</main>
+<script>
+const API = "https://api.butterbase.ai/v1/app_vinjruy5c03s";
+const COL = {paper:0, claim:340, method:620, run:880};
+const ROW = 62, GROUP_GAP = 42;
+let network;
+
+const wrap = (s, w) => {
+  const words = (s||"").split(" "); const lines=[]; let cur="";
+  for(const word of words){
+    if((cur+" "+word).trim().length > w){ lines.push(cur.trim()); cur=word; }
+    else cur += " "+word;
+  }
+  if(cur.trim()) lines.push(cur.trim());
+  return lines.join("\n");
+};
+
+async function fetchAll(table){
+  const rows = [];
+  for(let off=0; off<1000; off+=100){
+    const page = await (await fetch(`${API}/${table}?limit=100&offset=${off}`)).json();
+    if(!Array.isArray(page) || !page.length) break;
+    rows.push(...page);
+    if(page.length < 100) break;
+  }
+  return rows;
+}
+
+function build(papers, runs){
+  const nodes=[], edges=[], pos={}, claimText={};
+  let y=0, claimCount=0, confCount=0;
+  papers.sort((a,b)=>(a.year||0)-(b.year||0));
+  const methodIds = new Set();
+  for(const row of papers){
+    const ex = row.extraction || {};
+    const claims = ex.claims || [], methods = ex.methods || [];
+    const groupH = Math.max(claims.length,1)*ROW, centerY = y+groupH/2-ROW/2;
+    nodes.push({id:row.id, x:COL.paper, y:centerY, fixed:true, shape:"box",
+      label:wrap(row.title,20)+"\n"+(row.year||""),
+      color:{background:"#fdf3d7", border:"#a87708"}, borderWidth:1.5,
+      font:{color:"#7a5606", size:16, face:"IBM Plex Sans"}, margin:10,
+      widthConstraint:{maximum:185}, title:row.title+" ("+(row.arxiv||"")+")"});
+    claims.forEach((c,i)=>{
+      claimCount++; claimText[c.id]=c.text;
+      pos[c.id]={x:COL.claim, y:y+i*ROW};
+      nodes.push({id:c.id, x:COL.claim, y:y+i*ROW, fixed:true, shape:"dot", size:13,
+        label:c.id, color:{background:"#0d7d9e", border:"#0d7d9e"},
+        font:{color:"#0d7d9e", size:13, face:"IBM Plex Sans"}, title:c.text});
+      edges.push({from:c.id, to:row.id, color:{color:"#d5cdb4", opacity:.9}, width:1,
+        smooth:{type:"cubicBezier", roundness:.3}});
+    });
+    methods.forEach((m,i)=>{
+      methodIds.add(m.id);
+      const my = centerY+(i-(methods.length-1)/2)*ROW;
+      pos[m.id]={x:COL.method, y:my};
+      nodes.push({id:m.id, x:COL.method, y:my, fixed:true, shape:"dot", size:21,
+        label:wrap(m.name||m.id,18), color:{background:"#7350cf", border:"#5636b8"},
+        borderWidth:1.5, font:{color:"#5636b8", size:14, face:"IBM Plex Sans"},
+        title:m.runnable_hint||m.description});
+      edges.push({from:m.id, to:row.id, dashes:[2,4], color:{color:"#cdc2e8", opacity:.8}, width:1,
+        smooth:{type:"cubicBezier", roundness:.25}});
+    });
+    (ex.claim_relations||[]).forEach(r=>{
+      if(r.type!=="CONTRADICTS" && r.type!=="SUPPORTS") return;
+      if(r.type==="CONTRADICTS") confCount++;
+      edges.push({from:r.from, to:r.to, label:r.type, dashes:[7,5], width:2,
+        color:{color:"#a87708"}, smooth:{type:"curvedCW", roundness:.55},
+        font:{size:11, color:"#a87708", face:"IBM Plex Sans", strokeWidth:6, strokeColor:"#f6f2e8"},
+        arrows:{to:{enabled:true, scaleFactor:.45}}});
+    });
+    (ex.cites||[]).forEach(cid=>edges.push({from:row.id, to:cid, dashes:[2,4],
+      color:{color:"#cbb264", opacity:.8}, width:1, smooth:{type:"curvedCW", roundness:.7},
+      arrows:{to:{enabled:true, scaleFactor:.45}}}));
+    y += groupH + GROUP_GAP;
+  }
+  // runs
+  const evidence = {};   // claim -> {verdict, run}
+  runs.sort((a,b)=>(a.id<b.id?-1:1));
+  let ri=0;
+  for(const r of runs){
+    if(!methodIds.has(r.method_id)) continue;
+    const checks = (r.claim_checks && r.claim_checks.items) || [];
+    const ys = checks.map(c=>pos[c.claim_id]?.y).filter(v=>v!==undefined);
+    if(pos[r.method_id]) ys.push(pos[r.method_id].y);
+    const ry = ys.length ? ys.reduce((a,b)=>a+b,0)/ys.length : ri*ROW;
+    const ok = r.status==="success";
+    nodes.push({id:r.id, x:COL.run, y:ry+(ri%2?26:-26), fixed:true, shape:"dot", size:18,
+      label:"⚡ "+r.id.replace("run-","").slice(0,22),
+      color:{background:ok?"#1ea45c":"#bb3434", border:ok?"#0c5a30":"#7e2020"}, borderWidth:2,
+      font:{color:ok?"#157f46":"#bb3434", size:13, face:"IBM Plex Sans"},
+      shadow:{enabled:true, color:ok?"rgba(30,164,92,.5)":"rgba(187,52,52,.45)", size:18, x:0, y:0},
+      title:`${r.id} · ${r.backend} · ${r.status} · ${r.duration_s}s`});
+    edges.push({from:r.id, to:r.method_id, color:{color:"#7350cf", opacity:.95}, width:1.8,
+      smooth:{type:"cubicBezier", roundness:.3}, arrows:{to:{enabled:true, scaleFactor:.45}}});
+    checks.forEach(c=>{
+      if(!pos[c.claim_id]) return;
+      const col = c.verdict==="VALIDATES" ? "#1ea45c" : "#bb3434";
+      edges.push({from:r.id, to:c.claim_id, label:c.verdict, width:2.6, color:{color:col},
+        smooth:{type:"cubicBezier", roundness:.35},
+        font:{size:11, color:col, face:"IBM Plex Sans", strokeWidth:6, strokeColor:"#f6f2e8"},
+        arrows:{to:{enabled:true, scaleFactor:.45}}});
+      evidence[c.claim_id] = {verdict:c.verdict, run:r.id};   // latest run wins
+    });
+    ri++;
+  }
+  // headers
+  [["PAPERS",COL.paper],["CLAIMS",COL.claim],["METHODS",COL.method],["EXPERIMENT RUNS",COL.run]]
+    .forEach(([t,x],i)=>nodes.push({id:"__h"+i, x, y:-110, fixed:true, shape:"text",
+      label:t.split("").join(" "), font:{color:"#9a937c", size:16, face:"IBM Plex Sans"}}));
+  return {nodes, edges, evidence, claimText, claimCount, confCount, runCount:ri};
+}
+
+function fitWidth(){
+  const el = document.getElementById("net");
+  const scale = Math.min(Math.max((el.clientWidth-60)/(COL.run+340), .5), 1.15);
+  network.moveTo({position:{x:(COL.run+150)/2, y:(el.clientHeight/scale)/2-150}, scale});
+}
+
+(async ()=>{
+  const [papers, runs] = await Promise.all([fetchAll("papers"), fetchAll("runs")]);
+  const g = build(papers, runs.filter(r=>r.method_id && r.method_id.length>1));
+  document.getElementById("st-papers").textContent = papers.length;
+  document.getElementById("st-claims").textContent = g.claimCount;
+  document.getElementById("st-conf").textContent = g.confCount;
+  document.getElementById("st-runs").textContent = g.runCount;
+
+  network = new vis.Network(document.getElementById("net"),
+    {nodes:new vis.DataSet(g.nodes), edges:new vis.DataSet(g.edges)},
+    {physics:false, interaction:{hover:true, tooltipDelay:120, dragNodes:false}});
+  network.once("afterDrawing", fitWidth);
+  document.getElementById("zoom-in").onclick = ()=>network.moveTo({scale:network.getScale()*1.35});
+  document.getElementById("zoom-out").onclick = ()=>network.moveTo({scale:network.getScale()/1.35});
+  document.getElementById("zoom-fit").onclick = ()=>network.fit();
+
+  // evidence table
+  const rows = Object.keys(g.claimText).sort().map(cid=>{
+    const ev = g.evidence[cid];
+    const t = g.claimText[cid]||"";
+    const snippet = t.length>110 ? t.slice(0,108)+"…" : t;
+    const pill = !ev ? `<span class="pill none">no runs yet</span>`
+      : `<span class="pill ${ev.verdict.toLowerCase()}">${ev.verdict}</span><span class="run-ref">${ev.run}</span>`;
+    return `<tr><td><span class="cid">${cid}</span><span class="ctext">${snippet}</span></td><td>${pill}</td></tr>`;
+  });
+  document.getElementById("evidence").innerHTML = `<table>${rows.join("")}</table>`;
+})();
+</script>
+</body>
+</html>

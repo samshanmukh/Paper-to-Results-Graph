@@ -6,3 +6,4 @@ __pycache__/
 .rocketride/
 generated/
 runs/
+deploy/site.zip
