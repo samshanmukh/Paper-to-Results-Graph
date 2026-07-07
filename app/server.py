@@ -92,24 +92,61 @@ class Ask(BaseModel):
     question: str
 
 
+# One shared RocketRide connection + pipeline token. The engine refuses a
+# second `use` of a running pipeline ("Pipeline is already running"), so we
+# start it once and attach to the existing task on subsequent requests.
+_rr: dict = {"client": None, "token": None}
+
+
+async def _pipeline_token():
+    import json as _json
+
+    from rocketride import RocketRideClient
+
+    if _rr["client"] is None:
+        client = RocketRideClient()
+        await client.connect()
+        _rr["client"] = client
+    client = _rr["client"]
+    if _rr["token"] is None:
+        try:
+            result = await client.use(filepath=PIPE)
+            _rr["token"] = result["token"]
+        except RuntimeError as e:
+            if "already running" not in str(e).lower():
+                raise
+            with open(PIPE) as f:
+                project_id = _json.load(f)["project_id"]
+            _rr["token"] = await client.get_task_token(project_id, "chat_1")
+            if not _rr["token"]:
+                raise
+    return client, _rr["token"]
+
+
 @app.post("/api/ask")
 async def ask(body: Ask):
-    from rocketride import RocketRideClient
     from rocketride.schema import Question
 
-    client = RocketRideClient()
-    await client.connect()
     try:
-        result = await client.use(filepath=PIPE)
+        client, token = await _pipeline_token()
         q = Question()
         q.addQuestion(body.question)
-        response = await client.chat(token=result["token"], question=q)
-        answers = response.get("answers", [])
-        if not answers:
-            for key, lane in response.get("result_types", {}).items():
-                if lane == "answers":
-                    answers = response.get(key, [])
-                    break
-        return {"answer": answers[0] if answers else "(no answer from agent)"}
-    finally:
-        await client.disconnect()
+        response = await client.chat(token=token, question=q)
+    except Exception as e:
+        # drop the cached session so the next ask reconnects fresh
+        stale = _rr.pop("client", None)
+        _rr.update({"client": None, "token": None})
+        if stale is not None:
+            try:
+                await stale.disconnect()
+            except Exception:
+                pass
+        return {"answer": f"(agent unavailable: {type(e).__name__}: {e})"}
+
+    answers = response.get("answers", [])
+    if not answers:
+        for key, lane in response.get("result_types", {}).items():
+            if lane == "answers":
+                answers = response.get(key, [])
+                break
+    return {"answer": answers[0] if answers else "(no answer from agent)"}

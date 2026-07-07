@@ -288,8 +288,10 @@ async function ask(){
   const out = document.getElementById("ask-answer");
   out.classList.add("show"); out.textContent = "thinking (agent waves: graph → cypher → synthesis)…";
   try{
-    const r = await (await fetch("/api/ask", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({question:q})})).json();
-    out.textContent = r.answer;
+    const res = await fetch("/api/ask", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({question:q})});
+    const raw = await res.text();
+    try{ out.textContent = JSON.parse(raw).answer; }
+    catch{ out.textContent = `agent error (HTTP ${res.status}): ${raw.slice(0,200)}`; }
   }catch(e){ out.textContent = "agent error: "+e; }
 }
 document.getElementById("ask-btn").addEventListener("click", ask);
