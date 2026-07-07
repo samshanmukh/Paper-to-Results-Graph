@@ -136,7 +136,7 @@ Before a live demo: `.venv/bin/python scripts/reset_demo.py` (pristine "no runs 
 | RocketRide agent pipeline (graph Q&A with citations) | ✅ verified |
 | Demo UI | ✅ verified in browser |
 | Butterbase (AI gateway + papers/runs persistence) | ✅ verified |
-| Deployed public URL | 🔶 pending deploy decision |
+| Deployed public URL | ✅ [paper-to-results-graph.butterbase.dev](https://paper-to-results-graph.butterbase.dev) |
 
 ## Why this beats "Paper2Code"
 
