@@ -183,6 +183,95 @@ def upload_arxiv(body: ArxivUpload):
     return _ingest_paper_text(_pdf_to_text(blob))
 
 
+CONDUCT_PIPE = os.path.join(ROOT, "pipelines", "paper-orchestrator.pipe")
+
+
+class Conduct(BaseModel):
+    message: str
+
+
+def _method_exists(method_id: str) -> bool:
+    with get_driver() as driver:
+        recs, _, _ = driver.execute_query(
+            "MATCH (m:Method {id: $id}) RETURN count(m) AS c",
+            id=method_id, database_=DATABASE)
+        return recs[0]["c"] == 1
+
+
+@app.post("/api/conduct")
+async def conduct(body: Conduct):
+    """Conductor as a VERIFIED WORKFLOW ENGINE (plan §12): deterministic
+    playbook over the specialist sub-agent pipes, with acceptance checks in
+    real code between steps, one corrective retry, and canonical-spine
+    fallbacks. Sub-agents think; Python verifies."""
+    steps = []
+
+    # STEP 1 — Investigator (checks V1/V3/V4, retry once)
+    parsed = _parse_p2r_block(await _agent_chat(INVESTIGATE_PIPE, INVESTIGATE_PROMPT))
+    payload = parsed.get("payload") or {}
+    method_id = payload.get("recommended_method_id")
+    if not (parsed["header_present"] and method_id and _method_exists(method_id)):
+        parsed = _parse_p2r_block(await _agent_chat(
+            INVESTIGATE_PIPE,
+            "Your prior response failed check V3_method_recommended: the "
+            "recommended_method_id must be an EXACT Method.id from a Neo4j query "
+            "(e.g. wilson2017-m1). Re-run the audit and return the required "
+            "---P2R--- block."))
+        payload = parsed.get("payload") or {}
+        method_id = payload.get("recommended_method_id")
+    if not (method_id and _method_exists(method_id)):
+        # conservative fallback: deterministic pick — untested method
+        with get_driver() as driver:
+            recs, _, _ = driver.execute_query(
+                """
+                MATCH (m:Method) WHERE NOT (:Run)-[:IMPLEMENTS]->(m)
+                RETURN m.id AS id LIMIT 1
+                """, database_=DATABASE)
+            method_id = recs[0]["id"] if recs else "wilson2017-m1"
+        steps.append(f"[investigator] ✗ id check failed twice — fell back to "
+                     f"deterministic pick: {method_id}")
+    else:
+        steps.append(f"[investigator] ✓ {len(payload.get('conflicts') or [])} conflicts, "
+                     f"{len(payload.get('untested_claims') or [])} untested — "
+                     f"recommended {method_id}")
+
+    # STEP 2 — Executor: canonical spine (codegen -> sandbox -> curate)
+    record = execute(method_id, "auto")
+    curate(record)
+    try:
+        from app.butterbase import sync_run
+        sync_run(record)
+    except Exception:
+        pass
+    checks = (record.get("result") or {}).get("claim_checks", [])
+    if record.get("error"):
+        steps.append(f"[executor] ✗ {record['run_id']} failed: {record['error']} "
+                     f"(failure curated as evidence)")
+    else:
+        verdicts = ", ".join(f"{c['verdict']} {c['claim_id']}" for c in checks)
+        steps.append(f"[executor] ✓ {record['run_id']} [{record['backend']}] "
+                     f"{record['duration_s']}s — {verdicts}")
+
+    # STEP 3 — Reporter (checks R1 + real ids, retry once)
+    rparsed = _parse_p2r_block(await _agent_chat(BRIEF_PIPE, BRIEF_PROMPT))
+    rpayload = rparsed.get("payload") or {}
+    covered = rpayload.get("run_ids_covered") or []
+    if not (rparsed["header_present"] and covered):
+        rparsed = _parse_p2r_block(await _agent_chat(
+            BRIEF_PIPE,
+            "Your prior response failed check R1_runs_covered. Query the Run "
+            "nodes again and return the required ---P2R--- block with "
+            "run_ids_covered copied exactly from the query."))
+        rpayload = rparsed.get("payload") or {}
+        covered = rpayload.get("run_ids_covered") or []
+    steps.append(f"[reporter] {'✓' if covered else '✗'} brief over "
+                 f"{len(covered)} runs — {rpayload.get('headline', '')[:90]}")
+
+    answer = "\n".join(steps) + "\n\n" + (rparsed.get("prose") or "")
+    return {"answer": answer, "steps": steps, "run_id": record.get("run_id"),
+            "method_id": method_id, "investigator": payload, "reporter": rpayload}
+
+
 class Ask(BaseModel):
     question: str
 
@@ -219,9 +308,23 @@ async def _pipeline_token(pipe_path: str):
     return client, _rr["tokens"][pipe_path]
 
 
+def _core_counts() -> tuple:
+    with get_driver() as driver:
+        recs, _, _ = driver.execute_query(
+            "RETURN count { MATCH (p:Paper) } AS p, count { MATCH (r:Run) } AS r",
+            database_=DATABASE)
+        return recs[0]["p"], recs[0]["r"]
+
+
 async def _agent_chat(pipe_path: str, question_text: str) -> str:
     from rocketride.schema import Question
 
+    # LLM-generated Cypher has (rarely) emitted write clauses despite the
+    # read-only contract; snapshot core counts so we can self-heal from disk.
+    try:
+        before = _core_counts()
+    except Exception:
+        before = None
     try:
         client, token = await _pipeline_token(pipe_path)
         q = Question()
@@ -244,7 +347,21 @@ async def _agent_chat(pipe_path: str, question_text: str) -> str:
             if lane == "answers":
                 answers = response.get(key, [])
                 break
-    return answers[0] if answers else "(no answer from agent)"
+    answer = answers[0] if answers else "(no answer from agent)"
+
+    if before is not None:
+        try:
+            after = _core_counts()
+            if after[0] < before[0] or after[1] < before[1]:
+                from app.restore import restore_all
+                restored = restore_all()
+                answer += (f"\n\n[graph guard] a generated query removed nodes "
+                           f"(papers {before[0]}→{after[0]}, runs {before[1]}→{after[1]}); "
+                           f"auto-restored {restored['papers']} papers + "
+                           f"{restored['runs']} runs from disk.")
+        except Exception:
+            pass
+    return answer
 
 
 def _parse_p2r_block(answer: str) -> dict:

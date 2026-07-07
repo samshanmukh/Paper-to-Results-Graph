@@ -372,6 +372,7 @@ div.vis-tooltip{
       <div class="head">Ask the research agent <span class="idx">rocketride × neo4j</span></div>
       <div id="qa-log"></div>
       <div id="suggest">
+        <span class="sug act" data-act="conduct">🎯 Full workflow: investigate → run → brief</span>
         <span class="sug act" data-act="investigate">🔎 Investigate: what should we test?</span>
         <span class="sug act" data-act="brief">📋 Evidence brief</span>
         <span class="sug">Which claims have executable evidence?</span>
@@ -720,25 +721,32 @@ document.getElementById("ask-btn").addEventListener("click", ()=>ask());
 document.getElementById("ask-input").addEventListener("keydown", e=>{ if(e.key==="Enter") ask(); });
 document.querySelectorAll(".sug:not(.act)").forEach(s=>s.addEventListener("click", ()=>ask(s.textContent)));
 
-/* specialist agent actions (investigator / reporter sub-pipelines) */
-const AGENT_LABEL = {investigate:"investigator", brief:"reporter"};
+/* specialist agent actions (conductor / investigator / reporter) */
+const AGENT_LABEL = {conduct:"conductor", investigate:"investigator", brief:"reporter"};
 document.querySelectorAll(".sug.act").forEach(s=>s.addEventListener("click", async ()=>{
   const act = s.dataset.act;
   const qaLog = document.getElementById("qa-log");
   const box = document.createElement("div");
   box.className = "qa";
   box.innerHTML = `<div class="q">${s.textContent}</div>
-    <div class="a"><span class="thinking"><i></i><i></i><i></i></span> ${AGENT_LABEL[act]} agent: graph audit in progress…</div>`;
+    <div class="a"><span class="thinking"><i></i><i></i><i></i></span> ${AGENT_LABEL[act]} agent: ${act==="conduct" ? "orchestrating specialists (investigate → run → brief, ~2 min)" : "graph audit in progress"}…</div>`;
   qaLog.appendChild(box); qaLog.scrollTop = qaLog.scrollHeight;
   const a = box.querySelector(".a");
   try{
-    const res = await fetch(`/api/${act}`, {method:"POST"});
+    const opts = act==="conduct"
+      ? {method:"POST", headers:{"Content-Type":"application/json"},
+         body:JSON.stringify({message:"Full evidence workflow: investigate, run the recommended method, brief."})}
+      : {method:"POST"};
+    if(act==="conduct") log("$ conductor: playbook A (investigate → execute → brief)", "t-warn");
+    const res = await fetch(`/api/${act}`, opts);
     const r = await res.json();
     if(!res.ok) throw new Error(r.detail || "failed");
     const badge = r.header_present ? `[${r.agent||AGENT_LABEL[act]}] checks parsed ✓\n\n` : "";
     a.innerHTML = mdLite(badge + (r.answer||""));
+    if(r.steps) r.steps.forEach(st=>log(st, st.includes("✓") ? "t-ok" : "t-bad"));
     if(r.payload?.recommended_method_id)
       a.innerHTML += mdLite(`\n\n→ recommended next run: **${r.payload.recommended_method_id}** (select it in the graph and press Run)`);
+    if(act==="conduct"){ await loadGraph(true); await loadEvidence(); }
   }catch(e){ a.textContent = `${AGENT_LABEL[act]} error: ${e.message}`; }
   qaLog.scrollTop = qaLog.scrollHeight;
 }));

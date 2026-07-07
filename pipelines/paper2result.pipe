@@ -143,7 +143,7 @@
           "user": "${ROCKETRIDE_NEO4J_USER}",
           "password": "${ROCKETRIDE_NEO4J_PASSWORD}",
           "database": "neo4j",
-          "db_description": "Research knowledge graph linking papers to executable evidence. Nodes: Paper(id,title,year,arxiv,topic), Author(name), Claim(id,text,metric), Method(id,name,description,runnable_hint), Dataset(id,name), Task(id,name), Run(id,backend,exit_code,duration_s,status,metrics), Artifact(id,kind,content). Edges: WROTE, CITES, FROM (claim to paper), DESCRIBED_IN (method to paper), EVALUATED_ON, ADDRESSES, SUPPORTS/CONTRADICTS (claim to claim), IMPLEMENTS (run to method), VALIDATES/REFUTES (run to claim), PRODUCED (run to artifact). NOTE: the instance also contains unrelated SceneStyle/Product/Creator nodes from another project — ignore them.",
+          "db_description": "STRICT READ-ONLY: generate ONLY MATCH/RETURN/WITH/ORDER/COUNT queries. NEVER generate CREATE, MERGE, DELETE, DETACH, SET, or REMOVE clauses — any write corrupts irreplaceable research evidence and is forbidden. Research knowledge graph linking papers to executable evidence. Nodes: Paper(id,title,year,arxiv,topic), Author(name), Claim(id,text,metric), Method(id,name,description,runnable_hint), Dataset(id,name), Task(id,name), Run(id,backend,exit_code,duration_s,status,metrics), Artifact(id,kind,content). Edges: WROTE, CITES, FROM (claim to paper), DESCRIBED_IN (method to paper), EVALUATED_ON, ADDRESSES, SUPPORTS/CONTRADICTS (claim to claim), IMPLEMENTS (run to method), VALIDATES/REFUTES (run to claim), PRODUCED (run to artifact). NOTE: the instance also contains unrelated SceneStyle/Product/Creator nodes from another project — ignore them.",
           "allow_execute": false,
           "max_attempts": 5
         },

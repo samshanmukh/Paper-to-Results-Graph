@@ -65,13 +65,14 @@ def run_daytona(code_path: str, timeout: int = 300, params: dict | None = None,
 
     daytona = Daytona(DaytonaConfig(api_key=os.environ["DAYTONA_API_KEY"]))
     started = time.monotonic()
-    # Named + labeled so runs are visible in the Daytona dashboard; auto_stop /
-    # auto_delete clean up instead of an instant delete() judges never see.
+    # Named + labeled so runs are visible in the Daytona dashboard while they
+    # execute; ephemeral + short auto_stop so they self-delete and never pile
+    # up against the org disk quota.
     sandbox = daytona.create(CreateSandboxFromSnapshotParams(
         name=run_id[:60],
         labels={"app": "paper2result", "run_id": run_id},
-        auto_stop_interval=10,    # stop 10 min after last activity
-        auto_delete_interval=120, # delete 2 h after stop
+        ephemeral=True,          # deleted automatically once stopped
+        auto_stop_interval=5,    # stop 5 min after last activity
     ))
     # default sandbox image may lack numpy; install quietly first
     sandbox.process.exec("pip install -q numpy", timeout=180)
@@ -103,8 +104,16 @@ def execute(method_id: str, backend: str = "auto", params: dict | None = None) -
         "error": None,
     }
     try:
-        outcome = (run_daytona(code_path, params=params, run_id=run_id)
-                   if backend == "daytona" else run_local(code_path, params=params))
+        if backend == "daytona":
+            try:
+                outcome = run_daytona(code_path, params=params, run_id=run_id)
+            except Exception as e:
+                # sandbox infra trouble (quota, network) must not kill the
+                # demo — fall back to local and record why
+                outcome = run_local(code_path, params=params)
+                outcome["fallback_reason"] = f"daytona unavailable: {str(e)[:200]}"
+        else:
+            outcome = run_local(code_path, params=params)
         record.update(outcome)
         if record["exit_code"] == 0:
             try:

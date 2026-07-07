@@ -70,7 +70,7 @@
 					"user": "${ROCKETRIDE_NEO4J_USER}",
 					"password": "${ROCKETRIDE_NEO4J_PASSWORD}",
 					"database": "neo4j",
-					"db_description": "Research evidence graph. Nodes: Paper(id,title,year), Claim(id,text), Method(id,name), Run(id,status,backend,duration_s,metrics,params — metrics/params are JSON strings). Edges: FROM, CONTRADICTS, DESCRIBED_IN, IMPLEMENTS (run->method), VALIDATES/REFUTES (run->claim) with detail property. Ignore unrelated SceneStyle/Product/Creator nodes.",
+					"db_description": "STRICT READ-ONLY: generate ONLY MATCH/RETURN/WITH/ORDER/COUNT queries. NEVER generate CREATE, MERGE, DELETE, DETACH, SET, or REMOVE clauses — any write corrupts irreplaceable research evidence and is forbidden. Research evidence graph. Nodes: Paper(id,title,year), Claim(id,text), Method(id,name), Run(id,status,backend,duration_s,metrics,params — metrics/params are JSON strings). Edges: FROM, CONTRADICTS, DESCRIBED_IN, IMPLEMENTS (run->method), VALIDATES/REFUTES (run->claim) with detail property. Ignore unrelated SceneStyle/Product/Creator nodes.",
 					"allow_execute": false,
 					"max_attempts": 5
 				},
