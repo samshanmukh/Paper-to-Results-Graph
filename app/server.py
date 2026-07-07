@@ -165,22 +165,17 @@ class ArxivUpload(BaseModel):
 
 @app.post("/api/upload-arxiv")
 def upload_arxiv(body: ArxivUpload):
-    import re
-    import urllib.request
+    from app.arxiv import fetch_arxiv_text, parse_arxiv_id
 
-    m = re.search(r"(\d{4}\.\d{4,5})(v\d+)?", body.url.strip())
-    if not m:
-        raise HTTPException(400, "couldn't find an arXiv id in that link (expected e.g. arxiv.org/abs/1907.08610)")
-    arxiv_id = m.group(1)
-    req = urllib.request.Request(
-        f"https://export.arxiv.org/pdf/{arxiv_id}",
-        headers={"User-Agent": "paper2result/1.0 (hackathon demo)"})
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            blob = resp.read()
+        parse_arxiv_id(body.url)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    try:
+        text = fetch_arxiv_text(body.url)
     except Exception as e:
         raise HTTPException(502, f"arXiv fetch failed: {e}")
-    return _ingest_paper_text(_pdf_to_text(blob))
+    return _ingest_paper_text(text)
 
 
 class Ask(BaseModel):
