@@ -1,0 +1,40 @@
+{
+  "paper": {
+    "id": "adam2014",
+    "title": "Adam: A Method for Stochastic Optimization",
+    "authors": ["Diederik P. Kingma", "Jimmy Ba"],
+    "year": 2014,
+    "arxiv": "1412.6980",
+    "topic": "adaptive-optimizers"
+  },
+  "claims": [
+    {
+      "id": "adam2014-c1",
+      "text": "Adam converges faster than SGD and other first-order methods on logistic regression, MLPs, and CNNs.",
+      "metric": "training loss per epoch"
+    },
+    {
+      "id": "adam2014-c2",
+      "text": "Adam requires little hyperparameter tuning; default settings (alpha=0.001, beta1=0.9, beta2=0.999) work well across problems.",
+      "metric": null
+    },
+    {
+      "id": "adam2014-c3",
+      "text": "Adam's parameter updates are invariant to diagonal rescaling of the gradients.",
+      "metric": null
+    }
+  ],
+  "methods": [
+    {
+      "id": "adam2014-m1",
+      "name": "Adam optimizer",
+      "description": "First-order optimizer using bias-corrected exponential moving averages of gradient and squared gradient: m_t, v_t with decay beta1/beta2; update theta -= alpha * m_hat / (sqrt(v_hat) + eps).",
+      "runnable_hint": "Implement Adam and SGD from scratch in numpy; train logistic regression on a synthetic dataset; compare training loss curves over epochs. Metric: final training loss for Adam vs SGD."
+    }
+  ],
+  "datasets": [
+    {"id": "mnist", "name": "MNIST"}
+  ],
+  "cites": [],
+  "claim_relations": []
+}

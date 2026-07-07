@@ -1,0 +1,88 @@
+{
+  "paper": {
+    "id": "balachandran2025",
+    "title": "Inference-Time Scaling for Complex Tasks: Where We Stand and What Lies Ahead",
+    "authors": [
+      "Vidhisha Balachandran",
+      "Jingya Chen",
+      "Lingjiao Chen",
+      "Shivam Garg",
+      "Neel Joshi",
+      "Yash Lara",
+      "John Langford",
+      "Besmira Nushi",
+      "Vibhav Vineet",
+      "Yue Wu",
+      "Safoora Yousefi"
+    ],
+    "year": 2025,
+    "arxiv": null,
+    "topic": "inference-time-scaling-llms"
+  },
+  "claims": [
+    {
+      "id": "balachandran2025-c1",
+      "text": "Inference-time scaling improves performance across tasks but effectiveness varies by domain with diminishing returns as complexity increases",
+      "metric": "accuracy vs difficulty"
+    },
+    {
+      "id": "balachandran2025-c2",
+      "text": "Higher token consumption does not indicate higher accuracy across models; substantial token usage variability exists even for correct answers",
+      "metric": "accuracy vs tokens"
+    },
+    {
+      "id": "balachandran2025-c3",
+      "text": "Continued scaling with perfect verifiers or superscaling (50x calls) consistently improves performance and allows conventional models to approach reasoning model results on some tasks",
+      "metric": "best-of-n accuracy"
+    }
+  ],
+  "methods": [
+    {
+      "id": "balachandran2025-m1",
+      "name": "Toy reproduction experiment",
+      "description": "Simplified numpy simulation of the paper's key claim about inference-time-scaling-llms: Inference-time scaling improves performance across tasks but effectiveness varies by domain with diminishing returns as ",
+      "runnable_hint": "Build a tiny synthetic task where multiple random candidate solutions are sampled (best-of-n / inference-time scaling). Score each with a simple verifier, pick the best, and report accuracy vs n_candidates. Metric: accuracy_at_n vs n_candidates.",
+      "params": [
+        {
+          "name": "n_candidates",
+          "default": 8,
+          "description": "independent samples per problem (best-of-n width)"
+        },
+        {
+          "name": "n_trials",
+          "default": 200,
+          "description": "number of synthetic problems to evaluate"
+        },
+        {
+          "name": "noise",
+          "default": 0.3,
+          "description": "difficulty / noise level of the synthetic task"
+        }
+      ]
+    }
+  ],
+  "datasets": [
+    {
+      "id": "aime",
+      "name": "AIME"
+    },
+    {
+      "id": "gpqa-diamond",
+      "name": "GPQA Diamond"
+    },
+    {
+      "id": "3sat-search",
+      "name": "3SAT-Search"
+    },
+    {
+      "id": "tsp-opt",
+      "name": "TSP-Opt"
+    },
+    {
+      "id": "ba-calendar",
+      "name": "BA-Calendar"
+    }
+  ],
+  "cites": [],
+  "claim_relations": []
+}

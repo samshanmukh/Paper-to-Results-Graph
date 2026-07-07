@@ -1,0 +1,51 @@
+Title: Decoupled Weight Decay Regularization
+Authors: Ilya Loshchilov, Frank Hutter
+Year: 2017
+arXiv: 1711.05101
+
+[Excerpt — abstract and key sections condensed for hackathon demo]
+
+ABSTRACT
+L2 regularization and weight decay regularization are equivalent for standard
+stochastic gradient descent (when rescaled by the learning rate), but as we
+demonstrate this is not the case for adaptive gradient algorithms, such as
+Adam. While common implementations of these algorithms employ L2
+regularization (often calling it "weight decay" in what may be misleading due
+to the inequivalence we expose), we propose a simple modification to recover
+the original formulation of weight decay regularization by decoupling the
+weight decay from the optimization steps taken w.r.t. the loss function. We
+provide empirical evidence that our proposed modification (i) decouples the
+optimal choice of weight decay factor from the setting of the learning rate
+for both standard SGD and Adam and (ii) substantially improves Adam's
+generalization performance, allowing it to compete with SGD with momentum on
+image classification datasets.
+
+METHOD (AdamW)
+Standard Adam applies L2 regularization by adding lambda * theta to the
+gradient before the adaptive moment computation. AdamW instead decouples the
+weight decay, applying it directly to the parameters at update time:
+
+    theta_t = theta_{t-1} - alpha * (m_hat / (sqrt(v_hat) + epsilon)
+              + lambda * theta_{t-1})
+
+This makes the effective regularization independent of the gradient magnitude
+scaling performed by the adaptive method.
+
+CLAIMS
+1. L2 regularization and weight decay are NOT equivalent for Adam; standard
+   Adam-with-L2 regularizes weights with large gradient magnitudes less than
+   intended.
+2. Decoupled weight decay (AdamW) substantially improves Adam's
+   generalization, making it competitive with SGD with momentum on image
+   classification (CIFAR-10, ImageNet32x32).
+3. Decoupling makes the optimal weight decay factor independent of the
+   learning rate, simplifying hyperparameter tuning.
+
+EXPERIMENTS
+CIFAR-10 and ImageNet32x32 with ResNet architectures: AdamW closes the
+generalization gap between Adam and SGD-with-momentum reported in prior work.
+
+CITATIONS
+- Kingma & Ba 2014 (Adam)
+- Wilson et al. 2017 (The Marginal Value of Adaptive Gradient Methods)
+- Hanson & Pratt 1988 (weight decay)

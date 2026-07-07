@@ -3,7 +3,10 @@
 Endpoints:
   GET  /             -> landing page
   GET  /demo         -> live demo page
-  GET  /api/graph    -> full project graph (nodes + edges) for visualization
+  GET  /api/workspace     -> workspace status (papers, empty, runs)
+  POST /api/workspace/new -> blank workspace (wipe graph + papers)
+  POST /api/workspace/load-demo -> restore bundled demo papers
+  POST /api/reset         -> clear runs on current workspace (pristine evidence)
   GET  /api/evidence -> evidence table rows
   POST /api/run/{method_id}?backend=auto|local|daytona -> closed loop:
        codegen -> execute -> curate -> return run record
@@ -61,6 +64,36 @@ def reset_demo():
         return reset_demo_state()
     except Exception as e:
         raise HTTPException(500, f"reset failed: {e}")
+
+
+@app.get("/api/workspace")
+def workspace_info():
+    from app.workspace import workspace_status
+
+    try:
+        return workspace_status()
+    except Exception as e:
+        raise HTTPException(500, f"workspace status failed: {e}")
+
+
+@app.post("/api/workspace/new")
+def workspace_new():
+    from app.workspace import new_workspace
+
+    try:
+        return new_workspace()
+    except Exception as e:
+        raise HTTPException(500, f"new workspace failed: {e}")
+
+
+@app.post("/api/workspace/load-demo")
+def workspace_load_demo():
+    from app.workspace import load_demo_workspace
+
+    try:
+        return load_demo_workspace()
+    except Exception as e:
+        raise HTTPException(500, f"load demo failed: {e}")
 
 
 @app.get("/api/graph")

@@ -1,0 +1,49 @@
+Title: Adam: A Method for Stochastic Optimization
+Authors: Diederik P. Kingma, Jimmy Ba
+Year: 2014
+arXiv: 1412.6980
+
+[Excerpt — abstract and key sections condensed for hackathon demo]
+
+ABSTRACT
+We introduce Adam, an algorithm for first-order gradient-based optimization of
+stochastic objective functions, based on adaptive estimates of lower-order
+moments. The method is straightforward to implement, is computationally
+efficient, has little memory requirements, is invariant to diagonal rescaling
+of the gradients, and is well suited for problems that are large in terms of
+data and/or parameters. The hyper-parameters have intuitive interpretations
+and typically require little tuning. Empirical results demonstrate that Adam
+works well in practice and compares favorably to other stochastic optimization
+methods.
+
+METHOD
+Adam maintains exponential moving averages of the gradient (m_t) and the
+squared gradient (v_t), with decay rates beta1 and beta2. The moving averages
+are bias-corrected, and parameters are updated as:
+
+    m_t = beta1 * m_{t-1} + (1 - beta1) * g_t
+    v_t = beta2 * v_{t-1} + (1 - beta2) * g_t^2
+    m_hat = m_t / (1 - beta1^t)
+    v_hat = v_t / (1 - beta2^t)
+    theta_t = theta_{t-1} - alpha * m_hat / (sqrt(v_hat) + epsilon)
+
+Default settings: alpha=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8.
+
+CLAIMS
+1. Adam converges faster than SGD and other first-order methods on the tested
+   problems (logistic regression on MNIST, multi-layer neural networks,
+   convolutional networks).
+2. Adam requires little hyperparameter tuning; the default settings work well
+   across a broad range of problems.
+3. The magnitude of parameter updates is invariant to diagonal rescaling of
+   the gradients.
+
+EXPERIMENTS
+Logistic regression on MNIST: Adam achieves lower training cost per epoch than
+SGD with Nesterov momentum and AdaGrad. Multi-layer perceptron and CNN
+experiments show similar faster convergence in training loss.
+
+CITATIONS
+- Duchi et al. 2011 (AdaGrad)
+- Tieleman & Hinton 2012 (RMSProp)
+- Polyak 1964 (momentum)

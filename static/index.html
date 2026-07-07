@@ -48,7 +48,17 @@ a:hover{color:var(--purple-dim)}
 .btn-ghost:hover{background:#F4F4F1}
 .btn-dark{font-size:13px;color:#fff;background:var(--ink);border:none;
   padding:7px 13px;border-radius:8px;cursor:pointer;font-weight:500}
-.btn-dark:hover{background:#2a2a30}
+.btn-ghost:disabled{opacity:0.45;cursor:not-allowed}
+
+/* empty workspace */
+#empty-workspace{position:absolute;inset:0;z-index:4;display:none;flex-direction:column;
+  align-items:center;justify-content:center;text-align:center;padding:40px;
+  background:rgba(251,251,249,0.92);backdrop-filter:blur(2px)}
+#empty-workspace.show{display:flex}
+#empty-workspace h3{font-size:20px;font-weight:600;margin-bottom:8px}
+#empty-workspace p{font-size:14px;color:var(--dim);max-width:360px;line-height:1.55;margin-bottom:18px}
+#empty-workspace .hint{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--faint);margin-top:14px}
+.evidence-empty{text-align:center;color:var(--faint);font-size:13.5px;padding:48px 20px;line-height:1.55}
 
 /* main layout */
 .main{flex:1;min-height:0;display:flex}
@@ -214,14 +224,16 @@ div.vis-tooltip{font-size:11px!important;color:var(--ink)!important;background:#
         <span class="brand-dot"></span>
         <span class="brand-name">Verigraph</span>
       </a>
-      <span class="badge">live demo</span>
+      <span class="badge" id="workspace-badge">workspace</span>
     </div>
     <div class="topbar-right">
       <div class="db-status">
         <span class="db-dot" id="db-dot"></span>
         <span id="db-label">Neo4j Aura · – nodes</span>
       </div>
-      <button class="btn-ghost" id="reset-btn" title="Clear runs and reload papers">↺ Reset demo</button>
+      <button class="btn-ghost" id="new-workspace-btn" title="Start fresh with your own papers">⊕ New workspace</button>
+      <button class="btn-ghost" id="load-demo-btn" title="Load bundled demo papers">Load demo</button>
+      <button class="btn-ghost" id="reset-btn" title="Clear runs on current papers">↺ Reset runs</button>
       <button class="btn-dark" id="upload-btn">+ Add paper</button>
     </div>
   </header>
@@ -238,6 +250,12 @@ div.vis-tooltip{font-size:11px!important;color:var(--ink)!important;background:#
         <span class="legend-hint" id="run-hint">– CONTRADICTS · no runs yet</span>
       </div>
       <div class="graph-area">
+        <div id="empty-workspace">
+          <h3>Your workspace is empty</h3>
+          <p>Add research papers via arXiv link or PDF upload. Verigraph will extract claims, methods, and cross-paper conflicts — then you can run any method in the sandbox.</p>
+          <button class="btn-dark" id="empty-add-btn">+ Add your first paper</button>
+          <p class="hint">or <a href="#" id="empty-load-demo" style="color:var(--purple)">load the bundled demo papers</a></p>
+        </div>
         <div id="net"></div>
         <div id="zoom-ctl">
           <button id="zoom-in" title="zoom in">+</button>
@@ -306,7 +324,7 @@ div.vis-tooltip{font-size:11px!important;color:var(--ink)!important;background:#
 <div id="modal-backdrop">
   <div id="modal">
     <div class="m-head">
-      <h2>Add a paper</h2>
+      <h2 id="modal-title">Add a paper</h2>
       <span>extracts claims, methods &amp; conflicts into the graph</span>
       <button id="modal-close">✕</button>
     </div>
@@ -493,10 +511,14 @@ async function loadGraph(focusNew=false){
   const nConf = g.edges.filter(e=>e.rel==="CONTRADICTS").length;
   const nRuns = count("Run");
   const nNodes = g.nodes.length;
+  const nPapers = count("Paper");
+  const isEmpty = nPapers === 0;
 
   document.getElementById("db-label").textContent = `Neo4j Aura · ${nNodes} nodes`;
   document.getElementById("run-hint").textContent =
     `${nConf} CONTRADICTS · ${nRuns ? nRuns+" run"+(nRuns>1?"s":"") : "no runs yet"}`;
+  updateWorkspaceBadge(nPapers, isEmpty);
+  showEmptyState(isEmpty);
 
   const existing = nodesDS ? new Set(nodesDS.getIds()) : new Set();
   const nodes = buildLayout(g);
@@ -578,8 +600,37 @@ function selectMethod(raw){
   document.getElementById("run-btn").disabled = running;
 }
 
+const emptyWorkspace = document.getElementById("empty-workspace");
+
+function updateWorkspaceBadge(papers, empty){
+  const el = document.getElementById("workspace-badge");
+  el.textContent = empty ? "empty workspace" : `${papers} paper${papers!==1?"s":""}`;
+}
+
+function showEmptyState(empty){
+  emptyWorkspace.classList.toggle("show", empty);
+}
+
+function resetUIState(agentMsg){
+  selectedMethod = null; methodParams = []; lastEvidence = {};
+  methodCard.style.display = "none";
+  consoleLogWrap.style.display = "none";
+  consoleEmpty.style.display = "block";
+  clearLog();
+  document.getElementById("run-btn").classList.remove("running","done");
+  document.getElementById("run-btn").textContent = "▶ RUN THIS METHOD";
+  document.getElementById("run-btn").disabled = true;
+  chatArea.innerHTML = `<div class="chat-bubble agent">${agentMsg}</div>`;
+}
+
 async function loadEvidence(){
   const rows = await (await fetch("/api/evidence")).json();
+  if(!rows.length){
+    document.getElementById("evidence").innerHTML =
+      '<div class="evidence-empty">No claims yet. Add a paper to extract claims and methods, then run a method to attach evidence.</div>';
+    document.getElementById("ev-count").textContent = "0/0 with evidence";
+    return;
+  }
   let validated = 0;
   document.getElementById("evidence").innerHTML = rows.map(r=>{
     const v = r.evidence.startsWith("VALIDATES") ? "validates"
@@ -684,7 +735,10 @@ document.getElementById("zoom-fit").addEventListener("click", ()=>
 
 const backdrop = document.getElementById("modal-backdrop");
 const status = document.getElementById("upload-status");
-document.getElementById("upload-btn").addEventListener("click", ()=>backdrop.classList.add("show"));
+document.getElementById("upload-btn").addEventListener("click", ()=>{
+  document.getElementById("modal-title").textContent = "Add a paper";
+  backdrop.classList.add("show");
+});
 document.getElementById("modal-close").addEventListener("click", ()=>backdrop.classList.remove("show"));
 backdrop.addEventListener("click", e=>{ if(e.target===backdrop) backdrop.classList.remove("show"); });
 
@@ -741,29 +795,65 @@ async function sendFile(file){
 }
 
 document.getElementById("reset-btn").addEventListener("click", async ()=>{
-  if(!confirm("Reset demo? This clears all runs and restores pristine evidence.")) return;
+  if(!confirm("Reset runs? Clears all experiment results and restores pristine evidence on your current papers.")) return;
   const btn = document.getElementById("reset-btn");
   btn.disabled = true;
   try{
     const res = await fetch("/api/reset", {method:"POST"});
     const r = await res.json();
     if(!res.ok) throw new Error(r.detail || "reset failed");
-    selectedMethod = null; methodParams = []; lastEvidence = {};
-    methodCard.style.display = "none";
-    consoleLogWrap.style.display = "none";
-    consoleEmpty.style.display = "block";
-    clearLog();
-    document.getElementById("run-btn").classList.remove("running","done");
-    document.getElementById("run-btn").textContent = "▶ RUN THIS METHOD";
-    document.getElementById("run-btn").disabled = true;
-    chatArea.innerHTML = '<div class="chat-bubble agent">Reset to a pristine state — all claims show "no runs yet". Run a method to generate evidence.</div>';
+    resetUIState('Runs cleared — all claims show "no runs yet". Select a method and press RUN to generate evidence.');
     setTab("evidence");
     await loadGraph(); await loadEvidence();
   }catch(e){ alert("Reset failed: "+e.message); }
   btn.disabled = false;
 });
 
+async function doNewWorkspace(){
+  if(!confirm("Create a new empty workspace?\n\nThis removes ALL papers, claims, methods, and runs from the graph. You can add your own papers afterward, or load the demo papers again.")) return;
+  const btn = document.getElementById("new-workspace-btn");
+  btn.disabled = true;
+  try{
+    const res = await fetch("/api/workspace/new", {method:"POST"});
+    const r = await res.json();
+    if(!res.ok) throw new Error(r.detail || "failed");
+    resetUIState("New workspace ready. Add a paper via arXiv or PDF — I'll extract claims, methods, and conflicts into the graph.");
+    setTab("evidence");
+    await loadGraph(); await loadEvidence();
+    backdrop.classList.add("show");
+    document.getElementById("modal-title").textContent = "Add your first paper";
+  }catch(e){ alert("New workspace failed: "+e.message); }
+  btn.disabled = false;
+}
+
+async function doLoadDemo(){
+  if(!confirm("Load bundled demo papers? This replaces your current workspace with the Adam / Wilson / AdamW demo set (no runs).")) return;
+  const btn = document.getElementById("load-demo-btn");
+  btn.disabled = true;
+  try{
+    const res = await fetch("/api/workspace/load-demo", {method:"POST"});
+    const r = await res.json();
+    if(!res.ok) throw new Error(r.detail || "failed");
+    resetUIState(`Demo loaded — ${r.papers} papers, ${r.claims} claims, no runs yet. Click a violet method node and press RUN.`);
+    setTab("evidence");
+    await loadGraph(); await loadEvidence();
+  }catch(e){ alert("Load demo failed: "+e.message); }
+  btn.disabled = false;
+}
+
+document.getElementById("new-workspace-btn").addEventListener("click", doNewWorkspace);
+document.getElementById("load-demo-btn").addEventListener("click", doLoadDemo);
+document.getElementById("empty-add-btn").addEventListener("click", ()=>{
+  document.getElementById("modal-title").textContent = "Add a paper";
+  backdrop.classList.add("show");
+});
+document.getElementById("empty-load-demo").addEventListener("click", e=>{ e.preventDefault(); doLoadDemo(); });
+
 (async ()=>{
+  try{
+    const ws = await (await fetch("/api/workspace")).json();
+    updateWorkspaceBadge(ws.papers, ws.empty);
+  }catch{}
   await loadGraph(); await loadEvidence();
 })();
 </script>
