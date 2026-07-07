@@ -52,14 +52,41 @@ one paper → one method → one runnable experiment → one result → graph up
 | System | Owns |
 |--------|------|
 | **Neo4j** | Research knowledge graph — papers, claims, methods, citations, runs, evidence relationships |
-| **Butterbase** | Application backend — paper metadata, artifacts, run history, user session, deployed UI |
+| **Butterbase** | Application backend — paper metadata, artifacts, run history, user session, deployed UI, **most orchestration** |
 | **Daytona** | Ephemeral code execution — isolated sandboxes, stdout/stderr, exit codes |
-| **RocketRide** | Agent orchestration — extract → plan → code → run → curate |
-| **OpenAI / LLM** | Extraction, planning, code generation, result explanation |
+| **RocketRide** | **One pipeline only** — multi-wave agent for the "Run this method" demo moment |
+| **OpenAI / LLM** | Extraction (offline), code generation (via RocketRide), Q&A summarization (via Butterbase) |
 
 Neo4j answers *"what is connected and what evidence exists?"*  
-Butterbase answers *"what did the app store and serve to the user?"*  
-Daytona answers *"did the code actually run?"*
+Butterbase answers *"what did the app store, serve, and orchestrate?"*  
+Daytona answers *"did the code actually run?"*  
+RocketRide answers *"can an agent plan, code, run, and curate in one thoughtful loop?"*
+
+### 2.4 Minimal RocketRide strategy
+
+RocketRide is used **as little as possible** while still satisfying sponsor integration.
+
+| Concern | Owner | RocketRide? |
+|---------|-------|-------------|
+| Paper ingestion / graph seeding | `seed/` scripts + `seed.cypher` | ❌ No |
+| Graph visualization | Butterbase frontend + `graph-query` function | ❌ No |
+| Research Q&A | Butterbase `research-qa` function (Cypher + OpenAI) | ❌ No |
+| Run history / artifacts | Butterbase Postgres + storage | ❌ No |
+| **Run this method** (killer demo) | `experiment.pipe` on RocketRide Cloud | ✅ **Yes — only touchpoint** |
+
+```
+Pre-seeded graph (scripts)          ← no RocketRide
+        ↓
+Explore + Q&A (Butterbase fns)      ← no RocketRide
+        ↓
+Run this method (experiment.pipe)   ← RocketRide (1 pipeline)
+        ↓
+Graph updated (Neo4j + Butterbase)
+```
+
+**Why keep one pipeline?** Judges see a live multi-wave agent (plan → code → run → curate) for the demo climax, without making RocketRide a dependency for every feature.
+
+**Fallback (zero RocketRide):** If RocketRide Cloud is unavailable, `start-experiment` can run the same steps inline (OpenAI + Daytona SDK + Neo4j driver). Keep this as a backup, not the primary path.
 
 ---
 
@@ -71,17 +98,15 @@ flowchart TB
         UI[Butterbase Frontend]
     end
 
-    subgraph butterbase [Butterbase — App Backend]
+    subgraph butterbase [Butterbase — App Backend + Orchestration]
         API[REST API + Auth]
         DB[(Postgres)]
         Storage[File Storage]
-        Fn[Serverless Functions]
+        Fn[Serverless Functions<br/>start-experiment · research-qa · graph-query]
     end
 
-    subgraph rocketride [RocketRide — Agent Orchestration]
-        Pipeline[.pipe Pipelines]
-        Agent[agent_rocketride]
-        Tools[tool_daytona · tool_butterbase · db_neo4j]
+    subgraph rocketride [RocketRide — Single Pipeline]
+        EXP[experiment.pipe only]
     end
 
     subgraph neo4j [Neo4j — Knowledge Graph]
@@ -99,16 +124,14 @@ flowchart TB
     UI --> API
     API --> DB
     API --> Fn
-    Fn -->|trigger pipeline| Pipeline
-    Pipeline --> Agent
-    Agent --> GPT
-    Agent --> Tools
-    Tools --> Graph
-    Tools --> API
-    Tools --> Sandbox
-    Agent -->|curate results| Graph
-    Agent -->|persist artifacts| API
-    UI -->|graph viz / Cypher proxy| Graph
+    Fn -->|research-qa · graph-query| Graph
+    Fn -->|research-qa| GPT
+    Fn -->|start-experiment| EXP
+    EXP --> GPT
+    EXP --> Sandbox
+    EXP --> Graph
+    EXP --> API
+    UI -->|graph viz| Fn
 ```
 
 ### Sponsor mapping
@@ -117,9 +140,9 @@ flowchart TB
 |---------|---------------------|
 | **Neo4j** | Canonical research graph: papers, claims, methods, datasets, citations, runs, results |
 | **Daytona** | Safe execution of generated code in isolated sandboxes |
-| **Butterbase** | Papers, artifacts, generated files, run history, user feedback, live demo URL |
-| **RocketRide** | Multi-wave pipeline: extract → generate → run → update graph |
-| **OpenAI** | Claim extraction, implementation plan, code generation, result explanation |
+| **Butterbase** | Papers, artifacts, run history, user feedback, live demo URL, **Q&A and graph proxy** |
+| **RocketRide** | **Single** multi-wave agent pipeline for the experiment execution moment |
+| **OpenAI** | Offline extraction (manual), code generation (RocketRide), Q&A summarization (Butterbase) |
 
 ---
 
@@ -131,47 +154,55 @@ flowchart TB
 sequenceDiagram
     actor Judge
     participant UI as Butterbase UI
-    participant BB as Butterbase API
-    participant RR as RocketRide Pipeline
+    participant BB as Butterbase Functions
     participant Neo as Neo4j
+    participant RR as experiment.pipe
     participant Day as Daytona
 
+    Note over UI,Neo: Phase 1 — Explore (no RocketRide)
     Judge->>UI: Select 2–3 preloaded papers
     Judge->>UI: Ask research question
-    UI->>Neo: Query graph (papers, claims, conflicts)
-    Neo-->>UI: Subgraph with citations
+    UI->>BB: POST /fn/research-qa
+    BB->>Neo: Fixed Cypher (claims, conflicts)
+    BB->>BB: OpenAI summarizes with citations
+    BB-->>UI: Cited answer + subgraph
 
-    Judge->>UI: Click "Run this method" on one Method node
-    UI->>BB: POST /runs (method_id, paper_id)
-    BB->>RR: Invoke experiment pipeline
+    Note over UI,Day: Phase 2 — Execute (RocketRide)
+    Judge->>UI: Click "Run this method"
+    UI->>BB: POST /fn/start-experiment
+    BB->>BB: Create runs row (pending)
+    BB->>RR: Webhook with run context
 
-    RR->>RR: Planner: build minimal implementation plan
-    RR->>RR: Coder: generate Python module
+    RR->>RR: Planner → Coder → Runner → Curator
     RR->>Day: upload_file + run_code
-    Day-->>RR: stdout, stderr, exit_code, metrics
+    Day-->>RR: stdout, stderr, exit_code
 
-    RR->>Neo: CREATE Run node + VALIDATES/REFUTES edges
-    RR->>BB: Persist run record + artifacts
+    RR->>Neo: CREATE Run + VALIDATES/REFUTES
+    RR->>BB: Update runs row + artifacts
 
-    BB-->>UI: Run complete (live log stream)
-    UI->>Neo: Refresh graph — new Run node visible
-    Judge->>UI: "Which claims now have executable evidence?"
-    UI->>Neo: Query claims linked to successful runs
-    Neo-->>UI: Claims with evidence highlighted
+    BB-->>UI: Run complete (poll / get-run-status)
+    UI->>BB: POST /fn/graph-query (refresh)
+    BB-->>UI: Graph with new Run node
+
+    Judge->>UI: "Which claims have executable evidence?"
+    UI->>BB: graph-query (evidence Cypher)
+    BB-->>UI: Claims highlighted
 ```
 
 ### 4.2 Killer demo moment
 
 The judge clicks **Run this method**. The UI shows, in order:
 
-1. Code generated  
-2. Sandbox started  
+1. Code generated *(RocketRide agent)*  
+2. Sandbox started *(Daytona via `tool_daytona`)*  
 3. Experiment running (live log)  
 4. Output captured  
-5. Result saved  
+5. Result saved *(Butterbase + Neo4j)*  
 6. Graph updated  
 
 Closing line: *"The graph now knows not only what the paper claimed, but what actually ran."*
+
+Everything before step 1 (browsing papers, asking questions, viewing the graph) runs on **Butterbase + Neo4j only**.
 
 ---
 
@@ -181,20 +212,20 @@ Closing line: *"The graph now knows not only what the paper claimed, but what ac
 
 A React/Vite SPA deployed via Butterbase frontend deployment.
 
-| Screen | Purpose |
-|--------|---------|
-| **Paper library** | Browse 2–3 preloaded papers; show title, authors, abstract |
-| **Graph explorer** | Visualize papers, claims, methods, citations (read-only for demo) |
-| **Research Q&A** | Ask cross-paper questions; show cited claims from graph |
-| **Method detail** | Show method description + **Run this method** CTA |
-| **Run console** | Live execution log, exit status, captured output |
-| **Evidence view** | Highlight claims with linked `Run` nodes |
+| Screen | Purpose | Backend |
+|--------|---------|---------|
+| **Paper library** | Browse 2–3 preloaded papers | Butterbase `papers` table |
+| **Graph explorer** | Visualize papers, claims, methods, citations | `graph-query` function |
+| **Research Q&A** | Ask cross-paper questions; cited claims | `research-qa` function |
+| **Method detail** | Method description + **Run this method** CTA | Butterbase `methods` table |
+| **Run console** | Live execution log, exit status, output | `get-run-status` + polling |
+| **Evidence view** | Claims with linked `Run` nodes | `graph-query` (evidence Cypher) |
 
-**Tech:** React + Vite, `@butterbase/sdk` for auth/data, graph viz library (e.g. `react-force-graph` or Neo4j NVL), WebSocket or polling for run status.
+**Tech:** React + Vite, `@butterbase/sdk` for auth/data, graph viz library (e.g. `react-force-graph`), polling for run status.
 
 ### 5.2 Butterbase backend
 
-Postgres tables hold **application state** and **artifacts**. Neo4j holds **semantic research relationships**.
+Postgres holds **application state** and **artifacts**. Neo4j holds **semantic research relationships**. Butterbase functions own **all orchestration except the experiment agent loop**.
 
 #### Schema (declarative JSON)
 
@@ -260,19 +291,45 @@ Postgres tables hold **application state** and **artifacts**. Neo4j holds **sema
 
 `status` values: `pending` | `generating` | `running` | `succeeded` | `failed`
 
-#### Serverless functions
+#### Serverless functions (primary orchestration layer)
 
-| Function | Trigger | Responsibility |
-|----------|---------|----------------|
-| `start-experiment` | HTTP POST | Validate input, create `runs` row (`pending`), invoke RocketRide pipeline webhook |
-| `get-run-status` | HTTP GET | Return run record + presigned URLs for code/logs |
-| `graph-query` | HTTP POST | Proxy safe, read-only Cypher queries for frontend graph viz |
+| Function | Trigger | Responsibility | RocketRide? |
+|----------|---------|----------------|-------------|
+| `start-experiment` | HTTP POST | Create `runs` row, invoke `experiment.pipe` webhook | Triggers RR only |
+| `get-run-status` | HTTP GET | Return run record + presigned URLs for code/logs | ❌ |
+| `graph-query` | HTTP POST | Whitelisted read-only Cypher → JSON for graph viz | ❌ |
+| `research-qa` | HTTP POST | Run topic Cypher, pass subgraph to OpenAI, return cited answer | ❌ |
+
+#### `research-qa` function (replaces `research-qa.pipe`)
+
+```typescript
+// Pseudocode — runs entirely in Butterbase
+async function researchQa(question: string, topic: string) {
+  const claims = await neo4j.run(`
+    MATCH (c:Claim)-[:FROM]->(p:Paper {topic: $topic})
+    OPTIONAL MATCH (c)-[:SUPPORTS|CONTRADICTS]->(other:Claim)
+  `, { topic });
+
+  const answer = await openai.chat({
+    messages: [
+      { role: 'system', content: 'Answer using only the provided claims. Cite claim IDs.' },
+      { role: 'user', content: `Question: ${question}\n\nClaims:\n${JSON.stringify(claims)}` }
+    ]
+  });
+
+  return { answer, claims, citations: extractCitations(answer) };
+}
+```
+
+No `db_neo4j` GraphRAG node needed — a fixed Cypher template + LLM summarization is enough for 2–3 preloaded papers.
 
 RLS: optional for hackathon demo (single demo user); enable `user_id` column if multi-user.
 
 ### 5.3 Neo4j knowledge graph
 
 Neo4j is the **source of truth for research semantics**. Butterbase `neo4j_*_id` columns link app rows to graph nodes.
+
+**Seeding:** `scripts/seed_neo4j.py` + `seed/neo4j/seed.cypher` — no RocketRide pipeline.
 
 #### Node labels
 
@@ -301,33 +358,30 @@ Neo4j is the **source of truth for research semantics**. Butterbase `neo4j_*_id`
 (Run)-[:IMPLEMENTS]->(Method)
 (Run)-[:EXECUTED_ON]->(Dataset)
 (Run)-[:PRODUCED]->(Artifact)
-(Run)-[:VALIDATES]->(Claim)    // successful run strengthens claim
-(Run)-[:REFUTES]->(Claim)      // failed run or negative metric weakens claim
+(Run)-[:VALIDATES]->(Claim)
+(Run)-[:REFUTES]->(Claim)
 ```
 
 #### Example evidence query
 
 ```cypher
-// Claims with executable evidence
 MATCH (c:Claim)<-[:VALIDATES]-(r:Run {status: 'succeeded'})
 MATCH (c)-[:FROM]->(p:Paper)
 RETURN c.text AS claim, p.title AS paper, r.metric_value AS evidence
 ORDER BY r.finished_at DESC
 ```
 
-### 5.4 RocketRide pipelines
+### 5.4 RocketRide — single pipeline only
 
-RocketRide orchestrates the agent loop. Pipelines are portable `.pipe` JSON graphs deployed to RocketRide Cloud for the live demo.
+RocketRide is used for **one thing**: the multi-wave experiment agent triggered by **Run this method**.
 
-#### Pipeline catalog
+| Pipeline | Runtime? | Purpose |
+|----------|----------|---------|
+| `experiment.pipe` | ✅ **Yes** | plan → code → Daytona run → graph update |
+| ~~`extract.pipe`~~ | ❌ Removed | Replaced by `seed/` scripts (offline) |
+| ~~`research-qa.pipe`~~ | ❌ Removed | Replaced by Butterbase `research-qa` function |
 
-| Pipeline | Entry | Purpose |
-|----------|-------|---------|
-| `extract.pipe` | `dropper` / batch | PDF → structured JSON → Neo4j seed (offline, run once) |
-| `experiment.pipe` | `webhook` | method_id → plan → code → Daytona run → graph update |
-| `research-qa.pipe` | `chat` / `webhook` | Natural-language question → `db_neo4j` GraphRAG answer |
-
-#### `experiment.pipe` — core closed loop
+#### `experiment.pipe` — the only RocketRide touchpoint
 
 ```mermaid
 flowchart LR
@@ -351,27 +405,35 @@ flowchart LR
 
 **Agent instructions (summary):**
 
-1. Load method + paper context from Butterbase and Neo4j  
+1. Load method + paper context from Butterbase (`tool_butterbase`) and Neo4j (`db_neo4j`)  
 2. Plan a **minimal** runnable Python implementation (single file, stdlib + one pip dep max)  
 3. Upload code to Daytona via `upload_file`, execute via `run_code`  
 4. Parse stdout for a metric (regex or simple JSON line)  
 5. Create `Run` node in Neo4j with `VALIDATES` or `REFUTES` edge to target claim  
 6. Update Butterbase `runs` row with status, logs, artifacts  
 
-#### Agent roles
+#### Agent waves inside `experiment.pipe`
 
-| Agent role | Pipeline stage | Tools / nodes |
-|------------|----------------|---------------|
-| **Extractor** | `extract.pipe` | `parse` PDF, LLM extraction, `db_neo4j` write |
-| **Linker** | `extract.pipe` | LLM + `db_neo4j` — citations, SUPPORTS/CONTRADICTS |
-| **Planner** | `experiment.pipe` wave 1 | `memory_internal`, read Method + Claim context |
-| **Coder** | `experiment.pipe` wave 2–3 | `tool_daytona.upload_file`, LLM code gen |
-| **Runner** | `experiment.pipe` wave 4 | `tool_daytona.run_code` |
-| **Curator** | `experiment.pipe` wave 5 | `db_neo4j` + `tool_butterbase` — persist Run + artifacts |
+| Wave | Role | Tools |
+|------|------|-------|
+| 1 | **Planner** | `memory_internal`, read Method + Claim from Neo4j/Butterbase |
+| 2–3 | **Coder** | LLM code gen, `tool_daytona.upload_file` |
+| 4 | **Runner** | `tool_daytona.run_code` |
+| 5 | **Curator** | `db_neo4j` write Run node, `tool_butterbase` update runs row |
+
+#### Zero-RocketRide fallback
+
+If RocketRide Cloud is down, `start-experiment` runs the same steps sequentially:
+
+```
+OpenAI (code gen) → Daytona SDK (run) → Neo4j driver (graph) → Butterbase API (persist)
+```
+
+Ship `experiment.pipe` as primary; implement fallback only if time allows.
 
 ### 5.5 Daytona sandbox
 
-Execution is delegated to Daytona's `tool_daytona` node inside RocketRide.
+Execution happens inside RocketRide via `tool_daytona` during the demo. The fallback path uses the Daytona SDK directly from a Butterbase function.
 
 | Setting | Value | Rationale |
 |---------|-------|-----------|
@@ -389,7 +451,7 @@ Execution is delegated to Daytona's `tool_daytona` node inside RocketRide.
 # {"metric": "accuracy", "value": 0.87}
 ```
 
-The Curator agent parses this line and writes `metric_name` / `metric_value` to both Neo4j and Butterbase.
+The Curator wave parses this line and writes `metric_name` / `metric_value` to Neo4j and Butterbase.
 
 ---
 
@@ -397,30 +459,35 @@ The Curator agent parses this line and writes `metric_name` / `metric_value` to 
 
 ```mermaid
 flowchart TD
-    subgraph ingest [Phase 0 — Preload / Extract]
-        PDF[Preloaded PDFs]
-        EXT[extract.pipe]
-        JSON[Structured JSON]
-        PDF --> EXT --> JSON
-        JSON --> NEO_SEED[Neo4j seed]
-        JSON --> BB_SEED[Butterbase seed]
+    subgraph ingest [Phase 0 — Preload / Seed]
+        JSON[Hand-authored JSON]
+        SEED[seed_neo4j.py + seed.cypher]
+        JSON --> SEED
+        SEED --> NEO_SEED[Neo4j graph]
+        SEED --> BB_SEED[Butterbase rows]
     end
 
     subgraph interact [Phase 1 — Explore]
         Q[Research question]
-        Q --> GQA[research-qa.pipe]
-        GQA --> NEO_Q[Neo4j query]
+        Q --> RQA[research-qa function]
+        RQA --> NEO_Q[Neo4j Cypher]
+        RQA --> OAI_Q[OpenAI summarize]
         NEO_Q --> ANS[Cited answer]
+        OAI_Q --> ANS
+
+        GV[Graph explorer]
+        GV --> GQ[graph-query function]
+        GQ --> NEO_V[Neo4j subgraph]
     end
 
     subgraph execute [Phase 2 — Execute]
         CLICK[Run this method]
-        CLICK --> START[start-experiment fn]
+        CLICK --> START[start-experiment function]
         START --> EXP[experiment.pipe]
         EXP --> CODE[Generated .py]
         CODE --> DAY[Daytona run_code]
         DAY --> LOGS[stdout / stderr / exit_code]
-        LOGS --> CURATE[Curator agent]
+        LOGS --> CURATE[Curator wave]
         CURATE --> NEO_RUN[Neo4j Run node]
         CURATE --> BB_RUN[Butterbase runs row]
     end
@@ -432,11 +499,15 @@ flowchart TD
     end
 ```
 
+**RocketRide appears only in Phase 2.**
+
 ---
 
-## 7. Extraction Schema (Structured JSON)
+## 7. Extraction & Seeding (No RocketRide)
 
-Offline extraction produces this JSON per paper. It seeds both Neo4j and Butterbase.
+Paper data is **pre-extracted offline** and committed to the repo. No live PDF parsing during the demo.
+
+### Structured JSON per paper
 
 ```json
 {
@@ -467,23 +538,25 @@ Offline extraction produces this JSON per paper. It seeds both Neo4j and Butterb
     }
   ],
   "datasets": [
-    {
-      "id": "dataset_y",
-      "name": "Dataset Y",
-      "url": "https://example.com/dataset-y"
-    }
+    { "id": "dataset_y", "name": "Dataset Y", "url": "https://example.com/dataset-y" }
   ],
   "tasks": [
-    {
-      "id": "task_classification",
-      "name": "Binary Classification",
-      "metric": "accuracy"
-    }
+    { "id": "task_classification", "name": "Binary Classification", "metric": "accuracy" }
   ]
 }
 ```
 
-For the hackathon, **pre-extract** this JSON manually or via one-shot `extract.pipe` run. Do not depend on live PDF parsing during the demo.
+### Seeding workflow (one-time, before demo)
+
+```bash
+# 1. Load Neo4j
+python scripts/seed_neo4j.py seed/papers/*.json
+
+# 2. Load Butterbase (via MCP or SDK)
+python scripts/seed_butterbase.py seed/papers/*.json
+```
+
+Extraction can be done manually, with Cursor + OpenAI, or by prototyping prompts in VS Code — but **not** as a runtime RocketRide pipeline.
 
 ---
 
@@ -506,10 +579,7 @@ POST /v1/{app_id}/fn/start-experiment
 Response:
 
 ```json
-{
-  "run_id": "uuid",
-  "status": "pending"
-}
+{ "run_id": "uuid", "status": "pending" }
 ```
 
 ### 8.2 RocketRide webhook payload (`experiment.pipe`)
@@ -525,22 +595,45 @@ Response:
 }
 ```
 
-### 8.3 Run status
+### 8.3 Research Q&A
 
 ```
-GET /v1/{app_id}/data/runs?id=eq.{run_id}
+POST /v1/{app_id}/fn/research-qa
 ```
 
 ```json
 {
-  "id": "uuid",
-  "status": "succeeded",
-  "exit_code": 0,
-  "metric_name": "accuracy",
-  "metric_value": "0.87",
-  "stdout": "...",
-  "stderr": ""
+  "question": "Do these papers agree on accuracy benchmarks?",
+  "topic": "topic_x"
 }
+```
+
+Response:
+
+```json
+{
+  "answer": "Paper A claims 90% accuracy while Paper B reports 85%...",
+  "citations": ["claim_001", "claim_003"],
+  "conflicts": [{ "claim_a": "claim_001", "claim_b": "claim_003", "type": "CONTRADICTS" }]
+}
+```
+
+### 8.4 Graph query
+
+```
+POST /v1/{app_id}/fn/graph-query
+```
+
+```json
+{ "query_type": "subgraph", "topic": "topic_x" }
+```
+
+Allowed `query_type` values (whitelist only): `subgraph`, `evidence`, `conflicts`.
+
+### 8.5 Run status
+
+```
+GET /v1/{app_id}/data/runs?id=eq.{run_id}
 ```
 
 ---
@@ -551,32 +644,32 @@ GET /v1/{app_id}/data/runs?id=eq.{run_id}
 flowchart LR
     subgraph public [Public URLs — Demo]
         FE[https://paper2result.butterbase.dev]
-        RR[https://cloud.rocketride.ai/pipeline/...]
+        RR[experiment.pipe on RocketRide Cloud]
     end
 
     subgraph managed [Managed Services]
-        BB_API[Butterbase API]
+        BB_API[Butterbase API + Functions]
         Aura[Neo4j Aura]
         DayCloud[Daytona Cloud]
         OAI[OpenAI API]
     end
 
     FE --> BB_API
-    BB_API --> RR
-    RR --> Aura
+    BB_API --> Aura
+    BB_API --> OAI
+    BB_API -->|start-experiment only| RR
     RR --> DayCloud
-    RR --> OAI
+    RR --> Aura
     RR --> BB_API
-    FE -.->|read-only graph| Aura
 ```
 
-| Component | Deployment target |
-|-----------|-------------------|
-| Frontend | Butterbase `create_frontend_deployment` |
-| Backend schema + functions | Butterbase MCP `manage_schema`, `deploy_function` |
-| Pipelines | RocketRide Cloud (shareable URL, not localhost) |
-| Graph DB | Neo4j Aura free tier |
-| Sandboxes | Daytona Cloud (`DAYTONA_API_KEY`) |
+| Component | Deployment target | RocketRide? |
+|-----------|-------------------|-------------|
+| Frontend | Butterbase `create_frontend_deployment` | ❌ |
+| Schema + functions | Butterbase MCP | ❌ |
+| Graph DB | Neo4j Aura free tier | ❌ |
+| Sandboxes | Daytona Cloud | Via RR `tool_daytona` |
+| Experiment agent | RocketRide Cloud — **one** `experiment.pipe` URL | ✅ |
 
 ---
 
@@ -590,20 +683,26 @@ flowchart LR
 │   └── EXECUTION_PLAN.md        # Hackathon task board
 ├── frontend/                    # React/Vite SPA → Butterbase deploy
 │   ├── src/
-│   │   ├── components/          # GraphViz, RunConsole, PaperList
+│   │   ├── components/          # GraphViz, RunConsole, PaperList, ResearchQA
 │   │   └── lib/butterbase.ts
 │   └── package.json
-├── pipelines/                   # RocketRide .pipe files
-│   ├── extract.pipe
-│   ├── experiment.pipe
-│   └── research-qa.pipe
-├── seed/                        # Pre-extracted paper JSON + PDFs
+├── functions/                   # Butterbase serverless functions
+│   ├── start-experiment.ts
+│   ├── research-qa.ts
+│   ├── graph-query.ts
+│   └── get-run-status.ts
+├── pipelines/                   # RocketRide — single file
+│   └── experiment.pipe          # Only RocketRide artifact
+├── seed/                        # Pre-extracted paper JSON (no runtime extract)
 │   ├── papers/
+│   │   ├── paper_001.json
+│   │   └── paper_002.json
 │   └── neo4j/
 │       └── seed.cypher
 ├── scripts/
 │   ├── seed_neo4j.py
-│   └── verify_daytona.py        # Daytona SDK smoke test
+│   ├── seed_butterbase.py
+│   └── verify_daytona.py
 ├── .env.example
 └── reference/                   # Partner docs (existing)
 ```
@@ -614,11 +713,11 @@ flowchart LR
 
 | Concern | Mitigation |
 |---------|------------|
-| Arbitrary code execution | Daytona isolated sandbox only; never run on engine host |
+| Arbitrary code execution | Daytona isolated sandbox only; never on Butterbase or engine host |
 | Sandbox cost | `auto_stop_minutes: 5`, ephemeral sandboxes |
-| Graph injection | Frontend uses parameterized read-only Cypher whitelist |
-| API keys | `.env` locally; Butterbase function env vars in production |
-| Generated code scope | Agent instructions: single file, no network calls, no filesystem escape |
+| Graph injection | `graph-query` uses whitelisted Cypher templates only |
+| API keys | Butterbase function env vars; never in frontend |
+| Generated code scope | Agent instructions: single file, no network, no filesystem escape |
 
 ---
 
@@ -626,28 +725,28 @@ flowchart LR
 
 | Failure | System behavior | Graph update |
 |---------|-----------------|--------------|
-| Code generation fails | `runs.status = failed`, no Daytona call | No Run node (or Run with `status: failed`) |
+| Code generation fails | `runs.status = failed` | Run node with `status: failed` or none |
 | Sandbox timeout | `exit_code: -1`, stderr captured | `Run` with `REFUTES` or neutral edge |
-| Non-zero exit code | `status: failed`, full stderr stored | `Run` node + `REFUTES` claim |
-| Metric not parseable | `status: succeeded` but `metric_value: null` | `Run` node without VALIDATES edge |
-| Pipeline crash | Butterbase run stuck `pending` → timeout job marks `failed` | Manual cleanup |
+| Non-zero exit code | `status: failed`, stderr stored | `Run` + `REFUTES` claim |
+| Metric not parseable | `status: succeeded`, `metric_value: null` | `Run` without VALIDATES edge |
+| RocketRide unavailable | `start-experiment` falls back to inline SDK path | Same as success path |
+| Pipeline crash | Run stuck `pending` → cron marks `failed` | Manual cleanup |
 
-Failed runs are **first-class evidence**. The graph should show what was attempted and why it failed.
+Failed runs are **first-class evidence**.
 
 ---
 
 ## 13. Success Criteria
 
-The hackathon build is complete when a judge can:
-
 - [ ] See 2–3 preloaded papers on the same topic  
-- [ ] View a graph of papers, claims, methods, and citations  
-- [ ] Ask a cross-paper research question and get a cited answer  
-- [ ] Click **Run this method** on one method  
+- [ ] View graph of papers, claims, methods, citations *(Butterbase functions)*  
+- [ ] Ask a cross-paper question and get a cited answer *(Butterbase `research-qa`)*  
+- [ ] Click **Run this method** *(triggers `experiment.pipe`)*  
 - [ ] Watch code generation and sandbox execution live  
-- [ ] See a new `Run` node on the graph after completion  
-- [ ] Ask which claims now have executable evidence  
-- [ ] Access everything via a **live Butterbase URL** (not localhost)  
+- [ ] See new `Run` node on the graph  
+- [ ] Ask which claims have executable evidence  
+- [ ] Live Butterbase URL (not localhost)  
+- [ ] RocketRide used for **one** visible agent moment (not the whole app)  
 
 ---
 
@@ -668,13 +767,7 @@ flowchart LR
     end
 ```
 
-Paper2Code stops at code generation. Paper-to-Results Graph answers:
-
-- Did the code run?  
-- Did it fail? What error?  
-- What metric did it produce?  
-- Which claim does the result support or weaken?  
-- Which paper now has executable evidence attached?  
+Paper2Code stops at code generation. Paper-to-Results Graph answers whether the code ran, what failed, what metric was produced, and which claim the result supports — with most of the app on Butterbase + Neo4j and RocketRide powering only the execution agent loop.
 
 ---
 
@@ -689,4 +782,4 @@ Paper2Code stops at code generation. Paper-to-Results Graph answers:
 
 ---
 
-*Architecture v1.0 — HackwithBay 3.0, July 7, 2026*
+*Architecture v1.1 — minimal RocketRide (compromise) — HackwithBay 3.0, July 7, 2026*
