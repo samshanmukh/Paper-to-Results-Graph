@@ -1,0 +1,90 @@
+{
+  "paper": {
+    "id": "loshchilov2017",
+    "title": "SGDR: Stochastic Gradient Descent with Warm Restarts",
+    "authors": [
+      "Ilya Loshchilov",
+      "Frank Hutter"
+    ],
+    "year": 2017,
+    "arxiv": "1608.03983",
+    "topic": "learning-rate-scheduling"
+  },
+  "claims": [
+    {
+      "id": "loshchilov2017-c1",
+      "text": "SGDR with warm restarts requires 2-4\u00d7 fewer epochs than standard learning rate schedules to achieve comparable or better results",
+      "metric": "epochs to target accuracy"
+    },
+    {
+      "id": "loshchilov2017-c2",
+      "text": "SGDR achieves state-of-the-art results of 3.14% test error on CIFAR-10 and 16.21% on CIFAR-100 when combined with snapshot ensembles",
+      "metric": "test error (%)"
+    },
+    {
+      "id": "loshchilov2017-c3",
+      "text": "Cosine annealing learning rate schedule with periodic restarts improves anytime performance compared to step decay schedules",
+      "metric": "test error at intermediate epochs"
+    },
+    {
+      "id": "loshchilov2017-c4",
+      "text": "Snapshot ensembles from SGDR restarts provide 3-fold speedup compared to training independent models for ensemble construction",
+      "metric": "computational cost for ensemble"
+    }
+  ],
+  "methods": [
+    {
+      "id": "loshchilov2017-m1",
+      "name": "SGDR",
+      "description": "Stochastic Gradient Descent with warm restarts using cosine annealing learning rate schedule. Learning rate is periodically reset to maximum value and annealed down following a cosine curve.",
+      "runnable_hint": "Implement SGD with momentum on a toy 2D quadratic: x,y = np.random.randn(2)*10; v = np.zeros(2); for epoch in range(200): for t in range(10): T_cur = (epoch*10+t) % T_i; eta = eta_min + 0.5*(eta_max-eta_min)*(1+np.cos(np.pi*T_cur/T_i)); grad = 2*np.array([x,y]); v = 0.9*v - eta*grad; x,y = x+v[0], y+v[1]; if (epoch+1)%T_i==0: print(f'Restart at epoch {epoch+1}, loss={x**2+y**2:.4f}'). Set T_i=50, eta_max=0.1, eta_min=0.0.",
+      "params": [
+        {
+          "name": "T_0",
+          "default": 10,
+          "description": "Initial restart period in epochs"
+        },
+        {
+          "name": "T_mult",
+          "default": 2,
+          "description": "Factor to increase restart period after each restart"
+        },
+        {
+          "name": "eta_max",
+          "default": 0.05,
+          "description": "Maximum learning rate after restart"
+        },
+        {
+          "name": "eta_min",
+          "default": 0.0,
+          "description": "Minimum learning rate before restart"
+        },
+        {
+          "name": "momentum",
+          "default": 0.9,
+          "description": "Momentum coefficient for SGD"
+        }
+      ]
+    }
+  ],
+  "datasets": [
+    {
+      "id": "cifar-10",
+      "name": "CIFAR-10"
+    },
+    {
+      "id": "cifar-100",
+      "name": "CIFAR-100"
+    }
+  ],
+  "cites": [
+    "adam2014"
+  ],
+  "claim_relations": [
+    {
+      "from": "loshchilov2017-c1",
+      "to": "adam2014-c1",
+      "type": "SUPPORTS"
+    }
+  ]
+}

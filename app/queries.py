@@ -43,7 +43,7 @@ QUERIES = {
         """
         MATCH (c:Claim)-[:FROM]->(p:Paper)
         OPTIONAL MATCH (r:Run)-[v:VALIDATES|REFUTES]->(c)
-        RETURN p.id AS paper, c.id AS claim,
+        RETURN p.id AS paper, c.id AS claim, c.text AS text,
                CASE WHEN r IS NULL THEN 'no runs yet'
                     ELSE type(v) + ' by ' + r.id END AS evidence
         ORDER BY paper, claim

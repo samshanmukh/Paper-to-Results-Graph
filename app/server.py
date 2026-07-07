@@ -16,7 +16,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -92,25 +92,20 @@ def run_method(method_id: str, backend: str = "auto", body: RunBody | None = Non
     return record
 
 
-class Upload(BaseModel):
-    text: str
-
-
-@app.post("/api/upload")
-def upload(body: Upload):
-    """Paper text -> LLM extraction -> graph + Butterbase. Returns summary."""
+def _ingest_paper_text(text: str) -> dict:
+    """Paper text -> LLM extraction -> files + graph + Butterbase mirror."""
     import json as _json
 
     from app.extract import EXTRACTED_DIR, PAPERS_DIR, extract_live_text
     from app.graph import load_claim_relations, load_paper
 
-    if len(body.text.strip()) < 200:
-        raise HTTPException(400, "paper text too short — paste at least the abstract and method section")
-    data = extract_live_text(body.text)
+    if len(text.strip()) < 200:
+        raise HTTPException(400, "paper text too short — need at least the abstract and method section")
+    data = extract_live_text(text)
     pid = data["paper"]["id"]
 
     with open(os.path.join(PAPERS_DIR, f"{pid}.txt"), "w") as f:
-        f.write(body.text)
+        f.write(text)
     with open(os.path.join(EXTRACTED_DIR, f"{pid}.json"), "w") as f:
         _json.dump(data, f, indent=2)
 
@@ -132,6 +127,60 @@ def upload(body: Upload):
             "claims": len(data["claims"]), "methods": len(data["methods"]),
             "method_ids": [m["id"] for m in data["methods"]],
             "relations": len(data.get("claim_relations", []))}
+
+
+def _pdf_to_text(blob: bytes) -> str:
+    import io
+
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(blob))
+    # first ~12 pages carry abstract + method; keeps extraction prompt lean
+    return "\n".join(page.extract_text() or "" for page in reader.pages[:12])
+
+
+class Upload(BaseModel):
+    text: str
+
+
+@app.post("/api/upload")
+def upload(body: Upload):
+    return _ingest_paper_text(body.text)
+
+
+@app.post("/api/upload-file")
+async def upload_file(file: UploadFile):
+    blob = await file.read()
+    if len(blob) > 25_000_000:
+        raise HTTPException(400, "file too large (25 MB max)")
+    if (file.filename or "").lower().endswith(".pdf") or blob[:4] == b"%PDF":
+        text = _pdf_to_text(blob)
+    else:
+        text = blob.decode(errors="replace")
+    return _ingest_paper_text(text)
+
+
+class ArxivUpload(BaseModel):
+    url: str
+
+
+@app.post("/api/upload-arxiv")
+def upload_arxiv(body: ArxivUpload):
+    import re
+    import urllib.request
+
+    m = re.search(r"(\d{4}\.\d{4,5})(v\d+)?", body.url.strip())
+    if not m:
+        raise HTTPException(400, "couldn't find an arXiv id in that link (expected e.g. arxiv.org/abs/1907.08610)")
+    arxiv_id = m.group(1)
+    req = urllib.request.Request(
+        f"https://export.arxiv.org/pdf/{arxiv_id}",
+        headers={"User-Agent": "paper2result/1.0 (hackathon demo)"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            blob = resp.read()
+    except Exception as e:
+        raise HTTPException(502, f"arXiv fetch failed: {e}")
+    return _ingest_paper_text(_pdf_to_text(blob))
 
 
 class Ask(BaseModel):
