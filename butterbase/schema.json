@@ -1,0 +1,28 @@
+{
+  "tables": {
+    "papers": {
+      "columns": {
+        "id": { "type": "text", "primaryKey": true },
+        "title": { "type": "text" },
+        "year": { "type": "integer" },
+        "arxiv": { "type": "text" },
+        "topic": { "type": "text" },
+        "extraction": { "type": "jsonb" }
+      }
+    },
+    "runs": {
+      "columns": {
+        "id": { "type": "text", "primaryKey": true },
+        "method_id": { "type": "text" },
+        "backend": { "type": "text" },
+        "status": { "type": "text" },
+        "exit_code": { "type": "integer" },
+        "duration_s": { "type": "numeric" },
+        "metrics": { "type": "jsonb" },
+        "claim_checks": { "type": "jsonb" },
+        "stdout": { "type": "text" },
+        "error": { "type": "text" }
+      }
+    }
+  }
+}

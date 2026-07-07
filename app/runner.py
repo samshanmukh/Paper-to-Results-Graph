@@ -69,7 +69,7 @@ def run_daytona(code_path: str, timeout: int = 300, params: dict | None = None,
     # auto_delete clean up instead of an instant delete() judges never see.
     sandbox = daytona.create(CreateSandboxFromSnapshotParams(
         name=run_id[:60],
-        labels={"app": "paper2result", "run_id": run_id},
+        labels={"app": "verigraph", "run_id": run_id},
         auto_stop_interval=10,    # stop 10 min after last activity
         auto_delete_interval=120, # delete 2 h after stop
     ))

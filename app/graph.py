@@ -141,7 +141,7 @@ def main() -> int:
     with get_driver() as driver:
         if args.reset:
             reset_our_graph(driver)
-            print("reset: cleared Paper2Result labels")
+            print("reset: cleared Verigraph labels")
         datas = []
         with driver.session(database=DATABASE) as session:
             for fname in files:

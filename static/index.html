@@ -1,398 +1,386 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="/config.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Paper→Results Graph</title>
+<title>Verigraph — live demo</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <style>
 :root{
-  --bg:#f6f2e8;
-  --panel:#fffdf6;
-  --panel-2:#fbf8ee;
-  --line:#e2dac6;
-  --line-strong:#cfc5a9;
-  --ink:#23271d;
-  --dim:#7c765f;
-  --faint:#b0a88d;
-  --paper:#a87708;
-  --paper-bg:#fdf3d7;
-  --claim:#0d7d9e;
-  --method:#7350cf;
-  --ok:#157f46;
-  --ok-bright:#1ea45c;
-  --bad:#bb3434;
-  --console-bg:#12160f;
-  --console-text:#c9d4bd;
+  --bg:#F4F4F1;--ink:#16161A;--dim:#8A8A92;--faint:#A0A0A8;
+  --purple:#6C4CF1;--purple-dim:#5636d6;--green:#1F9D5B;--red:#D9483B;
+  --claim-bg:#FDF6E3;--claim-bd:#EAD59A;--claim-ink:#8A6410;
+  --panel:#fff;--graph-bg:#FBFBF9;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
-body{
-  background:var(--bg);color:var(--ink);
-  font-family:"IBM Plex Sans",sans-serif;font-size:13.5px;overflow:hidden;
-}
+body{background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',system-ui,sans-serif;
+  font-size:13.5px;overflow:hidden;-webkit-font-smoothing:antialiased}
 button,input,textarea{font-family:inherit}
-body::after{ /* faint engineering grid + paper vignette */
-  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
-  background:
-    linear-gradient(rgba(140,125,80,.055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(140,125,80,.055) 1px, transparent 1px),
-    radial-gradient(ellipse at 50% 40%, transparent 60%, rgba(120,100,50,.07) 100%);
-  background-size:26px 26px, 26px 26px, 100% 100%;
-}
-/* ============ header ============ */
-header{
-  position:relative;z-index:6;display:flex;align-items:center;gap:18px;
-  padding:0 22px;height:60px;border-bottom:2px solid var(--ink);
-  background:var(--panel);
-  animation:dropIn .5s cubic-bezier(.2,.9,.3,1) both;
-}
-@keyframes dropIn{from{transform:translateY(-100%)}to{transform:translateY(0)}}
-.led{width:9px;height:9px;border-radius:50%;background:var(--ok-bright);
-  box-shadow:0 0 0 3px rgba(30,164,92,.18);animation:breathe 2.4s ease-in-out infinite}
-@keyframes breathe{50%{opacity:.5}}
-h1{font-weight:700;font-size:20px;color:var(--ink);white-space:nowrap;letter-spacing:.02em}
-h1 .arrow{color:var(--ok);font-weight:600}
-header .tag{color:var(--dim);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
-  border-left:1px solid var(--line-strong);padding-left:16px;line-height:1.5}
-#upload-btn{
-  margin-left:auto;padding:8px 16px;border:1.5px solid var(--ink);border-radius:2px;
-  background:var(--ink);color:var(--panel);
-  font-weight:600;font-size:11px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;
-  transition:all .15s;box-shadow:3px 3px 0 rgba(35,39,29,.18);
-}
-#upload-btn:hover{background:var(--ok);border-color:var(--ok);transform:translate(-1px,-1px);
-  box-shadow:4px 4px 0 rgba(21,127,70,.25)}
-#stats{display:flex;gap:8px}
-.chip{display:flex;align-items:baseline;gap:6px;padding:5px 11px;
-  border:1px solid var(--line-strong);border-radius:2px;background:var(--panel-2);
-  font-size:9.5px;letter-spacing:.1em;color:var(--dim);text-transform:uppercase}
-.chip b{font-size:15px;color:var(--ink);font-weight:600;letter-spacing:0}
-.chip.runs{border-color:var(--ok)}
-.chip.runs b{color:var(--ok)}
-/* ============ layout ============ */
-main{position:relative;z-index:1;display:grid;grid-template-columns:360px 1fr 385px;height:calc(100vh - 60px)}
-#graph{position:relative;animation:fadeIn .9s .25s both}
-@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+a{color:var(--purple);text-decoration:none}
+a:hover{color:var(--purple-dim)}
+::selection{background:#E4DCFB}
+.gt-scroll::-webkit-scrollbar{width:8px;height:8px}
+.gt-scroll::-webkit-scrollbar-thumb{background:rgba(20,20,26,0.16);border-radius:8px}
+@keyframes gt-blink{50%{opacity:0.25}}
+@keyframes gt-pop{0%{transform:scale(0.4);opacity:0}60%{transform:scale(1.12)}100%{transform:scale(1);opacity:1}}
+@keyframes countFlip{0%{transform:translateY(0);opacity:1}40%{transform:translateY(-6px);opacity:0}60%{transform:translateY(6px);opacity:0}100%{transform:translateY(0);opacity:1}}
+@keyframes demoPulse{0%,100%{box-shadow:0 0 0 3px rgba(108,76,241,.45),0 0 14px rgba(108,76,241,.25)}50%{box-shadow:0 0 0 5px rgba(108,76,241,.75),0 0 22px rgba(108,76,241,.45)}}
+
+.app{height:100vh;display:flex;flex-direction:column}
+
+/* top bar */
+.topbar{height:56px;flex:none;display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;background:#fff;border-bottom:1px solid rgba(20,20,26,0.10)}
+.brand{display:flex;align-items:center;gap:11px}
+.brand a{display:flex;align-items:center;gap:8px;color:var(--ink)}
+.brand-dot{width:10px;height:10px;border-radius:50%;background:var(--purple);display:inline-block}
+.brand-name{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:15px}
+.badge{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--dim);
+  background:#F1F1EE;padding:3px 8px;border-radius:6px}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.db-status{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#8A8A92;
+  display:flex;align-items:center;gap:6px}
+.db-dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+.btn-ghost{font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:#4A4A52;
+  background:#fff;border:1px solid rgba(20,20,26,0.16);padding:7px 13px;border-radius:8px;cursor:pointer}
+.btn-ghost:hover{background:#F4F4F1}
+.btn-dark{font-size:13px;color:#fff;background:var(--ink);border:none;
+  padding:7px 13px;border-radius:8px;cursor:pointer;font-weight:500}
+.btn-ghost:disabled{opacity:0.45;cursor:not-allowed}
+
+/* empty workspace */
+#empty-workspace{position:absolute;inset:0;z-index:4;display:none;flex-direction:column;
+  align-items:center;justify-content:center;text-align:center;padding:40px;
+  background:rgba(251,251,249,0.92);backdrop-filter:blur(2px)}
+#empty-workspace.show{display:flex}
+#empty-workspace h3{font-size:20px;font-weight:600;margin-bottom:8px}
+#empty-workspace p{font-size:14px;color:var(--dim);max-width:360px;line-height:1.55;margin-bottom:18px}
+#empty-workspace .hint{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--faint);margin-top:14px}
+.evidence-empty{text-align:center;color:var(--faint);font-size:13.5px;padding:48px 20px;line-height:1.55}
+
+/* main layout */
+.main{flex:1;min-height:0;display:flex;transition:all .25s ease}
+.main.panel-collapsed .side-panel{width:0;min-width:0;overflow:hidden;border:none;opacity:0;pointer-events:none}
+
+/* graph column */
+.graph-col{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--graph-bg)}
+.legend-strip{flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:16px;
+  padding:9px 16px;background:#fff;border-bottom:1px solid rgba(20,20,26,0.08);
+  font-size:12px;color:#4A4A52}
+.legend-strip .title{font-weight:600;font-size:11px;letter-spacing:0.04em;
+  color:var(--dim);text-transform:uppercase}
+.legend-item{display:flex;align-items:center;gap:7px}
+.legend-paper{width:12px;height:12px;border-radius:4px;background:#fff;border:1px solid rgba(20,20,26,0.3)}
+.legend-claim{width:12px;height:12px;border-radius:999px;background:var(--claim-bg);border:1px solid var(--claim-bd)}
+.legend-method{width:12px;height:12px;border-radius:3px;transform:rotate(45deg);background:var(--purple)}
+.legend-contradicts{width:20px;height:0;border-top:2px dashed #D8A21C}
+.legend-validates{width:20px;height:0;border-top:2px solid var(--green)}
+.legend-hint{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--faint)}
+.evidence-strip{display:flex;align-items:center;gap:8px;margin-left:12px;padding:5px 11px;
+  background:#F6F3FE;border:1px solid #E1D8FB;border-radius:8px;font-size:12px}
+.evidence-strip .strip-label{color:var(--dim);font-weight:500}
+.evidence-counter{font-family:'IBM Plex Mono',monospace;font-weight:600;color:var(--green);display:inline-flex;gap:1px}
+.evidence-counter.flip .count-digit{animation:countFlip .45s ease}
+.btn-guided{font-weight:600;color:#fff;background:linear-gradient(135deg,#6C4CF1,#8B6CF8);
+  border:none;padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px}
+.btn-guided:hover:not(:disabled){filter:brightness(1.06)}
+.btn-guided:disabled{opacity:.55;cursor:wait}
+#panel-toggle{margin-left:8px;font-size:12px;padding:5px 10px}
+#demo-toast{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:6;
+  background:#6C4CF1;color:#fff;padding:9px 18px;border-radius:9px;font-size:13px;font-weight:500;
+  box-shadow:0 8px 28px rgba(108,76,241,.35);max-width:min(520px,90%);text-align:center;
+  pointer-events:none;transition:opacity .3s}
+#demo-toast.hidden{opacity:0}
+.graph-area{flex:1;min-height:0;position:relative;overflow:hidden;
+  background-image:radial-gradient(circle at 1px 1px,rgba(20,20,26,0.055) 1px,transparent 0);
+  background-size:24px 24px}
 #net{position:absolute;inset:0}
-#edge-legend{
-  position:absolute;left:16px;bottom:14px;z-index:5;display:flex;gap:16px;
-  color:var(--dim);font-size:10px;letter-spacing:.05em;
-  background:rgba(255,253,246,.92);padding:7px 12px;border:1px solid var(--line-strong);
-  border-radius:2px;align-items:center;box-shadow:2px 2px 0 rgba(35,39,29,.08);
-}
-#edge-legend .sw{display:inline-block;width:22px;height:0;margin-right:6px;vertical-align:middle;border-top:2.5px solid}
-#edge-legend .contradicts .sw{border-top-style:dashed;border-color:var(--paper)}
-#edge-legend .validates .sw{border-color:var(--ok-bright)}
-#edge-legend .implements .sw{border-color:var(--method)}
-#edge-legend .hint{color:var(--faint);border-left:1px solid var(--line);padding-left:14px}
-#edge-legend .hint b{color:var(--method);font-weight:600}
-#zoom-ctl{
-  position:absolute;right:16px;top:14px;z-index:5;display:flex;flex-direction:column;gap:6px;
-}
-#zoom-ctl button{
-  width:34px;height:34px;border:1.5px solid var(--ink);border-radius:2px;
-  background:var(--panel);color:var(--ink);
-  font-size:16px;font-weight:600;cursor:pointer;line-height:1;
-  box-shadow:2px 2px 0 rgba(35,39,29,.15);transition:all .12s;
-}
-#zoom-ctl button:hover{background:var(--ink);color:var(--panel);transform:translate(-1px,-1px);
-  box-shadow:3px 3px 0 rgba(35,39,29,.2)}
-#zoom-ctl button.fit{font-size:12px}
-aside{display:flex;flex-direction:column;overflow:hidden;background:var(--panel)}
-aside.left{border-right:1.5px solid var(--line-strong)}
-aside.right{border-left:1.5px solid var(--line-strong)}
-section{position:relative;border-bottom:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
-aside.left section{animation:slideInL .55s cubic-bezier(.2,.9,.3,1) both}
-aside.right section{animation:slideInR .55s cubic-bezier(.2,.9,.3,1) both}
-aside section:nth-of-type(1){animation-delay:.12s}
-aside section:nth-of-type(2){animation-delay:.24s}
-@keyframes slideInR{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:translateX(0)}}
-@keyframes slideInL{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:translateX(0)}}
-section > .head{
-  display:flex;align-items:center;gap:9px;padding:10px 16px;
-  border-bottom:1px solid var(--line);
-  font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim);
-  background:var(--panel-2);
-}
-section > .head::before{content:"";width:14px;height:2px;background:var(--ok)}
-section > .head .idx{margin-left:auto;color:var(--faint);letter-spacing:.05em;font-size:10px}
-/* ============ method panel ============ */
-#method-panel{flex:1 1 50%}
-#method-body{
-  padding:14px 16px 16px;background:var(--panel);
-  flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;
-}
-#run-btn{margin-top:auto}
-#m-paper{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--paper);
-  margin-bottom:3px;min-height:11px;font-weight:600}
-#m-name{font-size:17px;font-weight:600;color:var(--ink);
-  margin-bottom:6px;line-height:1.2}
-#m-name.empty{color:var(--faint);font-style:italic;font-weight:500}
-#m-desc{color:#4d5142;font-size:13px;line-height:1.55;margin-bottom:11px;max-height:64px;overflow:auto;
-  }
-#params-head{display:none;align-items:center;gap:7px;margin-bottom:7px;
-  font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+#zoom-ctl{position:absolute;right:14px;top:14px;z-index:5;display:flex;flex-direction:column;gap:6px}
+#zoom-ctl button{width:32px;height:32px;border:1px solid rgba(20,20,26,0.16);border-radius:8px;
+  background:#fff;color:var(--ink);font-size:15px;font-weight:600;cursor:pointer;line-height:1}
+#zoom-ctl button:hover{background:var(--ink);color:#fff}
+#zoom-ctl button.fit{font-size:11px}
+
+/* side panel */
+.side-panel{width:440px;flex:none;background:#fff;border-left:1px solid rgba(20,20,26,0.10);
+  display:flex;flex-direction:column}
+.tabs{height:48px;flex:none;display:flex;border-bottom:1px solid rgba(20,20,26,0.10)}
+.tab-btn{flex:1;font-family:'IBM Plex Sans',sans-serif;font-size:13.5px;font-weight:500;
+  color:var(--dim);background:#FBFBF9;border:none;border-bottom:2px solid transparent;
+  cursor:pointer;height:100%;transition:all .12s}
+.tab-btn.active{font-weight:600;color:var(--ink);background:#fff;border-bottom-color:var(--purple)}
+.tab-body{flex:1;min-height:0;overflow-y:auto}
+.tab-pane{display:none;padding:18px 20px}
+.tab-pane.active{display:block}
+.tab-pane#tab-ask{padding:0;display:none;flex-direction:column;height:100%}
+.tab-pane#tab-ask.active{display:flex}
+
+/* evidence cards */
+.evidence-header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px}
+.evidence-header h2{font-size:15px;font-weight:600}
+.evidence-count{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--dim)}
+.evidence-sub{font-size:13px;color:var(--dim);margin:0 0 16px;line-height:1.45}
+.papers-panel{margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid rgba(20,20,26,0.08)}
+.papers-panel h3{font-size:13px;font-weight:600;margin-bottom:8px}
+.papers-sub{font-size:12px;color:var(--dim);margin:0 0 10px;line-height:1.4}
+.paper-row{display:flex;align-items:flex-start;gap:8px;padding:9px 10px;border:1px solid rgba(20,20,26,0.08);
+  border-radius:9px;margin-bottom:7px;background:#FBFBF9;transition:background .15s,border-color .15s}
+.paper-row:hover{background:#fff}
+.paper-row.selected{border-color:#C9B8F8;background:#F6F3FE}
+.paper-row-main{flex:1;min-width:0}
+.paper-row-id{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--dim)}
+.paper-row-title{font-size:13px;line-height:1.35;color:#2A2A30;margin-top:2px}
+.paper-row-meta{font-size:11px;color:var(--faint);margin-top:3px}
+.btn-remove{flex:none;width:28px;height:28px;border:1px solid rgba(20,20,26,0.12);border-radius:7px;
+  background:#fff;color:var(--dim);cursor:pointer;font-size:14px;line-height:1}
+.btn-remove:hover{color:var(--red);border-color:#F0B8B0;background:#FDECEA}
+.ev-card{border:1px solid rgba(20,20,26,0.08);background:#fff;border-radius:10px;
+  padding:12px 13px;margin-bottom:9px}
+.ev-card.validated{border-color:#9AD3AE;background:#F3FBF6}
+.ev-card-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.ev-id{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--dim)}
+.ev-badge{font-family:'IBM Plex Mono',monospace;font-size:10.5px;padding:3px 8px;border-radius:6px}
+.ev-badge.none{background:#F1F1EE;color:var(--dim);border:1px solid rgba(20,20,26,0.10)}
+.ev-badge.validates{background:#E7F6EC;color:#1B7E49;border:1px solid #9AD3AE;font-weight:600}
+.ev-badge.refutes{background:#FDECEA;color:var(--red);border:1px solid #F0B8B0;font-weight:600}
+.ev-text{font-size:13.5px;color:#2A2A30;line-height:1.4;margin-top:5px}
+.ev-metric{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--green);margin-top:6px}
+.ev-card.flash{animation:cardFlash 1s ease-out 2}
+@keyframes cardFlash{0%{background:#E7F6EC}100%{background:inherit}}
+
+/* console tab */
+.method-card{border:1px solid #E1D8FB;background:#F6F3FE;border-radius:11px;
+  padding:14px 15px;margin-bottom:16px}
+.method-label{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--purple);margin-bottom:4px}
+.method-name{font-size:14.5px;font-weight:600;margin-bottom:3px}
+.method-desc{font-size:12.5px;color:#66666E;line-height:1.45;margin-bottom:12px}
+#params-head{display:none;align-items:center;gap:7px;margin-bottom:8px;
+  font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--dim);letter-spacing:0.04em;text-transform:uppercase}
 #params-head.show{display:flex}
-#params-head::after{content:"";flex:1;height:1px;background:var(--line)}
-#params-reset{cursor:pointer;color:var(--faint);border:none;background:none;
-  font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;padding:0}
-#params-reset:hover{color:var(--paper)}
-#m-params{display:none;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px}
+#params-reset{cursor:pointer;color:var(--faint);border:none;background:none;font-size:10px;padding:0}
+#params-reset:hover{color:var(--purple)}
+#m-params{display:none;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:12px}
 #m-params.show{display:grid}
 #m-params label{display:flex;flex-direction:column;gap:2px}
-#m-params .pname{font-size:8px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);
+#m-params .pname{font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--dim);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#m-params input{
-  width:100%;padding:5px 6px;background:var(--panel-2);border:1px solid var(--line-strong);
-  border-radius:2px;color:var(--ink);font-size:11px;outline:none;
-}
-#m-params input:focus{border-color:var(--paper);background:#fff}
-#m-params input.dirty{border-color:var(--paper);background:var(--paper-bg);font-weight:600}
-#run-btn{
-  position:relative;width:100%;padding:13px;overflow:hidden;
-  border:1.5px solid var(--ok);border-radius:2px;background:var(--ok);color:#fff;
-  font-weight:600;font-size:13px;
-  letter-spacing:.14em;cursor:pointer;text-transform:uppercase;
-  transition:all .15s;box-shadow:3px 3px 0 rgba(21,127,70,.25);
-}
-#run-btn:hover:not(:disabled){background:var(--ok-bright);transform:translate(-1px,-1px);
-  box-shadow:4px 4px 0 rgba(21,127,70,.3)}
-#run-btn:active:not(:disabled){transform:translate(1px,1px);box-shadow:1px 1px 0 rgba(21,127,70,.25)}
-#run-btn:disabled{opacity:.35;cursor:not-allowed;background:var(--dim);border-color:var(--dim);box-shadow:none}
-#run-btn.running{
-  color:#0c3520;background:repeating-linear-gradient(-55deg, #58d68f 0 12px, #35c46a 12px 24px);
-  background-size:200% 100%;animation:stripes 1.1s linear infinite;cursor:wait;opacity:1;
-}
-@keyframes stripes{to{background-position:-34px 0}}
-/* ============ console (dark instrument in the light page) ============ */
-#log-panel{flex:1 1 50%;min-height:0;border-bottom:none;border-top:1px solid var(--line)}
-#log-panel.min{flex:0 0 auto}
-#log-panel.min #log{display:none}
-#log-toggle{
-  margin-left:10px;border:none;background:none;cursor:pointer;color:#8fa583;
-  font-size:13px;font-weight:700;padding:0 4px;line-height:1;
-}
-#log-toggle:hover{color:#4ade80}
-#log-panel > .head{background:var(--console-bg);color:#8fa583;border-bottom:1px solid #232b1e}
-#log-panel > .head::before{background:var(--ok-bright)}
-#log{
-  flex:1;overflow-y:auto;padding:11px 16px;background:var(--console-bg);
-  color:var(--console-text);font-size:11.5px;line-height:1.75;
-  white-space:pre-wrap;word-break:break-word;box-shadow:inset 0 8px 16px rgba(0,0,0,.45);
-}
-#log .t-dim{color:#7f8f72}
-#log .t-faint{color:#55614b}
-#log .t-ok{color:#4ade80}
-#log .t-bad{color:#f87171}
-#log .t-warn{color:#e8b64c}
-#log .t-stage{color:#7cc7e8}
-#log .cursor{display:inline-block;width:7px;height:13px;background:#4ade80;
-  animation:blink 1s steps(1) infinite;vertical-align:text-bottom;margin-left:2px}
-@keyframes blink{50%{opacity:0}}
-/* ============ evidence ============ */
-#evidence-panel{flex:0 1 auto;max-height:42%}
-#evidence{flex:1;overflow-y:auto}
-#evidence table{width:100%;border-collapse:collapse;font-size:11px}
-#evidence td{padding:7px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
-#evidence tr:hover{background:var(--panel-2)}
-#evidence td:first-child{width:64%}
-#evidence .cid{color:var(--claim);font-weight:600;font-size:10px;letter-spacing:.03em}
-#evidence .ctext{
-  display:block;color:#4d5142;font-size:12px;
-  line-height:1.45;margin-top:2px;
-}
-#evidence td:last-child{text-align:right;vertical-align:top}
-.pill{display:inline-block;padding:2.5px 9px;border-radius:20px;font-size:9px;
-  letter-spacing:.1em;font-weight:600;text-transform:uppercase}
-.pill.none{border:1px dashed var(--faint);color:var(--faint)}
-.pill.validates{background:rgba(30,164,92,.12);border:1px solid var(--ok);color:var(--ok)}
-.pill.refutes{background:rgba(187,52,52,.1);border:1px solid var(--bad);color:var(--bad)}
-.run-ref{color:var(--faint);font-size:9px;display:block;margin-top:2px}
-tr.flash-row{animation:rowFlash 1s ease-out 2}
-@keyframes rowFlash{0%{background:rgba(30,164,92,.22)}100%{background:transparent}}
-/* ============ ask ============ */
-#ask-panel{flex:1 1 auto;border-bottom:none}
-#qa-log{flex:1;overflow-y:auto;padding:6px 16px 10px;background:var(--panel)}
-#qa-log:empty::before{
-  content:"ask the agent about conflicts, evidence, methods — it queries the live graph.";
-  display:block;padding:14px 2px;color:var(--faint);font-size:11px;font-style:italic;line-height:1.6;
-}
-.qa{margin-top:13px}
-.qa .q{color:var(--claim);font-size:11.5px;margin-bottom:6px;font-weight:600}
-.qa .q::before{content:"you ▸ ";color:var(--faint);font-weight:400}
-.qa .a{
-  color:var(--ink);font-size:13.5px;line-height:1.65;white-space:pre-wrap;word-break:break-word;
-  border-left:2.5px solid var(--ok);padding:4px 0 4px 12px;background:var(--panel-2);
-  border-radius:0 2px 2px 0;
-}
-.qa .a b{color:var(--claim);font-weight:600}
-.qa .a code{color:var(--paper);font-size:11px}
-.qa .a .thinking i{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--claim);
-  margin-right:4px;animation:dotHop 1s ease-in-out infinite}
-.qa .a .thinking i:nth-child(2){animation-delay:.15s}
-.qa .a .thinking i:nth-child(3){animation-delay:.3s}
-@keyframes dotHop{40%{transform:translateY(-4px);opacity:.5}}
-#suggest{display:flex;gap:7px;padding:10px 14px;flex-wrap:wrap;border-top:1px solid var(--line);background:var(--panel-2)}
-.sug{font-size:10px;color:var(--claim);border:1px solid rgba(13,125,158,.4);
-  background:rgba(13,125,158,.06);border-radius:20px;padding:4px 11px;cursor:pointer;
-  letter-spacing:.03em;transition:all .15s;}
-.sug:hover{background:rgba(13,125,158,.14)}
-#ask-row{display:flex;border-top:1.5px solid var(--line-strong)}
-#ask-input{flex:1;padding:13px 16px;background:var(--panel);border:none;outline:none;
-  color:var(--ink);font-size:12.5px}
-#ask-input::placeholder{color:var(--faint)}
-#ask-input:focus{background:#fff;box-shadow:inset 0 -2.5px 0 var(--claim)}
-#ask-btn{padding:0 22px;border:none;border-left:1px solid var(--line-strong);cursor:pointer;
-  background:var(--panel-2);color:var(--claim);
-  font-weight:600;font-size:12px;letter-spacing:.12em;transition:all .15s}
-#ask-btn:hover{background:var(--claim);color:#fff}
-/* ============ upload modal ============ */
-#modal-backdrop{
-  position:fixed;inset:0;z-index:20;background:rgba(35,39,29,.45);backdrop-filter:blur(3px);
-  display:none;align-items:center;justify-content:center;
-}
+#m-params input{width:100%;padding:6px 8px;background:#fff;border:1px solid rgba(20,20,26,0.12);
+  border-radius:6px;color:var(--ink);font-size:11px;outline:none}
+#m-params input:focus{border-color:var(--purple)}
+#m-params input.dirty{border-color:var(--purple);background:#F6F3FE}
+#run-btn{width:100%;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600;
+  padding:11px;border-radius:9px;border:none;cursor:pointer;background:var(--purple);color:#fff}
+#run-btn:hover:not(:disabled){background:var(--purple-dim)}
+#run-btn:disabled{opacity:0.45;cursor:not-allowed}
+#run-btn.running{background:#EFEAFC;color:var(--purple);cursor:wait}
+#run-btn.done{background:#E7F6EC;color:#1B7E49;cursor:default}
+.console-empty{text-align:center;color:var(--faint);font-size:13.5px;padding:60px 20px;line-height:1.5}
+.console-label{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--dim);
+  letter-spacing:0.04em;text-transform:uppercase;margin-bottom:8px}
+#log{background:#16161A;border-radius:11px;padding:14px 15px;font-family:'IBM Plex Mono',monospace;
+  font-size:12px;line-height:1.65;color:#D8D8DC;min-height:120px;white-space:pre-wrap;word-break:break-word}
+#log .t-dim{color:#5A5A64}
+#log .t-faint{color:#5A5A64}
+#log .t-ok{color:#7FD8A0}
+#log .t-bad{color:#F0A8A0}
+#log .t-warn{color:#F0B36B}
+#log .t-stage{color:#8AB4F8}
+#log .cursor{display:inline-block;color:var(--purple);animation:gt-blink 1s steps(1) infinite}
+
+/* ask tab */
+.chat-area{flex:1;overflow-y:auto;padding:18px 20px;display:flex;flex-direction:column;gap:14px}
+.chat-bubble{max-width:88%;padding:10px 13px;border-radius:13px;font-size:13.5px;line-height:1.55}
+.chat-bubble.agent{background:#F4F4F1;color:#1E1E24;border-radius:13px 13px 13px 3px;align-self:flex-start}
+.chat-bubble.user{background:var(--purple);color:#fff;border-radius:13px 13px 3px 13px;align-self:flex-end;max-width:82%}
+.chat-thinking{align-self:flex-start;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--dim)}
+.suggest-area{flex:none;border-top:1px solid rgba(20,20,26,0.08);padding:12px 16px}
+.suggest-label{font-size:11px;color:#9A9AA2;margin-bottom:8px}
+.suggest-row{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px}
+.sug{font-size:12.5px;color:#4A4A52;background:var(--bg);border:1px solid rgba(20,20,26,0.10);
+  padding:7px 11px;border-radius:999px;cursor:pointer}
+.sug:hover{border-color:var(--purple);color:var(--purple)}
+#ask-row{display:flex;gap:8px}
+#ask-input{flex:1;padding:10px 12px;border:1px solid rgba(20,20,26,0.12);border-radius:8px;
+  background:#fff;color:var(--ink);font-size:13px;outline:none}
+#ask-input:focus{border-color:var(--purple)}
+#ask-btn{padding:0 16px;border:none;border-radius:8px;background:var(--purple);color:#fff;
+  font-weight:600;font-size:13px;cursor:pointer}
+#ask-btn:hover{background:var(--purple-dim)}
+
+/* upload modal */
+#modal-backdrop{position:fixed;inset:0;z-index:20;background:rgba(22,22,26,0.45);
+  backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center}
 #modal-backdrop.show{display:flex}
-#modal{
-  width:min(720px, 92vw);background:var(--panel);border:1.5px solid var(--ink);
-  border-radius:3px;box-shadow:8px 8px 0 rgba(35,39,29,.25);
-  animation:popIn .25s cubic-bezier(.2,.9,.3,1) both;
-}
-@keyframes popIn{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
-#modal .m-head{display:flex;align-items:baseline;gap:12px;padding:16px 20px 12px;border-bottom:1px solid var(--line)}
-#modal .m-head h2{font-size:20px;font-weight:900}
-#modal .m-head span{color:var(--dim);font-size:10.5px}
-#modal .m-head button{margin-left:auto;border:none;background:none;cursor:pointer;
-  color:var(--dim);font-size:16px;}
-#modal .m-body{padding:18px 20px 20px}
-.m-label{display:block;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--dim);margin-bottom:7px}
+#modal{width:min(720px,92vw);background:#fff;border:1px solid rgba(20,20,26,0.14);
+  border-radius:14px;box-shadow:0 24px 60px -20px rgba(20,20,26,0.35)}
+#modal .m-head{display:flex;align-items:baseline;gap:12px;padding:18px 22px 14px;
+  border-bottom:1px solid rgba(20,20,26,0.08)}
+#modal .m-head h2{font-size:18px;font-weight:700}
+#modal .m-head span{color:var(--dim);font-size:12px}
+#modal .m-head button{margin-left:auto;border:none;background:none;cursor:pointer;color:var(--dim);font-size:18px}
+#modal .m-body{padding:18px 22px 22px}
+.m-label{display:block;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:0.06em;
+  text-transform:uppercase;color:var(--dim);margin-bottom:7px}
 .m-row{display:flex;gap:10px}
-#arxiv-url{
-  flex:1;padding:11px 13px;border:1.5px solid var(--line-strong);border-radius:2px;
-  background:var(--panel-2);color:var(--ink);
-  font-size:12px;outline:none;
-}
-#arxiv-url:focus{border-color:var(--claim);background:#fff}
-#arxiv-url::placeholder{color:var(--faint)}
-#arxiv-go{
-  padding:0 18px;border:1.5px solid var(--ok);border-radius:2px;background:var(--ok);
-  color:#fff;font-weight:600;font-size:11px;
-  letter-spacing:.1em;text-transform:uppercase;cursor:pointer;
-  box-shadow:3px 3px 0 rgba(21,127,70,.25);transition:all .15s;white-space:nowrap;
-}
-#arxiv-go:hover:not(:disabled){background:var(--ok-bright);transform:translate(-1px,-1px)}
-#arxiv-go:disabled{opacity:.5;cursor:wait;box-shadow:none}
+#arxiv-url{flex:1;padding:11px 13px;border:1px solid rgba(20,20,26,0.14);border-radius:8px;
+  background:var(--bg);font-size:12px;outline:none}
+#arxiv-url:focus{border-color:var(--purple);background:#fff}
+#arxiv-go{padding:0 18px;border:none;border-radius:8px;background:var(--purple);color:#fff;
+  font-weight:600;font-size:12px;cursor:pointer;white-space:nowrap}
+#arxiv-go:disabled{opacity:0.5;cursor:wait}
 .m-or{display:flex;align-items:center;gap:12px;margin:16px 0;color:var(--faint);font-size:10px;
-  letter-spacing:.2em;text-transform:uppercase}
-.m-or::before,.m-or::after{content:"";flex:1;height:1px;background:var(--line)}
-#drop-zone{
-  border:2px dashed var(--line-strong);border-radius:3px;padding:34px 20px;text-align:center;
-  color:var(--dim);font-size:14px;cursor:pointer;
-  transition:all .15s;background:var(--panel-2);
-}
-#drop-zone b{color:var(--ink);font-size:12px;
-  letter-spacing:.06em;text-transform:uppercase}
-#drop-zone:hover, #drop-zone.over{border-color:var(--ok);background:rgba(30,164,92,.06)}
-#drop-zone.busy{opacity:.5;pointer-events:none}
-#modal .m-foot{display:flex;align-items:center;gap:14px;padding:13px 20px;border-top:1px solid var(--line)}
-#upload-status{font-size:12px;color:var(--dim);flex:1;font-style:italic;}
-div.vis-tooltip{
-  font-size:11px !important;
-  color:var(--ink) !important;background:var(--panel) !important;
-  border:1.5px solid var(--ink) !important;border-radius:2px !important;
-  padding:8px 11px !important;max-width:340px;white-space:normal !important;
-  box-shadow:4px 4px 0 rgba(35,39,29,.15) !important;line-height:1.55;
-}
-::-webkit-scrollbar{width:9px;height:9px}
-::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:5px}
-::-webkit-scrollbar-track{background:transparent}
-#log::-webkit-scrollbar-thumb{background:#2e3827}
+  letter-spacing:0.15em;text-transform:uppercase}
+.m-or::before,.m-or::after{content:"";flex:1;height:1px;background:rgba(20,20,26,0.10)}
+#drop-zone{border:2px dashed rgba(20,20,26,0.16);border-radius:10px;padding:34px 20px;
+  text-align:center;color:var(--dim);font-size:14px;cursor:pointer;background:var(--bg)}
+#drop-zone b{color:var(--ink);font-size:12px}
+#drop-zone:hover,#drop-zone.over{border-color:var(--purple);background:#F6F3FE}
+#drop-zone.busy{opacity:0.5;pointer-events:none}
+#modal .m-foot{padding:13px 22px;border-top:1px solid rgba(20,20,26,0.08)}
+#upload-status{font-size:12px;color:var(--dim);font-style:italic}
+div.vis-tooltip{font-size:11px!important;color:var(--ink)!important;background:#fff!important;
+  border:1px solid rgba(20,20,26,0.14)!important;border-radius:8px!important;
+  padding:8px 11px!important;max-width:340px;white-space:normal!important;
+  box-shadow:0 4px 12px rgba(0,0,0,0.08)!important;line-height:1.55}
 </style>
 </head>
 <body>
-<header>
-  <div class="led"></div>
-  <h1>PAPER<span class="arrow">→</span>RESULTS</h1>
-  <span class="tag">executable evidence graph<br>hackwithbay 3.0</span>
-  <button id="upload-btn">+ upload paper</button>
-  <div id="stats">
-    <div class="chip">papers <b id="st-papers">–</b></div>
-    <div class="chip">claims <b id="st-claims">–</b></div>
-    <div class="chip">conflicts <b id="st-conf">–</b></div>
-    <div class="chip runs">runs <b id="st-runs">–</b></div>
-  </div>
-</header>
-<main>
-  <aside class="left">
-    <section id="method-panel">
-      <div class="head">Selected method <span class="idx">fig. 1</span></div>
-      <div id="method-body">
-        <div id="m-paper"></div>
-        <div id="m-name" class="empty">awaiting selection…</div>
-        <div id="m-desc">Click a violet method node in the graph to load its runnable specification.</div>
-        <div id="params-head">paper experiment parameters
-          <button id="params-reset" title="restore the paper's values">↺ paper defaults</button>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <a href="/">
+        <span class="brand-dot"></span>
+        <span class="brand-name">Verigraph</span>
+      </a>
+      <span class="badge" id="workspace-badge">workspace</span>
+    </div>
+    <div class="topbar-right">
+      <div class="db-status">
+        <span class="db-dot" id="db-dot"></span>
+        <span id="db-label">Neo4j Aura · – nodes</span>
+      </div>
+      <button class="btn-guided" id="guided-demo-btn" title="Automated click-through for presentations">▶ Guided demo</button>
+      <button class="btn-ghost" id="new-workspace-btn" title="Start fresh with your own papers">⊕ New workspace</button>
+      <button class="btn-ghost" id="load-demo-btn" title="Load 3-paper demo (Adam, Wilson, AdamW)">Load demo</button>
+      <button class="btn-ghost" id="reset-btn" title="Clear runs on current papers">↺ Reset runs</button>
+      <button class="btn-dark" id="upload-btn">+ Add paper</button>
+    </div>
+  </header>
+
+  <div class="main" id="main-layout">
+    <div class="graph-col">
+      <div class="legend-strip">
+        <span class="title">Legend</span>
+        <span class="legend-item"><span class="legend-paper"></span>Paper</span>
+        <span class="legend-item"><span class="legend-claim"></span>Claim</span>
+        <span class="legend-item"><span class="legend-method"></span>Method</span>
+        <span class="legend-item"><span class="legend-contradicts"></span>CONTRADICTS</span>
+        <span class="legend-item"><span class="legend-validates"></span>VALIDATES</span>
+        <div class="evidence-strip" id="evidence-strip">
+          <span class="strip-label">Evidence</span>
+          <span class="evidence-counter" id="evidence-counter">
+            <span class="count-digit" id="evidence-valid">0</span>/<span id="evidence-total">0</span>
+          </span>
+          <span class="strip-label">claims validated</span>
         </div>
-        <div id="m-params"></div>
-        <button id="run-btn" disabled>▶ Run this method</button>
+        <span class="legend-hint" id="run-hint">– CONTRADICTS · no runs yet</span>
+        <button class="btn-ghost" id="panel-toggle" title="Hide side panel for more graph space">◀ Hide panel</button>
       </div>
-    </section>
-    <section id="log-panel">
-      <div class="head">Run log <span class="idx">live</span>
-        <button id="log-toggle" title="minimize / expand">—</button>
+      <div class="graph-area">
+        <div id="demo-toast" class="hidden"></div>
+        <div id="empty-workspace">
+          <h3>Your workspace is empty</h3>
+          <p>Add research papers via arXiv link or PDF upload. Verigraph will extract claims, methods, and cross-paper conflicts — then you can run any method in the sandbox.</p>
+          <button class="btn-dark" id="empty-add-btn">+ Add your first paper</button>
+          <p class="hint">or <a href="#" id="empty-load-demo" style="color:var(--purple)">load the 3-paper demo (Adam · Wilson · AdamW)</a></p>
+        </div>
+        <div id="net"></div>
+        <div id="zoom-ctl">
+          <button id="zoom-in" title="zoom in">+</button>
+          <button id="zoom-out" title="zoom out">−</button>
+          <button id="zoom-fit" class="fit" title="fit everything">⛶</button>
+        </div>
       </div>
-      <div id="log"></div>
-    </section>
-  </aside>
-  <div id="graph">
-    <div id="net"></div>
-    <div id="zoom-ctl">
-      <button id="zoom-in" title="zoom in">+</button>
-      <button id="zoom-out" title="zoom out">−</button>
-      <button id="zoom-fit" class="fit" title="fit everything">⛶</button>
     </div>
-    <div id="edge-legend">
-      <span class="contradicts"><span class="sw"></span>contradicts</span>
-      <span class="validates"><span class="sw"></span>validates</span>
-      <span class="implements"><span class="sw"></span>implements</span>
-      <span class="hint">click a <b>method</b> · then RUN</span>
-    </div>
+
+    <aside class="side-panel">
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="evidence">Evidence</button>
+        <button class="tab-btn" data-tab="console">Console<span id="console-badge"></span></button>
+        <button class="tab-btn" data-tab="ask">Ask agent</button>
+      </div>
+      <div class="tab-body gt-scroll">
+        <div class="tab-pane active" id="tab-evidence">
+          <div id="papers-panel" class="papers-panel" style="display:none">
+            <h3>Workspace papers</h3>
+            <p class="papers-sub">Click a paper in the graph or remove one from your workspace.</p>
+            <div id="papers-list"></div>
+          </div>
+          <div class="evidence-header">
+            <h2>Evidence table</h2>
+            <span class="evidence-count" id="ev-count">0/0 with evidence</span>
+          </div>
+          <p class="evidence-sub">One row per claim. Runs attach a verdict; everything else is "no runs yet".</p>
+          <div id="evidence"></div>
+        </div>
+
+        <div class="tab-pane" id="tab-console">
+          <div id="method-card" style="display:none" class="method-card">
+            <div class="method-label" id="m-paper">METHOD ·</div>
+            <div class="method-name" id="m-name"></div>
+            <div class="method-desc" id="m-desc"></div>
+            <div id="params-head">parameters <button id="params-reset" title="restore defaults">↺ defaults</button></div>
+            <div id="m-params"></div>
+            <button id="run-btn" disabled>▶ RUN THIS METHOD</button>
+          </div>
+          <div id="console-empty" class="console-empty">
+            Select the violet <span style="color:var(--purple);font-weight:600">◆ method node</span> in the graph, then press <span style="font-family:'IBM Plex Mono',monospace">▶ RUN</span> to generate &amp; execute an experiment.
+          </div>
+          <div id="console-log-wrap" style="display:none">
+            <div class="console-label">Experiment console</div>
+            <div id="log"></div>
+          </div>
+        </div>
+
+        <div class="tab-pane" id="tab-ask">
+          <div class="chat-area gt-scroll" id="chat-area">
+            <div class="chat-bubble agent">Hi — I'm wired to the research graph via Neo4j. Run a method, then ask me what has executable evidence.</div>
+          </div>
+          <div class="suggest-area">
+            <div class="suggest-label">Try asking</div>
+            <div class="suggest-row">
+              <span class="sug">Which claims have executable evidence?</span>
+              <span class="sug">Do these papers agree on Adam?</span>
+              <span class="sug">What contradicts adam2014?</span>
+            </div>
+            <div id="ask-row">
+              <input id="ask-input" placeholder="ask the graph anything…">
+              <button id="ask-btn">Send</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
   </div>
-  <aside class="right">
-    <section id="evidence-panel">
-      <div class="head">Claims × executable evidence <span class="idx">tab. 1</span></div>
-      <div id="evidence"></div>
-    </section>
-    <section id="ask-panel">
-      <div class="head">Ask the research agent <span class="idx">rocketride × neo4j</span></div>
-      <div id="qa-log"></div>
-      <div id="suggest">
-        <span class="sug">Which claims have executable evidence?</span>
-        <span class="sug">Do these papers agree on Adam?</span>
-        <span class="sug">What contradicts adam2014?</span>
-      </div>
-      <div id="ask-row">
-        <input id="ask-input" placeholder="ask the graph anything…">
-        <button id="ask-btn">ASK</button>
-      </div>
-    </section>
-  </aside>
-</main>
+</div>
+
 <div id="modal-backdrop">
   <div id="modal">
     <div class="m-head">
-      <h2>Add a paper</h2>
-      <span>the agent reads it and extracts claims, methods & conflicts into the graph</span>
+      <h2 id="modal-title">Add a paper</h2>
+      <span>extracts claims, methods &amp; conflicts into the graph</span>
       <button id="modal-close">✕</button>
     </div>
     <div class="m-body">
       <label class="m-label" for="arxiv-url">arXiv link or id</label>
       <div class="m-row">
         <input id="arxiv-url" placeholder="https://arxiv.org/abs/1907.08610   ·   or just 1907.08610">
-        <button id="arxiv-go">fetch & extract</button>
+        <button id="arxiv-go">fetch &amp; extract</button>
       </div>
       <div class="m-or"><span>or</span></div>
       <div id="drop-zone">
@@ -405,23 +393,235 @@ div.vis-tooltip{
     </div>
   </div>
 </div>
+
 <script>
-/* ================= evidence-flow graph (light) ================= */
-const COL = {paper:0, claim:340, method:620, run:880};
-const ROW = 62, GROUP_GAP = 42;
-let network, nodesDS, edgesDS, selectedMethod=null, running=false;
+const ROW_Y = {paper: 0};
+const COL_GAP = 280, LAYOUT_PAD = 100;
+const PAPER_BOX_H = 72, CLAIM_PAD = 18, METHOD_GAP = 80, RUN_PAD = 110;
+const CLAIM_DOT = 12, METHOD_DOT = 22, RUN_DOT = 17;
+const LABEL_LINE_H = 13;
+const DEMO_METHOD_ID = "wilson2017-m1";
+let network, nodesDS, edgesDS, selectedMethod=null, running=false, activeTab='evidence';
+let methodParams = [], lastEvidence = {}, guidedDemoRunning = false, panelCollapsed = false;
+let prevEvidenceValid = 0, graphAnimating = false, selectedPaper = null, workspacePapers = [];
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function claimShortLabel(text){
+  if(!text) return "Claim";
+  const s = text.toLowerCase();
+  if(s.includes("linearly separable") && (s.includes("sgd") || s.includes("adam")))
+    return "GD 0% · Adam ~50%";
+  if(s.includes("adamw") && s.includes("generalization")) return "AdamW < Adam (gen.)";
+  if(s.includes("adaptive") && s.includes("generalize worse")) return "Adam gen. worse than SGD";
+  if(s.includes("sign") && s.includes("magnitude")) return "Adam: sign > magnitude";
+  if(s.includes("eigenvalue") || s.includes("sharpness")) return "Sharpness slows Adam";
+  if(s.includes("implicit bias") || s.includes("ridge")) return "GD bias ≈ ridge reg.";
+  if(s.includes("gradient noise")) return "Noise escapes minima";
+  if(s.includes("tuned sgd")) return "Tuned SGD ≥ adaptive";
+  const t = text.trim();
+  return t.length > 42 ? t.slice(0, 40) + "…" : t;
+}
+
+function runShortLabel(raw, verdictRel){
+  let metrics = {};
+  try{ metrics = JSON.parse(raw.props.metrics || "{}"); }catch{}
+  const gd = metrics.test_error_gd ?? metrics.err_gd ?? metrics.final_train_gd;
+  const adam = metrics.test_error_adam ?? metrics.err_adam ?? metrics.final_train_adam;
+  const v = verdictRel === "VALIDATES" ? "✓" : verdictRel === "REFUTES" ? "✗" : "⚡";
+  if(gd != null && adam != null)
+    return `${v} GD ${Number(gd).toFixed(3)} · Adam ${Number(adam).toFixed(3)}`;
+  const single = gd ?? adam ?? metrics.err ?? metrics.final_train;
+  if(single != null) return `${v} ${Number(single).toFixed(3)}`;
+  return `${v} ${verdictRel === "VALIDATES" ? "validates" : verdictRel === "REFUTES" ? "refutes" : "run"}`;
+}
+
+function updateEvidenceCounter(validated, total){
+  const counter = document.getElementById("evidence-counter");
+  const validEl = document.getElementById("evidence-valid");
+  document.getElementById("evidence-total").textContent = total;
+  if(prevEvidenceValid !== validated){
+    counter.classList.remove("flip");
+    void counter.offsetWidth;
+    counter.classList.add("flip");
+    prevEvidenceValid = validated;
+  }
+  validEl.textContent = validated;
+  document.getElementById("ev-count").textContent = `${validated}/${total} with evidence`;
+}
+
+function showDemoToast(msg, ms=2800){
+  const el = document.getElementById("demo-toast");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+  if(showDemoToast._t) clearTimeout(showDemoToast._t);
+  showDemoToast._t = setTimeout(()=>el.classList.add("hidden"), ms);
+}
+
+function findMethodNodeEid(methodId){
+  if(!nodesDS) return null;
+  for(const n of nodesDS.get()){
+    if(n._raw?.label === "Method" && (n._raw.props?.id === methodId || n._raw.key === methodId))
+      return n.id;
+  }
+  return null;
+}
+
+function edgeRel(ed){
+  if(ed?._rel) return ed._rel;
+  const parts = String(ed?.id || "").split("|");
+  return parts.length >= 2 ? parts[1] : "";
+}
+
+async function waitCamera(duration=1500){
+  return new Promise(resolve=>{
+    if(!network) return resolve();
+    let done = false;
+    const finish = ()=>{ if(!done){ done=true; resolve(); } };
+    network.once("animationFinished", finish);
+    setTimeout(finish, duration + 250);
+  });
+}
+
+async function smoothFocus(nodeId, {scale=1.1, duration=1600, offset={x:0,y:0}}={}){
+  if(!network || !nodeId) return;
+  network.selectNodes([nodeId]);
+  network.focus(nodeId, {scale, offset, animation:{duration, easingFunction:"easeInOutCubic"}});
+  await waitCamera(duration);
+}
+
+async function smoothFit({duration=1400}={}){
+  if(!network) return;
+  network.fit({animation:{duration, easingFunction:"easeInOutCubic"}});
+  await waitCamera(duration);
+}
+
+async function animateEdgeIn(edgeId, ms=600){
+  const e = edgesDS.get(edgeId);
+  if(!e) return;
+  const color = e.color?.color || "#C9C9D0";
+  const fullOp = e._fullOpacity ?? e.color?.opacity ?? 1;
+  const fullW = e._fullWidth ?? e.width ?? 1;
+  const fullLabel = e._fullLabel ?? e.label ?? "";
+  edgesDS.update({id:edgeId, color:{color, opacity:0.04}, width:0.4, label:""});
+  const t0 = performance.now();
+  await new Promise(resolve=>{
+    function frame(now){
+      const t = Math.min(1, (now - t0) / ms);
+      const ease = 1 - Math.pow(1 - t, 3);
+      edgesDS.update({
+        id:edgeId,
+        color:{color, opacity:0.04 + (fullOp - 0.04) * ease},
+        width:0.4 + (fullW - 0.4) * ease,
+        label:t > 0.7 ? fullLabel : "",
+      });
+      if(t < 1) requestAnimationFrame(frame);
+      else resolve();
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+async function revealEdgesCinematic(edges, ms=520){
+  const order = {FROM:0, DESCRIBED_IN:1, CITES:2, IMPLEMENTS:3, VALIDATES:4, REFUTES:5, CONTRADICTS:6};
+  const prepared = edges.map(e=>({
+    ...e,
+    _fullLabel: e.label,
+    _fullOpacity: e._fullOpacity ?? e.color?.opacity ?? 1,
+    _fullWidth: e._fullWidth ?? e.width ?? 1,
+    color:{color:e.color?.color || "#C9C9D0", opacity:0.03},
+    width:0.4,
+    label:"",
+  }));
+  edgesDS.add(prepared);
+  const sorted = [...prepared].sort((a,b)=>(order[a._rel]??9)-(order[b._rel]??9));
+  for(const e of sorted){
+    await animateEdgeIn(e.id, ms);
+    await sleep(30);
+  }
+}
+
+async function cinematicTourToMethod(methodId){
+  const methodEid = findMethodNodeEid(methodId);
+  if(!methodEid || !network) return;
+  const paperPrefix = methodId.replace(/-m\d+$/, "");
+  const paperEid = findPaperNodeEid(paperPrefix);
+
+  await smoothFit({duration:2000});
+  if(paperEid){
+    await smoothFocus(paperEid, {scale:0.9, duration:1800});
+    const claimEdges = edgesDS.get()
+      .filter(ed=>ed.to === paperEid && edgeRel(ed) === "FROM")
+      .sort((a,b)=>(nodesDS.get(a.from)?.y||0)-(nodesDS.get(b.from)?.y||0));
+    for(const ed of claimEdges){
+      await animateEdgeIn(ed.id, 580);
+      await sleep(180);
+      await smoothFocus(ed.from, {scale:1.02, duration:1000});
+      await sleep(280);
+    }
+  }
+  const methodEdge = edgesDS.get().find(ed=>ed.from === methodEid && edgeRel(ed) === "DESCRIBED_IN");
+  if(methodEdge) await animateEdgeIn(methodEdge.id, 620);
+  await smoothFocus(methodEid, {scale:1.15, duration:2000});
+}
+
+async function cinematicRevealRun(methodEid){
+  const runNode = nodesDS.get().find(n=>n._raw?.label === "Run");
+  if(!runNode || !network) return;
+  const runEid = runNode.id;
+  const implEdge = edgesDS.get().find(ed=>ed.from === runEid && edgeRel(ed) === "IMPLEMENTS");
+  if(implEdge && methodEid){
+    await smoothFocus(methodEid, {scale:1.06, duration:1100});
+    await animateEdgeIn(implEdge.id, 720);
+  }
+  const valEdges = edgesDS.get()
+    .filter(ed=>ed.from === runEid && (edgeRel(ed) === "VALIDATES" || edgeRel(ed) === "REFUTES"))
+    .sort((a,b)=>(nodesDS.get(a.to)?.y||0)-(nodesDS.get(b.to)?.y||0));
+  await smoothFocus(runEid, {scale:1.18, duration:1700});
+  for(const ed of valEdges){
+    await animateEdgeIn(ed.id, 680);
+    await sleep(220);
+    await smoothFocus(ed.to, {scale:1.04, duration:900});
+    await sleep(320);
+  }
+  await smoothFit({duration:1500});
+}
+
+async function pulseNode(eid, on=true, {focus=false}={}){
+  if(!eid || !nodesDS) return;
+  const n = nodesDS.get(eid);
+  if(!n) return;
+  nodesDS.update({
+    id: eid,
+    borderWidth: on ? 4 : (n._raw?.label === "Method" ? 2 : n.borderWidth || 1.5),
+    shadow: on ? {enabled:true, color:"rgba(108,76,241,.5)", size:22, x:0, y:0}
+              : (n._raw?.label === "Run" ? n.shadow : {enabled:false}),
+  });
+  if(on && focus && network){
+    network.selectNodes([eid]);
+    network.focus(eid, {scale:1.15, animation:{duration:700, easingFunction:"easeInOutCubic"}});
+  }
+}
 
 const logEl = document.getElementById("log");
+const methodCard = document.getElementById("method-card");
+const consoleEmpty = document.getElementById("console-empty");
+const consoleLogWrap = document.getElementById("console-log-wrap");
+const chatArea = document.getElementById("chat-area");
+
 const ts = () => new Date().toTimeString().slice(0,8);
 function log(msg, cls=""){
   logEl.querySelector(".cursor")?.remove();
   logEl.innerHTML += (logEl.dataset.used ? "\n" : "") +
     `<span class="t-faint">${ts()} </span><span class="${cls}">${msg}</span>`;
-  if(running) logEl.innerHTML += `<span class="cursor"></span>`;
+  if(running) logEl.innerHTML += `<span class="cursor">▌</span>`;
   logEl.dataset.used = 1;
   logEl.scrollTop = logEl.scrollHeight;
+  document.getElementById("console-badge").textContent = logEl.dataset.used ? " ·" : "";
+  consoleLogWrap.style.display = "block";
+  consoleEmpty.style.display = "none";
 }
-function clearLog(){ logEl.innerHTML=""; delete logEl.dataset.used; }
+function clearLog(){ logEl.innerHTML=""; delete logEl.dataset.used; document.getElementById("console-badge").textContent=""; }
 
 const wrap = (s, w) => {
   const words = (s||"").split(" "); const lines=[]; let cur="";
@@ -433,6 +633,174 @@ const wrap = (s, w) => {
   return lines.join("\n");
 };
 
+function setTab(tab){
+  activeTab = tab;
+  document.querySelectorAll(".tab-btn").forEach(b=>{
+    b.classList.toggle("active", b.dataset.tab===tab);
+  });
+  document.querySelectorAll(".tab-pane").forEach(p=>{
+    p.classList.toggle("active", p.id==="tab-"+tab);
+  });
+}
+
+document.querySelectorAll(".tab-btn").forEach(b=>{
+  b.addEventListener("click", ()=>setTab(b.dataset.tab));
+});
+
+function claimLabel(text){
+  return wrap(claimShortLabel(text), 20);
+}
+
+function labelHeight(text, wrapW=20){
+  return claimLabel(text).split("\n").length * LABEL_LINE_H + 8;
+}
+
+function claimSlot(text){
+  return CLAIM_DOT + labelHeight(text) + CLAIM_PAD;
+}
+
+function methodSlot(name){
+  const label = "◆ " + wrap(name || "", 16);
+  return METHOD_DOT + label.split("\n").length * LABEL_LINE_H + 12 + METHOD_GAP;
+}
+
+function animTier(raw){
+  if(!raw) return 99;
+  if(raw.label === "Paper") return 0;
+  if(raw.label === "Claim") return 1;
+  if(raw.label === "Method") return 2;
+  if(raw.label === "Run") return 3;
+  return 4;
+}
+
+function hiddenColor(c){
+  return {
+    background: c.background, border: c.border,
+    highlight: c.highlight,
+    hover: c.hover, opacity: 0.04,
+  };
+}
+
+async function revealNodes(nodeList, stagger=42){
+  const sorted = [...nodeList].sort((a,b)=>{
+    const ta = animTier(a._raw), tb = animTier(b._raw);
+    return ta !== tb ? ta - tb : (a.x||0) - (b.x||0);
+  });
+  for(const n of sorted){
+    if(!nodesDS.get(n.id)) continue;
+    const full = n._fullColor || n.color;
+    const size = n._fullSize ?? n.size ?? 12;
+    nodesDS.update({id:n.id, color:full, size, opacity:1});
+    await sleep(stagger);
+  }
+}
+
+async function tweenPositions(targets, ms=420){
+  const jobs = targets.map(n=>{
+    const cur = nodesDS.get(n.id);
+    if(!cur || cur.x === n.x && cur.y === n.y) return null;
+    const sx = cur.x, sy = cur.y;
+    return new Promise(resolve=>{
+      const t0 = performance.now();
+      function frame(now){
+        const t = Math.min(1, (now - t0) / ms);
+        const e = 1 - Math.pow(1 - t, 3);
+        nodesDS.update({id:n.id, x:sx + (n.x - sx) * e, y:sy + (n.y - sy) * e});
+        if(t < 1) requestAnimationFrame(frame);
+        else resolve();
+      }
+      requestAnimationFrame(frame);
+    });
+  }).filter(Boolean);
+  await Promise.all(jobs);
+}
+
+async function animateGraph(nodes, edges, {initial=false, focusNew=false, existing=new Set(), cinematic=false, skipFit=false}={}){
+  if(graphAnimating) return;
+  graphAnimating = true;
+  const newRuns = nodes.filter(n=>!existing.has(n.id) && n._raw?.label==="Run").map(n=>n.id);
+
+  if(initial || !network){
+    const staged = nodes.map((n,i)=>({
+      ...n,
+      _fullColor: n.color,
+      _fullSize: n.size,
+      color: hiddenColor(n.color),
+      size: Math.max(4, (n.size||12) * 0.25),
+      _animIdx: i,
+    }));
+    nodesDS = new vis.DataSet(staged);
+    edgesDS = new vis.DataSet([]);
+    network = new vis.Network(document.getElementById("net"), {nodes:nodesDS, edges:edgesDS}, {
+      physics:false,
+      interaction:{hover:true, tooltipDelay:120, dragNodes:false},
+      edges:{smooth:{type:"dynamic"}},
+    });
+    network.on("click", p=>{
+      if(!p.nodes.length) return;
+      const n = nodesDS.get(p.nodes[0]);
+      if(n._raw?.label==="Method") selectMethod(n._raw);
+      else if(n._raw?.label==="Paper") selectPaper(n._raw, n.id);
+    });
+    network.on("hoverNode", ()=>document.body.style.cursor="pointer");
+    network.on("blurNode", ()=>document.body.style.cursor="default");
+    await revealNodes(staged, cinematic ? 55 : 38);
+    const styledEdges = edges.map(e=>({...e, _rel: edgeRel(e) || e._rel}));
+    if(cinematic) await revealEdgesCinematic(styledEdges, 500);
+    else edgesDS.add(styledEdges);
+    if(!skipFit) await smoothFit({duration: cinematic ? 1800 : 700});
+  } else {
+    const fresh = new Set(nodes.map(n=>n.id));
+    nodesDS.getIds().filter(id=>!fresh.has(id)).forEach(id=>nodesDS.remove(id));
+    const newcomers = nodes.filter(n=>!existing.has(n.id));
+    const movers = nodes.filter(n=>existing.has(n.id));
+
+    movers.forEach(n=>nodesDS.update({...n, _fullColor:n.color, _fullSize:n.size}));
+    await tweenPositions(movers);
+
+    newcomers.forEach(n=>{
+      const staged = {
+        ...n,
+        _fullColor: n.color,
+        _fullSize: n.size,
+        color: hiddenColor(n.color),
+        size: Math.max(4, (n.size||12) * 0.25),
+      };
+      if(nodesDS.get(n.id)) nodesDS.update(staged);
+      else nodesDS.add(staged);
+    });
+    const styledEdges = edges.map(e=>({...e, _rel: edgeRel(e) || e._rel}));
+    const newEdgeIds = new Set(styledEdges.map(e=>e.id));
+    edgesDS.getIds().filter(id=>!newEdgeIds.has(id)).forEach(id=>edgesDS.remove(id));
+    styledEdges.forEach(e=>{
+      const cur = edgesDS.get(e.id);
+      if(cur){
+        edgesDS.update({...e, _fullLabel:e.label, _fullOpacity:e._fullOpacity ?? e.color?.opacity,
+          _fullWidth:e._fullWidth ?? e.width});
+      } else if(cinematic && guidedDemoRunning){
+        edgesDS.add({...e, _fullLabel:e.label, _fullOpacity:e.color?.opacity, _fullWidth:e.width,
+          color:{color:e.color.color, opacity:0.03}, width:0.4, label:""});
+      } else {
+        edgesDS.add(e);
+      }
+    });
+    await revealNodes(newcomers, cinematic ? 60 : 55);
+
+    if(!skipFit){
+      if(focusNew && newRuns.length){
+        network.selectNodes(newRuns);
+        await smoothFocus(newRuns[0], {scale:1.1, duration:1200});
+        setTimeout(()=>smoothFit({duration:1100}), 1800);
+      } else if(newcomers.length){
+        await smoothFit({duration:750});
+      } else {
+        await smoothFit({duration:500});
+      }
+    }
+  }
+  graphAnimating = false;
+}
+
 function buildLayout(g){
   const by = l => g.nodes.filter(n=>n.label===l);
   const edge = r => g.edges.filter(e=>e.rel===r);
@@ -443,103 +811,119 @@ function buildLayout(g){
   edge("FROM").forEach(e=>{ (claimsOf[e.dst] ||= []).push(eidOf[e.src]); });
   edge("DESCRIBED_IN").forEach(e=>{ (methodsOf[e.dst] ||= []).push(eidOf[e.src]); });
 
+  const colGap = papers.length > 1
+    ? Math.max(210, Math.min(COL_GAP, 1300 / (papers.length - 1)))
+    : COL_GAP;
+
   const nodes=[], pos={};
-  let y = 0;
-  for(const p of papers){
+  let maxColumnBottom = ROW_Y.paper + PAPER_BOX_H;
+
+  papers.forEach((p, pi)=>{
+    const x = LAYOUT_PAD + pi * colGap;
     const claims = (claimsOf[p.eid]||[]).sort((a,b)=>a.key<b.key?-1:1);
     const methods = methodsOf[p.eid]||[];
-    const groupH = Math.max(claims.length, 1) * ROW;
-    const centerY = y + groupH/2 - ROW/2;
-    pos[p.eid] = {x:COL.paper, y:centerY};
+
+    pos[p.eid] = {x, y: ROW_Y.paper};
     nodes.push({
-      id:p.eid, x:COL.paper, y:centerY, fixed:true, shape:"box",
+      id:p.eid, x, y:ROW_Y.paper, fixed:true, shape:"box",
       label:wrap(p.caption, 20) + "\n" + (p.props.year||""),
-      color:{background:"#fdf3d7", border:"#a87708", highlight:{background:"#fff", border:"#a87708"}},
-      font:{color:"#7a5606", size:16, face:"IBM Plex Sans"},
+      color:{background:"#fff", border:"rgba(20,20,26,0.22)", highlight:{background:"#F6F3FE", border:"#6C4CF1"}},
+      font:{color:"#16161A", size:13, face:"IBM Plex Mono"},
       margin:10, borderWidth:1.5, widthConstraint:{maximum:185},
       title:(p.props.title||"") + " (" + (p.props.arxiv||"") + ")",
       _raw:p,
     });
-    claims.forEach((c,i)=>{
-      const cy = y + i*ROW;
-      pos[c.eid] = {x:COL.claim, y:cy};
+
+    let y = ROW_Y.paper + PAPER_BOX_H + 16;
+    claims.forEach((c, ci)=>{
+      const n = claims.length;
+      const cx = x + (ci - (n - 1) / 2) * 30;
+      const label = claimLabel(c.props.text);
+      const slot = claimSlot(c.props.text);
+      const cy = y + CLAIM_DOT / 2;
+      pos[c.eid] = {x: cx, y: cy};
       nodes.push({
-        id:c.eid, x:COL.claim, y:cy, fixed:true, shape:"dot", size:13,
-        label:c.key, color:{background:"#0d7d9e", border:"#0d7d9e", highlight:{background:"#23271d", border:"#0d7d9e"}},
-        font:{color:"#0d7d9e", size:13, face:"IBM Plex Sans"},
-        title:c.props.text, _raw:c,
+        id:c.eid, x:cx, y:cy, fixed:true, shape:"dot", size:CLAIM_DOT,
+        label,
+        color:{background:"#FDF6E3", border:"#EAD59A", highlight:{background:"#E7F6EC", border:"#6C4CF1"}},
+        font:{color:"#8A6410", size:10, face:"IBM Plex Sans", vadjust:6},
+        title: (c.key ? c.key + " — " : "") + (c.props.text || ""), _raw:c,
+      });
+      y += slot;
+    });
+
+    let methodY = y + 36;
+    methods.forEach((m, mi)=>{
+      const mx = x + (mi - (methods.length - 1) / 2) * 44;
+      const mLabel = "◆ " + wrap(m.props.name||m.key, 16);
+      const my = methodY + mi * methodSlot(m.props.name||m.key);
+      pos[m.eid] = {x: mx, y: my};
+      nodes.push({
+        id:m.eid, x:mx, y:my, fixed:true, shape:"dot", size:METHOD_DOT,
+        label: mLabel,
+        font:{color:"#fff", size:10.5, face:"IBM Plex Sans", bold:true, vadjust:8},
+        color:{background:"#6C4CF1", border:"#5636d6", highlight:{background:"#5636d6", border:"#3A1F9E"}},
+        borderWidth:2, title:m.props.runnable_hint||m.props.description, _raw:m,
       });
     });
-    methods.forEach((m,i)=>{
-      const my = centerY + (i - (methods.length-1)/2) * ROW;
-      pos[m.eid] = {x:COL.method, y:my};
-      nodes.push({
-        id:m.eid, x:COL.method, y:my, fixed:true, shape:"dot", size:21,
-        label:wrap(m.props.name||m.key, 18),
-        color:{background:"#7350cf", border:"#5636b8", highlight:{background:"#23271d", border:"#7350cf"}},
-        font:{color:"#5636b8", size:14, face:"IBM Plex Sans", bold:true},
-        borderWidth:1.5, title:m.props.runnable_hint||m.props.description, _raw:m,
-      });
-    });
-    y += groupH + GROUP_GAP;
-  }
+
+    const colBottom = methods.length
+      ? methodY + methods.reduce((max, m, mi) =>
+          Math.max(max, mi * methodSlot(m.props.name||m.key) + METHOD_DOT + 28), 0)
+      : y + 16;
+    maxColumnBottom = Math.max(maxColumnBottom, colBottom);
+  });
+
+  const runY = maxColumnBottom + RUN_PAD;
+
   const runs = by("Run");
-  const runLinks = {};
+  const runLinks = {}, runVerdict = {};
   g.edges.filter(e=>["VALIDATES","REFUTES","IMPLEMENTS"].includes(e.rel))
-    .forEach(e=>{ (runLinks[e.src] ||= []).push(e.dst); });
+    .forEach(e=>{
+      (runLinks[e.src] ||= []).push(e.dst);
+      if(e.rel === "VALIDATES" || e.rel === "REFUTES") runVerdict[e.src] = e.rel;
+    });
   runs.sort((a,b)=>a.key<b.key?-1:1).forEach((r,i)=>{
-    const ys = (runLinks[r.eid]||[]).map(t=>pos[t]?.y).filter(v=>v!==undefined);
-    const ry = ys.length ? ys.reduce((a,b)=>a+b,0)/ys.length : i*ROW;
-    pos[r.eid] = {x:COL.run, y:ry + (i%2 ? 26 : -26)};
+    const xs = (runLinks[r.eid]||[]).map(t=>pos[t]?.x).filter(v=>v!==undefined);
+    const rx = xs.length ? xs.reduce((a,b)=>a+b,0)/xs.length : LAYOUT_PAD + i * colGap;
+    pos[r.eid] = {x: rx + (i%2 ? 24 : -24), y: runY};
     const ok = r.props.status==="success";
+    const verdict = runVerdict[r.eid];
     nodes.push({
-      id:r.eid, x:COL.run, y:pos[r.eid].y, fixed:true, shape:"dot", size:18,
-      label:"⚡ " + (r.key||"").replace("run-","").slice(0,22),
-      color:{background:ok?"#1ea45c":"#bb3434", border:ok?"#0c5a30":"#7e2020",
-        highlight:{background:"#23271d", border:ok?"#1ea45c":"#bb3434"}},
-      font:{color:ok?"#157f46":"#bb3434", size:13, face:"IBM Plex Sans"},
-      borderWidth:2, shadow:{enabled:true, color:ok?"rgba(30,164,92,.5)":"rgba(187,52,52,.45)", size:18, x:0, y:0},
-      title:`${r.key} · ${r.props.backend} · ${r.props.status} · ${r.props.duration_s}s`,
+      id:r.eid, x:pos[r.eid].x, y:runY, fixed:true, shape:"dot", size:RUN_DOT,
+      label: runShortLabel(r, verdict),
+      color:{background:ok?"#1F9D5B":"#D9483B", border:ok?"#17784a":"#a83228",
+        highlight:{background:ok?"#17784a":"#a83228", border:ok?"#1F9D5B":"#D9483B"}},
+      font:{color:ok?"#17784a":"#a83228", size:10, face:"IBM Plex Mono", bold:true, vadjust:8,
+        strokeWidth:4, strokeColor:"#FBFBF9"},
+      borderWidth:2, shadow:{enabled:true, color:ok?"rgba(31,157,91,.35)":"rgba(217,72,59,.35)", size:16, x:0, y:0},
+      title:`${r.key} · ${verdict||"run"} · ${r.props.backend} · ${r.props.status} · ${r.props.duration_s}s`,
       _raw:r,
     });
   });
-  const headY = -110;
-  [["PAPERS",COL.paper],["CLAIMS",COL.claim],["METHODS",COL.method],["EXPERIMENT RUNS",COL.run]]
-    .forEach(([t,x],i)=>nodes.push({
-      id:"__h"+i, x, y:headY, fixed:true, shape:"text",
-      label:t.split("").join(" "), physics:false,
-      font:{color:"#9a937c", size:16, face:"IBM Plex Sans"},
-    }));
-  return {nodes, height:y};
-}
-
-/* fit the COLUMNS to the canvas width and anchor near the top — a tall
-   graph stays readable; pan/zoom (or ⛶) reaches the rest */
-function fitWidth(){
-  const el = document.getElementById("net");
-  const scale = Math.min(Math.max((el.clientWidth - 60) / (COL.run + 340), .5), 1.15);
-  network.moveTo({
-    position:{x:(COL.run + 150) / 2, y:(el.clientHeight / scale) / 2 - 150},
-    scale, animation:{duration:400, easingFunction:"easeInOutCubic"},
-  });
+  return nodes;
 }
 
 const EDGE_STYLE = {
-  FROM:        {color:"#d5cdb4", opacity:.9,  width:1,   arrows:false, smooth:{type:"cubicBezier", roundness:.3}},
-  DESCRIBED_IN:{color:"#cdc2e8", opacity:.8,  width:1,   arrows:false, dashes:[2,4], smooth:{type:"cubicBezier", roundness:.25}},
-  CITES:       {color:"#cbb264", opacity:.8,  width:1,   arrows:true,  dashes:[2,4], smooth:{type:"curvedCW", roundness:.7}},
-  CONTRADICTS: {color:"#a87708", opacity:1,   width:2,   arrows:true,  dashes:[7,5], label:true, smooth:{type:"curvedCW", roundness:.55}},
-  IMPLEMENTS:  {color:"#7350cf", opacity:.95, width:1.8, arrows:true,  smooth:{type:"cubicBezier", roundness:.3}},
-  VALIDATES:   {color:"#1ea45c", opacity:1,   width:2.6, arrows:true,  label:true, smooth:{type:"cubicBezier", roundness:.35}},
-  REFUTES:     {color:"#bb3434", opacity:1,   width:2.6, arrows:true,  label:true, smooth:{type:"cubicBezier", roundness:.35}},
+  FROM:        {color:"#E0E0E4", opacity:.9,  width:1,   arrows:false, smooth:{type:"cubicBezier", roundness:.3}},
+  DESCRIBED_IN:{color:"#DADAD0", opacity:.8,  width:1,   arrows:false, dashes:[2,4], smooth:{type:"cubicBezier", roundness:.25}},
+  CITES:       {color:"#C9C9D0", opacity:.8,  width:1,   arrows:true,  dashes:[2,4], smooth:{type:"curvedCW", roundness:.7}},
+  CONTRADICTS: {color:"#D8A21C", opacity:1,   width:2,   arrows:true,  dashes:[6,5], label:true, smooth:{type:"curvedCW", roundness:.82}},
+  IMPLEMENTS:  {color:"#6C4CF1", opacity:.95, width:2,   arrows:true,  smooth:{type:"cubicBezier", roundness:.3}},
+  VALIDATES:   {color:"#1F9D5B", opacity:1,   width:2.6, arrows:true,  label:true, smooth:{type:"cubicBezier", roundness:.35}},
+  REFUTES:     {color:"#D9483B", opacity:1,   width:2.6, arrows:true,  label:true, smooth:{type:"cubicBezier", roundness:.35}},
 };
 function edgeStyle(e){
   const s = EDGE_STYLE[e.rel];
   if(!s) return null;
   return {
     id:`${e.src}|${e.rel}|${e.dst}`, from:e.src, to:e.dst,
+    _rel: e.rel,
+    _fullOpacity: s.opacity,
+    _fullWidth: s.width,
     label:s.label ? e.rel : "",
-    font:{size:11, color:s.color, face:"IBM Plex Sans", strokeWidth:6, strokeColor:"#f6f2e8"},
+    _fullLabel: s.label ? e.rel : "",
+    font:{size:8.5, color:s.color, face:"IBM Plex Sans", strokeWidth:5, strokeColor:"#FBFBF9"},
     color:{color:s.color, opacity:s.opacity},
     width:s.width, dashes:s.dashes||false, smooth:s.smooth,
     arrows:{to:{enabled:!!s.arrows, scaleFactor:.45}},
@@ -554,50 +938,32 @@ async function loadGraph(focusNew=false){
   g.edges = g.edges.filter(e=>keepIds.has(e.src) && keepIds.has(e.dst));
 
   const count = l => g.nodes.filter(n=>n.label===l).length;
-  document.getElementById("st-papers").textContent = count("Paper");
-  document.getElementById("st-claims").textContent = count("Claim");
-  document.getElementById("st-runs").textContent = count("Run");
-  document.getElementById("st-conf").textContent = g.edges.filter(e=>e.rel==="CONTRADICTS").length;
+  const nConf = g.edges.filter(e=>e.rel==="CONTRADICTS").length;
+  const nRuns = count("Run");
+  const nNodes = g.nodes.length;
+  const nPapers = count("Paper");
+  const isEmpty = nPapers === 0;
+
+  document.getElementById("db-label").textContent = `Neo4j Aura · ${nNodes} nodes`;
+  document.getElementById("run-hint").textContent =
+    `${nConf} CONTRADICTS · ${nRuns ? nRuns+" run"+(nRuns>1?"s":"") : "no runs yet"}`;
+  updateWorkspaceBadge(nPapers, isEmpty);
+  showEmptyState(isEmpty);
+  await refreshWorkspaceMeta();
 
   const existing = nodesDS ? new Set(nodesDS.getIds()) : new Set();
-  const {nodes} = buildLayout(g);
+  const nodes = buildLayout(g);
   const edges = g.edges.map(edgeStyle).filter(Boolean);
 
-  if(!network){
-    nodesDS = new vis.DataSet(nodes); edgesDS = new vis.DataSet(edges);
-    network = new vis.Network(document.getElementById("net"), {nodes:nodesDS, edges:edgesDS}, {
-      physics:false,
-      interaction:{hover:true, tooltipDelay:120, dragNodes:false},
-    });
-    network.once("afterDrawing", ()=>fitWidth());
-    network.on("click", p=>{
-      if(!p.nodes.length) return;
-      const n = nodesDS.get(p.nodes[0]);
-      if(n._raw?.label==="Method") selectMethod(n._raw);
-    });
-    network.on("hoverNode", ()=>document.body.style.cursor="pointer");
-    network.on("blurNode", ()=>document.body.style.cursor="default");
-  } else {
-    const fresh = new Set(nodes.map(n=>n.id));
-    nodesDS.getIds().filter(id=>!fresh.has(id)).forEach(id=>nodesDS.remove(id));
-    nodes.forEach(n=>nodesDS.update(n));
-    edges.forEach(e=>edgesDS.update(e));
-    const newIds = nodes.filter(n=>!existing.has(n.id) && n._raw).map(n=>n.id);
-    const newRuns = nodes.filter(n=>!existing.has(n.id) && n._raw?.label==="Run").map(n=>n.id);
-    if(focusNew && newRuns.length){
-      network.selectNodes(newRuns);
-      network.focus(newRuns[0], {scale:1.1, animation:{duration:900, easingFunction:"easeInOutCubic"}});
-      setTimeout(fitWidth, 2400);
-    } else if(newIds.length){
-      network.selectNodes(newIds);
-      network.focus(newIds[0], {scale:1.0, animation:{duration:800, easingFunction:"easeInOutCubic"}});
-      setTimeout(fitWidth, 2200);
-    }
-  }
+  await animateGraph(nodes, edges, {
+    initial: !network,
+    focusNew: focusNew && !guidedDemoRunning,
+    existing,
+    cinematic: guidedDemoRunning,
+    skipFit: guidedDemoRunning,
+  });
 }
 
-/* ---------- method selection + params ---------- */
-let methodParams = [];
 function renderParams(){
   const grid = document.getElementById("m-params");
   const head = document.getElementById("params-head");
@@ -628,116 +994,217 @@ document.getElementById("params-reset").addEventListener("click", ()=>{
     i.value = i.dataset.def; i.classList.remove("dirty");
   });
 });
+
 function selectMethod(raw){
   selectedMethod = raw.props.id;
-  document.getElementById("m-paper").textContent = "method · " + (raw.props.id||"");
-  const name = document.getElementById("m-name");
-  name.textContent = raw.props.name || raw.props.id;
-  name.classList.remove("empty");
+  selectedPaper = null;
+  renderPapersList();
+  methodCard.style.display = "block";
+  consoleEmpty.style.display = "none";
+  setTab("console");
+  document.getElementById("m-paper").textContent = "METHOD · " + (raw.props.id||"");
+  document.getElementById("m-name").textContent = raw.props.name || raw.props.id;
   document.getElementById("m-desc").textContent = raw.props.runnable_hint || raw.props.description || "";
   try{ methodParams = JSON.parse(raw.props.params || "[]"); }catch{ methodParams = []; }
   renderParams();
   document.getElementById("run-btn").disabled = running;
 }
 
-/* ---------- evidence ---------- */
-let lastEvidence = {};
-async function loadEvidence(){
-  const rows = await (await fetch("/api/evidence")).json();
-  document.getElementById("evidence").innerHTML =
-    "<table>" + rows.map(r=>{
-      const v = r.evidence.startsWith("VALIDATES") ? "validates"
-              : r.evidence.startsWith("REFUTES") ? "refutes" : "none";
-      const runRef = v==="none" ? "" :
-        `<span class="run-ref">${r.evidence.replace(/^(VALIDATES|REFUTES) by /,"")}</span>`;
-      const pill = v==="none" ? `<span class="pill none">no runs yet</span>`
-                 : `<span class="pill ${v}">${v}</span>${runRef}`;
-      const changed = lastEvidence[r.claim] !== undefined && lastEvidence[r.claim] !== r.evidence;
-      lastEvidence[r.claim] = r.evidence;
-      const snippet = (r.text||"").length > 110 ? (r.text||"").slice(0,108)+"…" : (r.text||"");
-      return `<tr class="${changed?'flash-row':''}"><td><span class="cid">${r.claim}</span>` +
-             `<span class="ctext" title="${(r.text||"").replace(/"/g,"&quot;")}">${snippet}</span></td>` +
-             `<td>${pill}</td></tr>`;
-    }).join("") + "</table>";
+function selectPaper(raw, eid=null){
+  selectedPaper = raw.props?.id || raw.key;
+  selectedMethod = null;
+  methodCard.style.display = "none";
+  consoleEmpty.style.display = "block";
+  setTab("evidence");
+  renderPapersList();
+  if(network){
+    const nodeId = eid || findPaperNodeEid(selectedPaper);
+    if(nodeId){
+      network.selectNodes([nodeId]);
+      network.focus(nodeId, {scale:1.05, animation:{duration:500, easingFunction:"easeInOutCubic"}});
+    }
+  }
 }
 
-/* ---------- run ---------- */
+function findPaperNodeEid(paperId){
+  if(!nodesDS) return null;
+  for(const n of nodesDS.get()){
+    if(n._raw?.label === "Paper" && (n._raw.props?.id === paperId || n._raw.key === paperId))
+      return n.id;
+  }
+  return null;
+}
+
+function renderPapersList(){
+  const panel = document.getElementById("papers-panel");
+  const list = document.getElementById("papers-list");
+  if(!workspacePapers.length){
+    panel.style.display = "none";
+    list.innerHTML = "";
+    return;
+  }
+  panel.style.display = "block";
+  list.innerHTML = workspacePapers.map(p=>{
+    const sel = selectedPaper === p.id ? " selected" : "";
+    const year = p.year ? ` · ${p.year}` : "";
+    return `<div class="paper-row${sel}" data-paper-id="${p.id}">
+      <div class="paper-row-main">
+        <div class="paper-row-id">${p.id}${year}</div>
+        <div class="paper-row-title">${(p.title||"").replace(/</g,"&lt;")}</div>
+        <div class="paper-row-meta">${p.claims} claims · ${p.methods} methods</div>
+      </div>
+      <button type="button" class="btn-remove" data-remove-paper="${p.id}" title="Remove from workspace">✕</button>
+    </div>`;
+  }).join("");
+  list.querySelectorAll("[data-remove-paper]").forEach(btn=>{
+    btn.addEventListener("click", e=>{
+      e.stopPropagation();
+      removePaper(btn.dataset.removePaper);
+    });
+  });
+  list.querySelectorAll(".paper-row").forEach(row=>{
+    row.addEventListener("click", ()=>{
+      selectedPaper = row.dataset.paperId;
+      renderPapersList();
+      const eid = findPaperNodeEid(selectedPaper);
+      if(eid && network){
+        network.selectNodes([eid]);
+        network.focus(eid, {scale:1.05, animation:{duration:450, easingFunction:"easeInOutCubic"}});
+      }
+    });
+  });
+}
+
+async function refreshWorkspaceMeta(){
+  try{
+    const ws = await (await fetch("/api/workspace")).json();
+    workspacePapers = ws.papers_detail || [];
+    updateWorkspaceBadge(ws.papers, ws.empty);
+    renderPapersList();
+    return ws;
+  }catch{
+    return null;
+  }
+}
+
+async function removePaper(paperId){
+  const paper = workspacePapers.find(p=>p.id === paperId);
+  const label = paper ? `${paper.title} (${paperId})` : paperId;
+  if(!confirm(`Remove "${label}" from the workspace?\n\nThis deletes its claims, methods, and any runs for those methods. Other papers stay untouched.`))
+    return;
+  try{
+    const res = await fetch(`/api/workspace/papers/${encodeURIComponent(paperId)}`, {method:"DELETE"});
+    const r = await res.json();
+    if(!res.ok) throw new Error(r.detail || "remove failed");
+    if(selectedPaper === paperId) selectedPaper = null;
+    if(selectedMethod && selectedMethod.startsWith(paperId + "-")){
+      selectedMethod = null;
+      methodCard.style.display = "none";
+      consoleEmpty.style.display = "block";
+      document.getElementById("run-btn").disabled = true;
+    }
+    chatArea.innerHTML = `<div class="chat-bubble agent">${r.empty
+      ? "Workspace is empty. Add a paper or load the demo."
+      : `Removed <b>${paperId}</b> — ${r.papers} paper${r.papers!==1?"s":""} remain.`}</div>`;
+    await refreshWorkspaceMeta();
+    await loadGraph();
+    await loadEvidence();
+  }catch(e){ alert("Remove failed: "+e.message); }
+}
+
+const emptyWorkspace = document.getElementById("empty-workspace");
+
+function updateWorkspaceBadge(papers, empty){
+  const el = document.getElementById("workspace-badge");
+  el.textContent = empty ? "empty workspace" : `${papers} paper${papers!==1?"s":""}`;
+}
+
+function showEmptyState(empty){
+  emptyWorkspace.classList.toggle("show", empty);
+}
+
+function resetUIState(agentMsg){
+  selectedMethod = null; selectedPaper = null; methodParams = []; lastEvidence = {}; prevEvidenceValid = 0;
+  methodCard.style.display = "none";
+  consoleLogWrap.style.display = "none";
+  consoleEmpty.style.display = "block";
+  clearLog();
+  document.getElementById("run-btn").classList.remove("running","done");
+  document.getElementById("run-btn").textContent = "▶ RUN THIS METHOD";
+  document.getElementById("run-btn").disabled = true;
+  chatArea.innerHTML = `<div class="chat-bubble agent">${agentMsg}</div>`;
+}
+
+async function loadEvidence(){
+  const rows = await (await fetch("/api/evidence")).json();
+  if(!rows.length){
+    document.getElementById("evidence").innerHTML =
+      '<div class="evidence-empty">No claims yet. Add a paper to extract claims and methods, then run a method to attach evidence.</div>';
+    updateEvidenceCounter(0, 0);
+    return;
+  }
+  let validated = 0;
+  document.getElementById("evidence").innerHTML = rows.map(r=>{
+    const v = r.evidence.startsWith("VALIDATES") ? "validates"
+            : r.evidence.startsWith("REFUTES") ? "refutes" : "none";
+    if(v !== "none") validated++;
+    const badge = v==="none" ? `<span class="ev-badge none">no runs yet</span>`
+               : `<span class="ev-badge ${v}">${v.toUpperCase()}</span>`;
+    const metric = v==="none" ? "" :
+      `<div class="ev-metric">${r.evidence.replace(/^(VALIDATES|REFUTES) by /,"")}</div>`;
+    const changed = lastEvidence[r.claim] !== undefined && lastEvidence[r.claim] !== r.evidence;
+    lastEvidence[r.claim] = r.evidence;
+    return `<div class="ev-card ${v!=="none"?"validated":""} ${changed?"flash":""}">
+      <div class="ev-card-top"><span class="ev-id">${r.claim}</span>${badge}</div>
+      <div class="ev-text">${(r.text||"").replace(/</g,"&lt;")}</div>${metric}</div>`;
+  }).join("");
+  updateEvidenceCounter(validated, rows.length);
+}
+
 document.getElementById("run-btn").addEventListener("click", async ()=>{
   if(!selectedMethod || running) return;
-  const btn = document.getElementById("run-btn");
-  running = true; btn.classList.add("running"); btn.textContent = "◉ SANDBOX ACTIVE";
-  logPanel.classList.remove("min"); logToggle.textContent = "—";
-  clearLog();
-  const params = collectParams();
-  const pstr = Object.entries(params).map(([k,v])=>`${k}=${v}`).join(" ");
-  log(`$ paper2result run ${selectedMethod}${pstr ? " " + pstr : ""}`, "t-warn");
-  if(pstr) log(`  overriding paper defaults: ${pstr}`, "t-warn");
-  log("① generating implementation from method node…", "t-stage");
-  log("② dispatching to sandbox (daytona)…", "t-stage");
-  const started = Date.now();
-  try{
-    const res = await fetch(`/api/run/${selectedMethod}`, {method:"POST",
-      headers:{"Content-Type":"application/json"}, body:JSON.stringify({params})});
-    const rec = await res.json();
-    const dt = ((Date.now()-started)/1000).toFixed(1);
-    running = false;
-    if(!res.ok){
-      log(`✗ ${rec.detail || JSON.stringify(rec).slice(0,200)}`, "t-bad");
-    } else if(rec.error){
-      log(`✗ run failed: ${rec.error}`, "t-bad");
-      log(`  failure recorded as evidence — the graph remembers what broke.`, "t-dim");
-    } else {
-      log(`③ ${rec.run_id} [${rec.backend}] exit=${rec.exit_code} · ${rec.duration_s}s`, "");
-      (rec.stdout||"").trim().split("\n").slice(0,-1).forEach(l=>log("  "+l, "t-dim"));
-      (rec.result?.claim_checks||[]).forEach(c=>
-        log(`④ ${c.verdict} ${c.claim_id} — ${c.detail}`, c.verdict==="VALIDATES"?"t-ok":"t-bad"));
-      log(`⑤ graph updated · +Run +Artifact · wall ${dt}s ✓`, "t-ok");
-    }
-  }catch(e){ running = false; log("✗ "+e, "t-bad"); }
-  btn.classList.remove("running"); btn.textContent = "▶ Run this method";
-  btn.disabled = !selectedMethod;
-  await loadGraph(true); await loadEvidence();
+  await runMethodAndWait();
 });
 
-/* ---------- ask ---------- */
 const mdLite = s => s
   .replace(/&/g,"&amp;").replace(/</g,"&lt;")
   .replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>")
   .replace(/`([^`]+)`/g,"<code>$1</code>");
+
+function addBubble(role, html){
+  const div = document.createElement("div");
+  div.className = "chat-bubble " + role;
+  div.innerHTML = html;
+  chatArea.appendChild(div);
+  chatArea.scrollTop = chatArea.scrollHeight;
+  return div;
+}
+
 async function ask(q){
   q = q || document.getElementById("ask-input").value.trim();
   if(!q) return;
   document.getElementById("ask-input").value = "";
-  const qaLog = document.getElementById("qa-log");
-  const box = document.createElement("div");
-  box.className = "qa";
-  box.innerHTML = `<div class="q">${mdLite(q)}</div>
-    <div class="a"><span class="thinking"><i></i><i></i><i></i></span> agent waves: graph → cypher → synthesis…</div>`;
-  qaLog.appendChild(box);
-  qaLog.scrollTop = qaLog.scrollHeight;
-  const a = box.querySelector(".a");
+  setTab("ask");
+  addBubble("user", mdLite(q));
+  const thinking = document.createElement("div");
+  thinking.className = "chat-thinking";
+  thinking.textContent = "agent is querying Neo4j…";
+  chatArea.appendChild(thinking);
+  chatArea.scrollTop = chatArea.scrollHeight;
   try{
     const res = await fetch("/api/ask", {method:"POST",
       headers:{"Content-Type":"application/json"}, body:JSON.stringify({question:q})});
     const raw = await res.text();
-    try{ a.innerHTML = mdLite(JSON.parse(raw).answer); }
-    catch{ a.textContent = `agent error (HTTP ${res.status}): ${raw.slice(0,200)}`; }
-  }catch(e){ a.textContent = "agent error: "+e; }
-  qaLog.scrollTop = qaLog.scrollHeight;
+    thinking.remove();
+    try{ addBubble("agent", mdLite(JSON.parse(raw).answer)); }
+    catch{ addBubble("agent", `agent error (HTTP ${res.status}): ${raw.slice(0,200)}`); }
+  }catch(e){ thinking.remove(); addBubble("agent", "agent error: "+e); }
+  chatArea.scrollTop = chatArea.scrollHeight;
 }
 document.getElementById("ask-btn").addEventListener("click", ()=>ask());
 document.getElementById("ask-input").addEventListener("keydown", e=>{ if(e.key==="Enter") ask(); });
 document.querySelectorAll(".sug").forEach(s=>s.addEventListener("click", ()=>ask(s.textContent)));
 
-/* ---------- console minimize ---------- */
-const logPanel = document.getElementById("log-panel");
-const logToggle = document.getElementById("log-toggle");
-logToggle.addEventListener("click", ()=>{
-  const min = logPanel.classList.toggle("min");
-  logToggle.textContent = min ? "+" : "—";
-});
-
-/* ---------- zoom controls ---------- */
 document.getElementById("zoom-in").addEventListener("click", ()=>
   network && network.moveTo({scale:network.getScale()*1.35, animation:{duration:250, easingFunction:"easeInOutQuad"}}));
 document.getElementById("zoom-out").addEventListener("click", ()=>
@@ -745,30 +1212,33 @@ document.getElementById("zoom-out").addEventListener("click", ()=>
 document.getElementById("zoom-fit").addEventListener("click", ()=>
   network && network.fit({animation:{duration:450, easingFunction:"easeInOutCubic"}}));
 
-/* ---------- add paper (arXiv link or PDF file) ---------- */
 const backdrop = document.getElementById("modal-backdrop");
 const status = document.getElementById("upload-status");
-document.getElementById("upload-btn").addEventListener("click", ()=>backdrop.classList.add("show"));
+document.getElementById("upload-btn").addEventListener("click", ()=>{
+  document.getElementById("modal-title").textContent = "Add a paper";
+  backdrop.classList.add("show");
+});
 document.getElementById("modal-close").addEventListener("click", ()=>backdrop.classList.remove("show"));
 backdrop.addEventListener("click", e=>{ if(e.target===backdrop) backdrop.classList.remove("show"); });
 
 async function ingest(promise, label){
   status.textContent = `reading ${label} & extracting claims via the AI gateway…`;
-  log(`$ paper2result add ${label}`, "t-warn");
+  setTab("console");
+  clearLog();
+  log(`[upload ] verigraph add ${label}`, "t-warn");
   try{
     const res = await promise;
     const r = await res.json();
     if(!res.ok) throw new Error(r.detail || JSON.stringify(r).slice(0,160));
     status.textContent = `✓ ${r.paper_id}: ${r.claims} claims, ${r.methods} methods, ${r.relations} cross-paper links`;
-    log(`✓ extracted ${r.paper_id} — "${r.title}"`, "t-ok");
-    log(`  ${r.claims} claims · ${r.methods} methods (${(r.method_ids||[]).join(", ")}) · ${r.relations} cross-paper relations`, "t-dim");
-    log(`  click its method node, then Run, to attach executable evidence.`, "t-dim");
+    log(`[upload ] ✓ ${r.paper_id} — "${r.title}"`, "t-ok");
+    log(`  ${r.claims} claims · ${r.methods} methods · ${r.relations} relations`, "t-dim");
     await loadGraph(true); await loadEvidence();
     setTimeout(()=>backdrop.classList.remove("show"), 1800);
     return true;
   }catch(e){
     status.textContent = "✗ " + e.message;
-    log(`✗ add paper failed: ${e.message}`, "t-bad");
+    log(`[upload ] ✗ ${e.message}`, "t-bad");
     return false;
   }
 }
@@ -803,13 +1273,167 @@ async function sendFile(file){
   fileInput.value = "";
 }
 
-/* ---------- boot ---------- */
+document.getElementById("reset-btn").addEventListener("click", async ()=>{
+  if(!confirm("Reset runs? Clears all experiment results and restores pristine evidence on your current papers.")) return;
+  const btn = document.getElementById("reset-btn");
+  btn.disabled = true;
+  try{
+    const res = await fetch("/api/reset", {method:"POST"});
+    const r = await res.json();
+    if(!res.ok) throw new Error(r.detail || "reset failed");
+    resetUIState('Runs cleared — all claims show "no runs yet". Select a method and press RUN to generate evidence.');
+    setTab("evidence");
+    await loadGraph(); await loadEvidence();
+  }catch(e){ alert("Reset failed: "+e.message); }
+  btn.disabled = false;
+});
+
+async function doNewWorkspace(){
+  if(!confirm("Create a new empty workspace?\n\nThis removes ALL papers, claims, methods, and runs from the graph. You can add your own papers afterward, or load the demo papers again.")) return;
+  const btn = document.getElementById("new-workspace-btn");
+  btn.disabled = true;
+  try{
+    const res = await fetch("/api/workspace/new", {method:"POST"});
+    const r = await res.json();
+    if(!res.ok) throw new Error(r.detail || "failed");
+    resetUIState("New workspace ready. Add a paper via arXiv or PDF — I'll extract claims, methods, and conflicts into the graph.");
+    setTab("evidence");
+    await loadGraph(); await loadEvidence();
+    backdrop.classList.add("show");
+    document.getElementById("modal-title").textContent = "Add your first paper";
+  }catch(e){ alert("New workspace failed: "+e.message); }
+  btn.disabled = false;
+}
+
+async function doLoadDemo(silent=false){
+  if(!silent && !confirm("Load 3-paper demo? Replaces your workspace with Adam, Wilson, and AdamW (no runs).")) return false;
+  const btn = document.getElementById("load-demo-btn");
+  btn.disabled = true;
+  try{
+    const res = await fetch("/api/workspace/load-demo", {method:"POST"});
+    const r = await res.json();
+    if(!res.ok) throw new Error(r.detail || "failed");
+    resetUIState(`Demo loaded — ${r.papers} papers (Adam · Wilson · AdamW), no runs yet. Click a violet method node and press RUN.`);
+    setTab("evidence");
+    await loadGraph(); await loadEvidence();
+    return true;
+  }catch(e){
+    if(!silent) alert("Load demo failed: "+e.message);
+    return false;
+  }finally{ btn.disabled = false; }
+}
+
+async function runMethodAndWait(){
+  if(!selectedMethod || running) return false;
+  const btn = document.getElementById("run-btn");
+  running = true; btn.classList.add("running"); btn.classList.remove("done");
+  btn.textContent = "● running…";
+  setTab("console");
+  clearLog();
+  const params = collectParams();
+  const pstr = Object.entries(params).map(([k,v])=>`${k}=${v}`).join(" ");
+  log(`[codegen] method ${selectedMethod} → experiment.py`, "t-stage");
+  if(pstr) log(`[params ] overriding: ${pstr}`, "t-warn");
+  log("[runner ] dispatching to sandbox (daytona)…", "t-stage");
+  const started = Date.now();
+  try{
+    const res = await fetch(`/api/run/${selectedMethod}`, {method:"POST",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify({params})});
+    const rec = await res.json();
+    const dt = ((Date.now()-started)/1000).toFixed(1);
+    running = false;
+    if(!res.ok){
+      log(`[error  ] ${rec.detail || JSON.stringify(rec).slice(0,200)}`, "t-bad");
+      return false;
+    } else if(rec.error){
+      log(`[error  ] run failed: ${rec.error}`, "t-bad");
+      return false;
+    } else {
+      log(`[runner ] ${rec.run_id} [${rec.backend}] exit=${rec.exit_code} · ${rec.duration_s}s`, "");
+      (rec.stdout||"").trim().split("\n").slice(0,-1).forEach(l=>log("  "+l, "t-dim"));
+      (rec.result?.claim_checks||[]).forEach(c=>
+        log(`[verdict] ${c.verdict} ${c.claim_id} — ${c.detail}`, c.verdict==="VALIDATES"?"t-ok":"t-bad"));
+      log(`[curator] graph updated · wall ${dt}s ✓`, "t-ok");
+    }
+  }catch(e){ running = false; log("[error  ] "+e, "t-bad"); return false; }
+  btn.classList.remove("running");
+  btn.classList.add("done");
+  btn.textContent = "✓ run complete";
+  btn.disabled = false;
+  await loadGraph(!guidedDemoRunning);
+  await loadEvidence();
+  return true;
+}
+
+async function runGuidedDemo(){
+  if(guidedDemoRunning || running) return;
+  guidedDemoRunning = true;
+  const btn = document.getElementById("guided-demo-btn");
+  btn.disabled = true;
+  btn.textContent = "● Demo running…";
+  if(panelCollapsed) togglePanel(false);
+  let methodEid = null;
+  try{
+    showDemoToast("Step 1 — Loading 3-paper demo (Adam · Wilson · AdamW)…", 5000);
+    const loaded = await doLoadDemo(true);
+    if(!loaded) throw new Error("could not load demo");
+    await sleep(600);
+
+    methodEid = findMethodNodeEid(DEMO_METHOD_ID);
+    if(!methodEid) throw new Error("demo method not found");
+
+    showDemoToast("Step 2 — Tracing paper → claims → method…", 6000);
+    const raw = nodesDS.get(methodEid)._raw;
+    selectMethod(raw);
+    await cinematicTourToMethod(DEMO_METHOD_ID);
+    await pulseNode(methodEid, true);
+
+    showDemoToast("Step 3 — Running experiment (GD vs Adam)…", 8000);
+    const ok = await runMethodAndWait();
+    await pulseNode(methodEid, false);
+    if(!ok){
+      showDemoToast("Run failed — check Console tab for details", 5000);
+      return;
+    }
+
+    setTab("evidence");
+    showDemoToast("Step 4 — Drawing evidence connections…", 6000);
+    await cinematicRevealRun(methodEid);
+    await loadEvidence();
+
+    showDemoToast("Step 5 — Asking the agent about executable evidence…", 5000);
+    await ask("Which claims have executable evidence?");
+    showDemoToast("✓ Guided demo complete — GD 0.000 vs Adam 0.425 validates Wilson's claim", 7000);
+  }catch(e){
+    showDemoToast("Demo error: " + e.message, 5000);
+  }finally{
+    guidedDemoRunning = false;
+    btn.disabled = false;
+    btn.textContent = "▶ Guided demo";
+  }
+}
+
+function togglePanel(collapsed){
+  panelCollapsed = collapsed ?? !panelCollapsed;
+  document.getElementById("main-layout").classList.toggle("panel-collapsed", panelCollapsed);
+  const pt = document.getElementById("panel-toggle");
+  pt.textContent = panelCollapsed ? "Panel ▶" : "◀ Hide panel";
+  if(network) setTimeout(()=>network.fit({animation:{duration:400, easingFunction:"easeInOutCubic"}}), 280);
+}
+
+document.getElementById("new-workspace-btn").addEventListener("click", doNewWorkspace);
+document.getElementById("load-demo-btn").addEventListener("click", ()=>doLoadDemo(false));
+document.getElementById("guided-demo-btn").addEventListener("click", runGuidedDemo);
+document.getElementById("panel-toggle").addEventListener("click", ()=>togglePanel());
+document.getElementById("empty-add-btn").addEventListener("click", ()=>{
+  document.getElementById("modal-title").textContent = "Add a paper";
+  backdrop.classList.add("show");
+});
+document.getElementById("empty-load-demo").addEventListener("click", e=>{ e.preventDefault(); doLoadDemo(false); });
+
 (async ()=>{
-  log("paper2result · instrument online", "t-dim");
-  log("engine: rocketride@localhost:5565 · graph: neo4j aura · sandbox: daytona · llm: butterbase gateway", "t-faint");
+  await refreshWorkspaceMeta();
   await loadGraph(); await loadEvidence();
-  log(`graph loaded — ${document.getElementById("st-claims").textContent} claims, ` +
-      `${document.getElementById("st-conf").textContent} cross-paper conflicts. idle.`, "t-dim");
 })();
 </script>
 </body>

@@ -1,8 +1,13 @@
-"""FastAPI backend for the Paper-to-Results demo UI.
+"""FastAPI backend for the Verigraph demo UI.
 
 Endpoints:
-  GET  /             -> static demo page
-  GET  /api/graph    -> full project graph (nodes + edges) for visualization
+  GET  /             -> landing page
+  GET  /demo         -> live demo page
+  GET  /api/workspace     -> workspace status (papers, empty, runs)
+  POST /api/workspace/new -> blank workspace (wipe graph + papers)
+  POST /api/workspace/load-demo -> restore bundled demo papers
+  DELETE /api/workspace/papers/{paper_id} -> remove one paper from workspace
+  POST /api/reset         -> clear runs on current workspace (pristine evidence)
   GET  /api/evidence -> evidence table rows
   POST /api/run/{method_id}?backend=auto|local|daytona -> closed loop:
        codegen -> execute -> curate -> return run record
@@ -27,14 +32,81 @@ from app.runner import execute
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC = os.path.join(ROOT, "static")
-PIPE = os.path.join(ROOT, "pipelines", "paper2result.pipe")
+PIPE = os.path.join(ROOT, "pipelines", "verigraph.pipe")
+PIPE_LEGACY = os.path.join(ROOT, "pipelines", "paper2result.pipe")
 
-app = FastAPI(title="Paper-to-Results Graph")
+
+def _pipe_path() -> str:
+    """Prefer verigraph.pipe; accept legacy symlink/name for running engines."""
+    if os.path.isfile(PIPE):
+        return PIPE
+    if os.path.isfile(PIPE_LEGACY):
+        return PIPE_LEGACY
+    return PIPE
+
+app = FastAPI(title="Verigraph")
 
 
 @app.get("/")
-def index():
+def landing():
+    return FileResponse(os.path.join(STATIC, "landing.html"))
+
+
+@app.get("/demo")
+def demo():
     return FileResponse(os.path.join(STATIC, "index.html"))
+
+
+@app.post("/api/reset")
+def reset_demo():
+    from app.demo_reset import reset_demo_state
+
+    try:
+        return reset_demo_state()
+    except Exception as e:
+        raise HTTPException(500, f"reset failed: {e}")
+
+
+@app.get("/api/workspace")
+def workspace_info():
+    from app.workspace import workspace_status
+
+    try:
+        return workspace_status()
+    except Exception as e:
+        raise HTTPException(500, f"workspace status failed: {e}")
+
+
+@app.post("/api/workspace/new")
+def workspace_new():
+    from app.workspace import new_workspace
+
+    try:
+        return new_workspace()
+    except Exception as e:
+        raise HTTPException(500, f"new workspace failed: {e}")
+
+
+@app.post("/api/workspace/load-demo")
+def workspace_load_demo():
+    from app.workspace import load_demo_workspace
+
+    try:
+        return load_demo_workspace()
+    except Exception as e:
+        raise HTTPException(500, f"load demo failed: {e}")
+
+
+@app.delete("/api/workspace/papers/{paper_id}")
+def workspace_remove_paper(paper_id: str):
+    from app.workspace import remove_paper
+
+    try:
+        return remove_paper(paper_id)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"remove paper failed: {e}")
 
 
 @app.get("/api/graph")
@@ -165,22 +237,17 @@ class ArxivUpload(BaseModel):
 
 @app.post("/api/upload-arxiv")
 def upload_arxiv(body: ArxivUpload):
-    import re
-    import urllib.request
+    from app.arxiv import fetch_arxiv_text, parse_arxiv_id
 
-    m = re.search(r"(\d{4}\.\d{4,5})(v\d+)?", body.url.strip())
-    if not m:
-        raise HTTPException(400, "couldn't find an arXiv id in that link (expected e.g. arxiv.org/abs/1907.08610)")
-    arxiv_id = m.group(1)
-    req = urllib.request.Request(
-        f"https://export.arxiv.org/pdf/{arxiv_id}",
-        headers={"User-Agent": "paper2result/1.0 (hackathon demo)"})
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            blob = resp.read()
+        parse_arxiv_id(body.url)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    try:
+        text = fetch_arxiv_text(body.url)
     except Exception as e:
         raise HTTPException(502, f"arXiv fetch failed: {e}")
-    return _ingest_paper_text(_pdf_to_text(blob))
+    return _ingest_paper_text(text)
 
 
 class Ask(BaseModel):
@@ -204,13 +271,14 @@ async def _pipeline_token():
         _rr["client"] = client
     client = _rr["client"]
     if _rr["token"] is None:
+        pipe = _pipe_path()
         try:
-            result = await client.use(filepath=PIPE)
+            result = await client.use(filepath=pipe)
             _rr["token"] = result["token"]
         except RuntimeError as e:
             if "already running" not in str(e).lower():
                 raise
-            with open(PIPE) as f:
+            with open(pipe) as f:
                 project_id = _json.load(f)["project_id"]
             _rr["token"] = await client.get_task_token(project_id, "chat_1")
             if not _rr["token"]:

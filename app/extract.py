@@ -4,7 +4,7 @@ Two modes:
   --mock  : return the hand-verified golden JSON from papers/extracted/ (default
             until the RocketRide extraction pipeline lands in M6).
   live    : POST the paper text to the local RocketRide pipeline (PIPELINE_URL);
-            wired up in M6.
+            wired up in M6. Direct LLM calls use XAI_API_KEY (Grok).
 """
 
 import argparse
@@ -49,7 +49,42 @@ def validate_extraction(data: dict) -> list[str]:
 
     if not isinstance(data.get("cites", []), list):
         errors.append("'cites' must be a list of paper ids")
+    if not data.get("methods"):
+        errors.append("at least one method is required")
     return errors
+
+
+def ensure_methods(data: dict) -> dict:
+    """Guarantee at least one runnable method — surveys often omit them."""
+    if data.get("methods"):
+        return data
+    pid = data["paper"]["id"]
+    topic = data["paper"].get("topic", "experiment")
+    claims = data.get("claims", [])
+    claim_hint = claims[0]["text"][:120] if claims else "core paper finding"
+    data["methods"] = [{
+        "id": f"{pid}-m1",
+        "name": "Toy reproduction experiment",
+        "description": (
+            f"Simplified numpy simulation of the paper's key claim about {topic}: "
+            f"{claim_hint}"
+        ),
+        "runnable_hint": (
+            "Build a tiny synthetic task where multiple random candidate solutions "
+            "are sampled (best-of-n / inference-time scaling). Score each with a "
+            "simple verifier, pick the best, and report accuracy vs n_candidates. "
+            "Metric: accuracy_at_n vs n_candidates."
+        ),
+        "params": [
+            {"name": "n_candidates", "default": 8,
+             "description": "independent samples per problem (best-of-n width)"},
+            {"name": "n_trials", "default": 200,
+             "description": "number of synthetic problems to evaluate"},
+            {"name": "noise", "default": 0.3,
+             "description": "difficulty / noise level of the synthetic task"},
+        ],
+    }]
+    return data
 
 
 def extract_mock(paper_id: str) -> dict:
@@ -60,7 +95,7 @@ def extract_mock(paper_id: str) -> dict:
         return json.load(f)
 
 
-EXTRACTION_PROMPT = """You are the extraction stage of Paper-to-Results Graph.
+EXTRACTION_PROMPT = """You are the extraction stage of Verigraph.
 Given a research paper's text, produce ONLY a JSON object (no prose) with:
 
 {
@@ -79,8 +114,9 @@ Given a research paper's text, produce ONLY a JSON object (no prose) with:
                        "type": "SUPPORTS"|"CONTRADICTS"}]
 }
 
-Rules: 2-4 claims, 1-2 methods (only genuinely runnable-as-toy-experiment
-ones), params are the paper's experiment parameters. Known graph papers and
+Rules: 2-4 claims, AT LEAST 1 method (every paper must have a runnable toy
+experiment — for surveys, design a simplified numpy simulation of the core
+finding, e.g. best-of-n sampling), params are the paper's experiment parameters. Known graph papers and
 their claims (link cross-paper relations against these when relevant):
 adam2014 (adam2014-c1 Adam converges faster than SGD; adam2014-c2 defaults
 need little tuning; adam2014-c3 update invariant to gradient rescaling),
@@ -98,6 +134,7 @@ def extract_live_text(text: str) -> dict:
     from app.llm import chat, extract_json_obj
     reply = chat(EXTRACTION_PROMPT + text[:24000], max_tokens=4000)
     data = extract_json_obj(reply)
+    data = ensure_methods(data)
     errors = validate_extraction(data)
     if errors:
         raise ValueError(f"extraction failed validation: {errors}")

@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="/config.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verigraph — executable evidence from research papers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#FBFBF9;--bg2:#F4F4F1;--ink:#16161A;--dim:#55555E;--muted:#8A8A92;
+  --purple:#6C4CF1;--purple-bg:#F1EDFD;--purple-bd:#E1D8FB;
+  --green:#1F9D5B;--green-bg:#E7F6EC;--red:#D9483B;--amber:#D8A21C;
+  --border:rgba(20,20,26,0.10);--radius:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;line-height:1.5}
+a{color:var(--purple);text-decoration:none}
+a:hover{color:#5636d6}
+::selection{background:#E4DCFB}
+.mono{font-family:'IBM Plex Mono',monospace}
+.wrap{max-width:1160px;margin:0 auto;padding:0 32px}
+section{scroll-margin-top:24px}
+
+/* nav */
+nav{display:flex;align-items:center;justify-content:space-between;height:76px;flex-wrap:wrap;gap:12px}
+.nav-links{display:flex;align-items:center;gap:24px;font-size:14px;color:#4A4A52;flex-wrap:wrap}
+.nav-links a{color:#4A4A52}
+.nav-links a:hover{color:var(--ink)}
+.brand{display:flex;align-items:center;gap:9px}
+.brand-dot{width:11px;height:11px;border-radius:50%;background:var(--purple)}
+.brand-name{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:17px}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:8px;
+  font-weight:600;font-size:14px;border:none;cursor:pointer;transition:all .15s}
+.btn-primary{background:var(--purple);color:#fff;box-shadow:0 4px 16px rgba(108,76,241,0.25)}
+.btn-primary:hover{background:#5636d6;color:#fff}
+.btn-dark{background:var(--ink);color:#fff}
+.btn-dark:hover{background:#2a2a30;color:#fff}
+.btn-outline{background:#fff;color:var(--ink);border:1px solid rgba(20,20,26,0.14)}
+.btn-outline:hover{border-color:var(--purple);color:var(--purple)}
+.btn-lg{padding:14px 24px;font-size:16px;border-radius:10px}
+
+/* hero */
+.hero{padding:72px 0 56px;text-align:center;border-bottom:1px solid rgba(20,20,26,0.08)}
+.pill{display:inline-flex;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;
+  font-size:12.5px;color:var(--purple);background:var(--purple-bg);border:1px solid var(--purple-bd);
+  padding:6px 12px;border-radius:999px;margin-bottom:24px}
+.hero h1{font-size:clamp(36px,5.5vw,62px);line-height:1.05;letter-spacing:-0.035em;
+  font-weight:700;max-width:920px;margin:0 auto}
+.hero h1 span{color:var(--purple)}
+.hero-lead{font-size:clamp(17px,2.2vw,20px);color:var(--dim);max-width:680px;margin:22px auto 0}
+.hero-cta{margin-top:32px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+.loop-chain{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--muted);
+  margin-top:36px;letter-spacing:-0.01em}
+
+/* section headers */
+.sec-head{margin-bottom:36px}
+.sec-head h2{font-size:clamp(28px,3.5vw,34px);letter-spacing:-0.025em;font-weight:700;margin-bottom:8px}
+.sec-head p{font-size:17px;color:var(--dim);max-width:680px}
+.sec-label{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--purple);
+  letter-spacing:0.04em;text-transform:uppercase;margin-bottom:8px}
+
+/* preview */
+.preview-wrap{border:1px solid var(--border);border-radius:16px;background:#fff;
+  box-shadow:0 24px 60px -30px rgba(20,20,26,0.35);overflow:hidden}
+.preview-bar{display:flex;align-items:center;gap:8px;padding:13px 16px;
+  border-bottom:1px solid rgba(20,20,26,0.08);background:#F7F7F4}
+.dot{width:11px;height:11px;border-radius:50%}
+.preview-canvas{position:relative;height:360px;
+  background:radial-gradient(circle at 1px 1px,rgba(20,20,26,0.05) 1px,transparent 0);
+  background-size:22px 22px}
+.preview-caption{text-align:center;font-size:13.5px;color:var(--muted);margin-top:14px}
+
+/* grids */
+.grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);
+  border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.grid-4>div{background:#fff;padding:22px 20px}
+.card{border:1px solid var(--border);border-radius:var(--radius);padding:24px;background:#fff}
+.card h3{font-size:17px;font-weight:600;margin-bottom:6px}
+.card p{font-size:14px;color:var(--dim);line-height:1.55}
+.card .icon{font-size:22px;margin-bottom:12px}
+.card .tag{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--purple);margin-bottom:10px}
+
+/* steps */
+.steps{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;counter-reset:step}
+.step{background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px 16px;
+  position:relative}
+.step::before{counter-increment:step;content:counter(step,decimal-leading-zero);
+  font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--purple);
+  display:block;margin-bottom:8px}
+.step h4{font-size:14px;font-weight:600;margin-bottom:4px}
+.step p{font-size:12.5px;color:var(--dim);line-height:1.45}
+
+/* compare */
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.compare-col{border-radius:var(--radius);padding:28px}
+.compare-col.bad{background:#F7F7F4;border:1px solid var(--border)}
+.compare-col.good{background:var(--purple-bg);border:1px solid var(--purple-bd)}
+.compare-col h3{font-size:18px;font-weight:600;margin-bottom:14px}
+.compare-col li{font-size:14px;color:var(--dim);margin-bottom:8px;list-style:none;padding-left:18px;position:relative}
+.compare-col li::before{content:"";position:absolute;left:0;top:8px;width:6px;height:6px;border-radius:50%}
+.compare-col.bad li::before{background:var(--muted)}
+.compare-col.good li::before{background:var(--green)}
+
+/* tech spec */
+.spec-table{width:100%;border-collapse:collapse;font-size:13.5px}
+.spec-table th,.spec-table td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--border);vertical-align:top}
+.spec-table th{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);
+  letter-spacing:0.04em;text-transform:uppercase;font-weight:500;width:28%}
+.spec-table td{color:var(--dim)}
+.spec-table code{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--purple);
+  background:var(--bg2);padding:2px 6px;border-radius:4px}
+.spec-block{background:#fff;border:1px solid var(--border);border-radius:var(--radius);
+  padding:20px 22px;margin-bottom:16px}
+.spec-block h4{font-size:15px;font-weight:600;margin-bottom:10px}
+.schema{font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.7;color:var(--dim);
+  background:var(--bg2);padding:14px 16px;border-radius:8px;overflow-x:auto}
+.schema .n{color:var(--purple)}.schema .r{color:var(--amber)}.schema .e{color:var(--green)}
+
+/* status */
+.status-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.status-item{display:flex;align-items:center;gap:10px;padding:12px 14px;background:#fff;
+  border:1px solid var(--border);border-radius:10px;font-size:13px}
+.status-dot{width:8px;height:8px;border-radius:50%;flex:none}
+.status-dot.ok{background:var(--green)}
+.status-dot.pending{background:var(--amber)}
+
+/* cta */
+.cta-box{border-radius:20px;background:var(--ink);color:#fff;padding:64px 48px;
+  text-align:center;position:relative;overflow:hidden}
+.cta-box::before{content:"";position:absolute;inset:0;
+  background:radial-gradient(circle at 50% -10%,rgba(108,76,241,0.5),transparent 60%)}
+.cta-inner{position:relative}
+.cta-box h2{font-size:clamp(28px,4vw,40px);letter-spacing:-0.03em;font-weight:700;
+  margin-bottom:14px;line-height:1.1}
+.cta-box p{font-size:18px;color:#B9B9C0;max-width:540px;margin:0 auto 28px}
+
+footer{border-top:1px solid rgba(20,20,26,0.08);padding:28px 0 48px;
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}
+footer .note{font-size:13px;color:var(--muted)}
+
+.pad-section{padding:72px 0 24px}
+.pad-section-sm{padding:48px 0 16px}
+
+@media(max-width:960px){
+  .grid-4,.grid-3,.steps{grid-template-columns:repeat(2,1fr)}
+  .grid-4>div:nth-child(odd){border-right:1px solid var(--border)}
+}
+@media(max-width:640px){
+  .wrap{padding:0 20px}
+  .nav-links{gap:14px;font-size:13px}
+  .grid-2,.grid-3,.grid-4,.steps,.compare,.status-grid{grid-template-columns:1fr}
+  .hero{padding:48px 0 40px}
+  .cta-box{padding:40px 24px}
+  .spec-table th{display:block;width:100%;padding-bottom:4px;border:none}
+  .spec-table td{display:block;padding-top:0}
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <nav>
+    <div class="brand">
+      <span class="brand-dot"></span>
+      <span class="brand-name">Verigraph</span>
+    </div>
+    <div class="nav-links">
+      <a href="#demo">Demo</a>
+      <a href="#features">Features</a>
+      <a href="#loop">Pipeline</a>
+      <a href="#tech">Tech spec</a>
+      <a href="/demo" class="btn btn-dark">Try the demo <span class="mono">→</span></a>
+    </div>
+  </nav>
+</div>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="pill"><span style="width:6px;height:6px;border-radius:50%;background:var(--purple)"></span> HackWithBay 3.0 · Thoughtful Agents for Productivity</div>
+    <h1>Turn research papers into <span>executable evidence</span></h1>
+    <p class="hero-lead">
+      Most tools stop at summaries or code stubs. <strong>Verigraph</strong> closes the full loop — extract claims from papers, run methods in a sandbox, and write <span style="color:var(--green);font-weight:600">VALIDATES</span> or <span style="color:var(--red);font-weight:600">REFUTES</span> verdicts back into a live Neo4j knowledge graph.
+    </p>
+    <div class="hero-cta">
+      <a href="/demo" class="btn btn-primary btn-lg">Run the live demo <span class="mono">▶</span></a>
+      <a href="#tech" class="btn btn-outline btn-lg">View tech spec</a>
+    </div>
+    <p class="loop-chain">
+      Paper <span style="color:#B9B9C0">→</span> Claim <span style="color:#B9B9C0">→</span> Method <span style="color:#B9B9C0">→</span> Code <span style="color:#B9B9C0">→</span> Sandbox Run <span style="color:#B9B9C0">→</span> Result <span style="color:#B9B9C0">→</span> <span style="color:var(--purple)">Graph Update</span>
+    </p>
+  </div>
+</header>
+
+<section id="demo" class="pad-section-sm">
+  <div class="wrap">
+    <div class="preview-wrap">
+      <div class="preview-bar">
+        <span class="dot" style="background:#E4483B"></span>
+        <span class="dot" style="background:#E8B23A"></span>
+        <span class="dot" style="background:#3FB669"></span>
+        <span class="mono" style="font-size:12.5px;color:var(--muted);margin-left:10px">localhost:8787/demo — live research graph</span>
+      </div>
+      <div class="preview-canvas">
+        <svg viewBox="0 0 1096 360" style="position:absolute;inset:0;width:100%;height:100%">
+          <line x1="250" y1="110" x2="548" y2="90" stroke="#C9C9D0" stroke-width="1.5"/>
+          <line x1="820" y1="120" x2="548" y2="90" stroke="#C9C9D0" stroke-width="1.5"/>
+          <line x1="820" y1="120" x2="250" y2="110" stroke="#C9C9D0" stroke-width="1.5"/>
+          <line x1="330" y1="150" x2="520" y2="150" stroke="#D8A21C" stroke-width="1.5" stroke-dasharray="5 4"/>
+          <line x1="620" y1="150" x2="800" y2="160" stroke="#D8A21C" stroke-width="1.5" stroke-dasharray="5 4"/>
+          <line x1="548" y1="230" x2="548" y2="150" stroke="#6C4CF1" stroke-width="1.5"/>
+          <line x1="548" y1="300" x2="548" y2="252" stroke="#1F9D5B" stroke-width="2"/>
+          <line x1="500" y1="300" x2="420" y2="168" stroke="#1F9D5B" stroke-width="2" stroke-dasharray="4 4"/>
+        </svg>
+        <div style="position:absolute;left:180px;top:92px;transform:translate(-50%,-50%);font-family:'IBM Plex Mono',monospace;font-size:12px;background:#fff;border:1px solid rgba(20,20,26,0.18);padding:7px 11px;border-radius:8px;font-weight:500;box-shadow:0 2px 6px rgba(0,0,0,0.05)">📄 Adam</div>
+        <div style="position:absolute;left:548px;top:72px;transform:translate(-50%,-50%);font-family:'IBM Plex Mono',monospace;font-size:12px;background:#fff;border:1px solid rgba(20,20,26,0.18);padding:7px 11px;border-radius:8px;font-weight:500">📄 Wilson et al.</div>
+        <div style="position:absolute;left:880px;top:102px;transform:translate(-50%,-50%);font-family:'IBM Plex Mono',monospace;font-size:12px;background:#fff;border:1px solid rgba(20,20,26,0.18);padding:7px 11px;border-radius:8px;font-weight:500">📄 AdamW</div>
+        <div style="position:absolute;left:295px;top:150px;transform:translate(-50%,-50%);font-size:11px;background:#FDF6E3;color:#8A6410;border:1px solid #EAD59A;padding:5px 9px;border-radius:999px;white-space:nowrap">claim · defaults fine</div>
+        <div style="position:absolute;left:665px;top:150px;transform:translate(-50%,-50%);font-size:11px;background:#FDF6E3;color:#8A6410;border:1px solid #EAD59A;padding:5px 9px;border-radius:999px;white-space:nowrap">claim · Adam ~50%</div>
+        <div style="position:absolute;left:548px;top:236px;transform:translate(-50%,-50%);font-size:11.5px;color:#fff;background:#6C4CF1;padding:7px 12px;border-radius:8px;white-space:nowrap;box-shadow:0 4px 12px rgba(108,76,241,0.35);font-weight:500">◆ Linearly-separable counterexample</div>
+        <div style="position:absolute;left:548px;top:322px;transform:translate(-50%,-50%);font-size:11.5px;color:#fff;background:#1F9D5B;padding:7px 12px;border-radius:8px;white-space:nowrap;box-shadow:0 4px 12px rgba(31,157,91,0.3);font-weight:600">⚡ run · GD 0.000 vs Adam 0.425</div>
+      </div>
+    </div>
+    <p class="preview-caption">Three real papers with four cross-paper <span style="color:#B98A12">CONTRADICTS</span> edges — settled by a run that reproduces Wilson et al. digit-for-digit.</p>
+  </div>
+</section>
+
+<section class="pad-section-sm">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-label">2-minute walkthrough</div>
+      <h2>How the live demo works</h2>
+      <p>Preloaded with Adam, Wilson et al., and AdamW — three papers that genuinely disagree about adaptive optimizers.</p>
+    </div>
+    <div class="steps">
+      <div class="step"><h4>Open the graph</h4><p>vis-network shows papers, claims, methods, citations, and CONTRADICTS edges. Evidence tab: all claims say "no runs yet".</p></div>
+      <div class="step"><h4>Select a method</h4><p>Click the violet ◆ method node. Console tab loads the runnable spec with optional parameter overrides.</p></div>
+      <div class="step"><h4>▶ RUN</h4><p>Codegen produces a single-file experiment. Daytona sandbox executes it (local subprocess fallback if unavailable).</p></div>
+      <div class="step"><h4>Watch evidence flip</h4><p>A ⚡ Run node appears. Claims update to VALIDATES or REFUTES with run ids and exact metrics in the evidence cards.</p></div>
+      <div class="step"><h4>Ask the agent</h4><p>RocketRide queries Neo4j via NL→Cypher: "Which claims now have executable evidence?" — answers with run ids and numbers.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="features" class="pad-section">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-label">Product features</div>
+      <h2>Everything the system does</h2>
+      <p>Not a mockup — each feature maps to a real module in <code class="mono" style="font-size:12px;background:var(--bg2);padding:2px 6px;border-radius:4px">app/</code> with verified smoke tests.</p>
+    </div>
+    <div class="grid-3">
+      <div class="card"><div class="icon">📄</div><div class="tag">extract.py · arxiv.py</div><h3>Paper ingestion</h3><p>Upload via arXiv URL (HTML or PDF with retry/fallback), PDF drop, or raw text. LLM extracts claims, methods, datasets, citations, and cross-paper relations into structured JSON.</p></div>
+      <div class="card"><div class="icon" style="color:var(--purple)">◆</div><div class="tag">graph.py</div><h3>Knowledge graph</h3><p>Idempotent MERGE into Neo4j Aura. Papers, claims, methods, runs, and artifacts as first-class nodes. CONTRADICTS edges surface real disagreements between papers.</p></div>
+      <div class="card"><div class="icon" style="color:var(--purple)">⚙</div><div class="tag">codegen.py</div><h3>Method → code</h3><p>Any method node becomes a runnable single-file experiment. Curated implementations for demo papers; live LLM codegen for newly uploaded papers via Grok.</p></div>
+      <div class="card"><div class="icon" style="color:var(--green)">⚡</div><div class="tag">runner.py</div><h3>Sandbox execution</h3><p>Daytona isolated sandboxes when <code>DAYTONA_API_KEY</code> is set. Local subprocess fallback keeps the demo unkillable. Captures stdout, stderr, duration, exit code.</p></div>
+      <div class="card"><div class="icon" style="color:var(--green)">✓</div><div class="tag">curator.py</div><h3>Evidence curation</h3><p>Writes Run + Artifact nodes back to Neo4j with IMPLEMENTS, VALIDATES, and REFUTES edges. Failed runs are evidence too — the graph remembers what broke.</p></div>
+      <div class="card"><div class="icon">📊</div><div class="tag">queries.py</div><h3>Evidence table</h3><p>Live view of which claims carry executable evidence vs. paper-only assertions. Flips in real time as runs complete — the core demo moment.</p></div>
+      <div class="card"><div class="icon">🕸</div><div class="tag">static/index.html</div><h3>Interactive graph UI</h3><p>vis-network visualization with color-coded node types, edge legends (CONTRADICTS / VALIDATES), zoom controls, and tabbed side panel (Evidence · Console · Ask).</p></div>
+      <div class="card"><div class="icon" style="color:var(--purple)">◈</div><div class="tag">verigraph.pipe</div><h3>Ask the research agent</h3><p>RocketRide wave agent with internal memory, db_neo4j (natural language → Cypher), and tool_python. Answers cite claim ids, run ids, and exact metrics.</p></div>
+      <div class="card"><div class="icon">↺</div><div class="tag">demo_reset.py</div><h3>Reset demo</h3><p>One-click pristine state: clears Run/Artifact nodes, reloads papers, wipes local run dirs. Evidence returns to "no runs yet" for a clean stage demo.</p></div>
+      <div class="card"><div class="icon">☁</div><div class="tag">butterbase.py</div><h3>Run history mirror</h3><p>Every extraction and run auto-synced to the dedicated Butterbase <code>paper2result</code> app — papers and run history persisted outside Neo4j.</p></div>
+      <div class="card"><div class="icon" style="color:var(--amber)">⇄</div><div class="tag">graph.py</div><h3>Cross-paper conflicts</h3><p>CONTRADICTS edges between claims from different papers. The graph doesn't hide disagreement — a run can adjudicate which side reproduces.</p></div>
+      <div class="card"><div class="icon">🧪</div><div class="tag">demo_loop.py</div><h3>CLI closed loop</h3><p>Headless one-command loop: <code>python scripts/demo_loop.py wilson2017-m1</code> — codegen → run → curate → evidence diff, no UI required.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="pad-section-sm">
+  <div class="wrap">
+    <div class="sec-head"><h2>Why not Paper2Code?</h2></div>
+    <div class="compare">
+      <div class="compare-col bad">
+        <h3>Paper2Code stops at generation</h3>
+        <ul>
+          <li>Produces code stubs — no execution</li>
+          <li>No verdict on whether claims hold</li>
+          <li>Failures disappear; no graph memory</li>
+          <li>Contradictions between papers invisible</li>
+          <li>Evidence is "the model said so"</li>
+        </ul>
+      </div>
+      <div class="compare-col good">
+        <h3>Verigraph ends in evidence</h3>
+        <ul>
+          <li>Code runs in Daytona or local sandbox</li>
+          <li>VALIDATES / REFUTES attached to claims</li>
+          <li>Failed runs recorded as graph citizens</li>
+          <li>CONTRADICTS edges + run adjudication</li>
+          <li>Metrics, logs, and run ids — reproducible</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="loop" class="pad-section">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-label">Architecture</div>
+      <h2>The closed-loop pipeline</h2>
+      <p>Eight Python modules, one RocketRide agent pipeline, four sponsor integrations — each step verified independently.</p>
+    </div>
+    <div class="grid-4">
+      <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">01 · extract.py</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Extract</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Paper text → claims, methods, datasets, citations, claim_relations as JSON. Schema-validated; fallback method if LLM returns none.</p></div>
+      <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">02 · graph.py</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Load</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Idempotent MERGE into Neo4j Aura. Label-scoped deletes on shared instance. CONTRADICTS, CITES, FROM, DESCRIBED_IN edges.</p></div>
+      <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">03 · codegen.py</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Generate</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Method node → single-file experiment. Output contract: last stdout line is JSON with metrics and claim_checks verdicts.</p></div>
+      <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">04 · runner.py</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Run</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Execute in Daytona sandbox (<code>auto</code> | <code>daytona</code> | <code>local</code>). Persist run record to <code>runs/</code> with full capture.</p></div>
+      <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">05 · curator.py</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Curate</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Write Run + Artifact nodes. IMPLEMENTS → Method, VALIDATES/REFUTES → Claim, PRODUCED → Artifact (stdout capped 4k).</p></div>
+      <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">06 · queries.py</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Evidence</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Canned Cypher: claims, conflicts, methods, evidence. Powers the evidence table and CLI inspection.</p></div>
+      <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">07 · db_neo4j</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Ask</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">RocketRide agent: NL → Cypher over the live graph. Wave memory + accuracy rule for exact metric quoting.</p></div>
+      <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">08 · butterbase.py</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Mirror</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Sync papers and runs to Butterbase <code>paper2result</code> app. Archive outside the graph; gateway also powers all LLM calls.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="tech" class="pad-section">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-label">Technical specification</div>
+      <h2>Stack, schema &amp; APIs</h2>
+      <p>Full implementation details for HackWithBay judges and developers who want to reproduce or extend the system.</p>
+    </div>
+
+    <div class="spec-block">
+      <h4>Sponsor integrations</h4>
+      <table class="spec-table">
+        <tr><th>RocketRide</th><td>Local engine on <code>:5565</code>. Pipeline <code>verigraph.pipe</code>: <code>agent_rocketride</code> (6 waves, internal memory) + <code>db_neo4j</code> (NL→Cypher) + <code>tool_python</code>. LLM routed through one gateway node.</td></tr>
+        <tr><th>Neo4j Aura</th><td>Cloud graph database (<code>neo4j+s://</code>). Product <em>is</em> the graph — 8 node labels, 10+ relationship types. Label-scoped ops on shared Aura instance.</td></tr>
+        <tr><th>Butterbase</th><td>AI gateway (OpenAI-compatible) for <strong>all</strong> LLM calls — extraction, codegen, agent. Dedicated <code>paper2result</code> app for papers + run history persistence.</td></tr>
+        <tr><th>Daytona</th><td>Isolated sandbox execution via <code>daytona-sdk</code>. <code>--backend auto</code> selects Daytona when API key present; local subprocess fallback otherwise.</td></tr>
+      </table>
+    </div>
+
+    <div class="spec-block">
+      <h4>LLM &amp; models</h4>
+      <table class="spec-table">
+        <tr><th>Gateway</th><td>Butterbase AI gateway — <code>ROCKETRIDE_GATEWAY_BASE_URL</code> + <code>ROCKETRIDE_GATEWAY_KEY</code></td></tr>
+        <tr><th>Model</th><td><code>x-ai/grok-4.3</code> (Grok) via <code>ROCKETRIDE_GATEWAY_MODEL</code>. Single route for extract, codegen, and agent pipeline.</td></tr>
+        <tr><th>Temperature</th><td><code>0.0</code> for extraction/codegen (deterministic JSON). Agent uses pipeline instructions with accuracy rule for metric quoting.</td></tr>
+        <tr><th>Direct key</th><td><code>XAI_API_KEY</code> available for direct xAI access if needed; production path uses Butterbase gateway.</td></tr>
+      </table>
+    </div>
+
+    <div class="spec-block">
+      <h4>Graph schema (Neo4j)</h4>
+      <div class="schema">
+<span class="n">Nodes:</span> Paper · Author · Claim · Method · Dataset · Task · Run · Artifact<br><br>
+<span class="r">Relationships:</span><br>
+&nbsp;&nbsp;(Author)-[:WROTE]->(Paper)<br>
+&nbsp;&nbsp;(Paper)-[:CITES]->(Paper)<br>
+&nbsp;&nbsp;(Claim)-[:FROM]->(Paper)<br>
+&nbsp;&nbsp;(Method)-[:DESCRIBED_IN]->(Paper)<br>
+&nbsp;&nbsp;(Paper)-[:EVALUATED_ON]->(Dataset)<br>
+&nbsp;&nbsp;(Paper)-[:ADDRESSES]->(Task)<br>
+&nbsp;&nbsp;(Claim)-[:SUPPORTS|CONTRADICTS]->(Claim)<br>
+&nbsp;&nbsp;(Run)-[:IMPLEMENTS]->(Method)<br>
+&nbsp;&nbsp;(Run)-[:VALIDATES|REFUTES]->(Claim)<br>
+&nbsp;&nbsp;(Run)-[:PRODUCED]->(Artifact)
+      </div>
+    </div>
+
+    <div class="spec-block">
+      <h4>REST API (FastAPI · port 8787)</h4>
+      <table class="spec-table">
+        <tr><th>GET /</th><td>Landing page (marketing)</td></tr>
+        <tr><th>GET /demo</th><td>Live demo UI (vis-network graph + side panel)</td></tr>
+        <tr><th>GET /api/graph</th><td>Full node/edge payload for graph visualization</td></tr>
+        <tr><th>GET /api/evidence</th><td>Evidence table rows (claim → verdict or "no runs yet")</td></tr>
+        <tr><th>POST /api/run/{method_id}</th><td>Closed loop: codegen → execute → curate. Body: <code>{"params":{}}</code>. Query: <code>backend=auto|local|daytona</code></td></tr>
+        <tr><th>POST /api/ask</th><td>Question → RocketRide agent pipeline → graph-grounded answer</td></tr>
+        <tr><th>POST /api/upload-arxiv</th><td>Fetch arXiv (HTML/PDF) → extract → load graph</td></tr>
+        <tr><th>POST /api/upload-file</th><td>PDF or text file → extract → load graph</td></tr>
+        <tr><th>POST /api/reset</th><td>Clear runs, reload papers, pristine evidence state</td></tr>
+      </table>
+    </div>
+
+    <div class="grid-2" style="gap:16px">
+      <div class="spec-block" style="margin:0">
+        <h4>Python dependencies</h4>
+        <div class="schema" style="margin:0">
+neo4j ≥ 5.20 · fastapi ≥ 0.110 · uvicorn ≥ 0.29<br>
+rocketride ≥ 1.3 · daytona-sdk ≥ 0.10<br>
+openai ≥ 1.30 · anthropic ≥ 0.30 · numpy ≥ 1.26<br>
+pypdf ≥ 4.0 · python-multipart · certifi · python-dotenv
+        </div>
+      </div>
+      <div class="spec-block" style="margin:0">
+        <h4>Environment variables</h4>
+        <div class="schema" style="margin:0">
+NEO4J_URI · NEO4J_USERNAME · NEO4J_PASSWORD<br>
+ROCKETRIDE_URI · ROCKETRIDE_APIKEY · PIPELINE_URL<br>
+ROCKETRIDE_GATEWAY_BASE_URL · _KEY · _MODEL<br>
+ROCKETRIDE_NEO4J_URI · _USER · _PASSWORD<br>
+BUTTERBASE_API_KEY · BUTTERBASE_APP_ID · _SERVICE_KEY<br>
+P2R_BUTTERBASE_APP_ID · DAYTONA_API_KEY · XAI_API_KEY
+        </div>
+      </div>
+    </div>
+
+    <div class="spec-block" style="margin-top:16px">
+      <h4>Run commands</h4>
+      <table class="spec-table">
+        <tr><th>Setup</th><td><code>python3 -m venv .venv && pip install -r requirements.txt && cp .env.example .env</code></td></tr>
+        <tr><th>Load graph</th><td><code>.venv/bin/python app/graph.py --reset</code></td></tr>
+        <tr><th>Smoke tests</th><td><code>scripts/check_neo4j.py</code> · <code>scripts/check_pipeline.py</code></td></tr>
+        <tr><th>Start UI</th><td><code>.venv/bin/uvicorn app.server:app --port 8787</code> → <code>http://localhost:8787</code></td></tr>
+        <tr><th>CLI loop</th><td><code>.venv/bin/python scripts/demo_loop.py wilson2017-m1</code></td></tr>
+        <tr><th>Reset demo</th><td><code>.venv/bin/python scripts/reset_demo.py</code> or UI reset button</td></tr>
+      </table>
+    </div>
+
+    <div class="spec-block">
+      <h4>Verified status</h4>
+      <div class="status-grid">
+        <div class="status-item"><span class="status-dot ok"></span>Extraction (3 papers + live upload)</div>
+        <div class="status-item"><span class="status-dot ok"></span>Neo4j graph (conflicts + evidence)</div>
+        <div class="status-item"><span class="status-dot ok"></span>Codegen (Wilson counterexample)</div>
+        <div class="status-item"><span class="status-dot ok"></span>Runner — local + Daytona (4.9s)</div>
+        <div class="status-item"><span class="status-dot ok"></span>Closed loop (evidence flip)</div>
+        <div class="status-item"><span class="status-dot ok"></span>RocketRide agent (graph Q&A)</div>
+        <div class="status-item"><span class="status-dot ok"></span>Demo UI (graph + tabs + ask)</div>
+        <div class="status-item"><span class="status-dot ok"></span>Butterbase gateway + mirror</div>
+        <div class="status-item"><span class="status-dot pending"></span>Deployed public URL</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="pad-section">
+  <div class="wrap">
+    <div class="cta-box">
+      <div class="cta-inner">
+        <h2>See it validate a real paper.</h2>
+        <p>Click the violet method node, watch the code run in a sandbox, and see the evidence table flip live — GD 0.000 vs Adam 0.425, digit-for-digit.</p>
+        <a href="/demo" class="btn btn-primary btn-lg">Open the demo <span class="mono">▶</span></a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="wrap">
+  <div class="brand">
+    <span class="brand-dot" style="width:9px;height:9px"></span>
+    <span class="brand-name" style="font-size:14px">Verigraph</span>
+  </div>
+  <div class="note">Built for HackWithBay 3.0 · July 2026</div>
+</footer>
+
+</body>
+</html>

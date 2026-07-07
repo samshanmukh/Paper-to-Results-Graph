@@ -21,7 +21,7 @@ IMPL_DIR = os.path.join(ROOT, "papers", "impl")
 GENERATED_DIR = os.path.join(ROOT, "generated")
 
 
-CODEGEN_PROMPT = """You are the codegen stage of Paper-to-Results Graph.
+CODEGEN_PROMPT = """You are the codegen stage of Verigraph.
 Write ONE self-contained Python file (numpy + stdlib ONLY, no downloads, no
 network, finishes in under 60 seconds) that reproduces this method from a
 research paper as a small experiment.
@@ -62,7 +62,10 @@ def _method_context(method_id: str) -> dict:
             id=method_id, database_=DATABASE,
         )
     if not recs:
-        raise NotImplementedError(f"method '{method_id}' not found in the graph")
+        raise NotImplementedError(
+            f"method '{method_id}' not found in the graph — "
+            "re-upload the paper or check that extraction produced methods"
+        )
     return dict(recs[0])
 
 

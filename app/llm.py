@@ -23,7 +23,7 @@ def chat(prompt: str, system: str | None = None, max_tokens: int = 4000,
          temperature: float = 0.0, timeout: int = 180) -> str:
     base = os.environ["ROCKETRIDE_GATEWAY_BASE_URL"].rstrip("/")
     key = os.environ["ROCKETRIDE_GATEWAY_KEY"]
-    model = os.environ.get("ROCKETRIDE_GATEWAY_MODEL", "anthropic/claude-sonnet-4.5")
+    model = os.environ.get("ROCKETRIDE_GATEWAY_MODEL", "x-ai/grok-4.3")
     messages = []
     if system:
         messages.append({"role": "system", "content": system})

@@ -1,10 +1,11 @@
-"""Smoke test: start pipelines/paper2result.pipe on the local RocketRide
+"""Smoke test: start pipelines/verigraph.pipe on the local RocketRide
 engine and ask the agent a graph question.
 
 Usage: python scripts/check_pipeline.py ["question"]
 """
 
 import asyncio
+import json
 import os
 import sys
 
@@ -17,8 +18,24 @@ load_dotenv(os.path.join(ROOT, ".env"))
 from rocketride import RocketRideClient
 from rocketride.schema import Question
 
-PIPE = os.path.join(ROOT, "pipelines", "paper2result.pipe")
+PIPE = os.path.join(ROOT, "pipelines", "verigraph.pipe")
 DEFAULT_QUESTION = "Which claims currently have executable evidence attached, and what did the runs show?"
+
+
+async def _pipeline_token(client: RocketRideClient) -> str:
+    """Start the pipeline or attach to an already-running instance."""
+    try:
+        result = await client.use(filepath=PIPE)
+        return result["token"]
+    except RuntimeError as e:
+        if "already running" not in str(e).lower():
+            raise
+        with open(PIPE) as f:
+            project_id = json.load(f)["project_id"]
+        token = await client.get_task_token(project_id, "chat_1")
+        if not token:
+            raise RuntimeError("pipeline is running but no chat_1 task token found")
+        return token
 
 
 async def main() -> int:
@@ -27,9 +44,8 @@ async def main() -> int:
     await client.connect()
     print("connected to RocketRide engine")
     try:
-        result = await client.use(filepath=PIPE)
-        token = result["token"]
-        print(f"pipeline started, token={token}")
+        token = await _pipeline_token(client)
+        print(f"pipeline ready, token={token}")
 
         q = Question()
         q.addQuestion(question_text)

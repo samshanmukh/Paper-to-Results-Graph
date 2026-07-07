@@ -1,0 +1,43 @@
+{
+  "paper": {
+    "id": "adamw2017",
+    "title": "Decoupled Weight Decay Regularization",
+    "authors": ["Ilya Loshchilov", "Frank Hutter"],
+    "year": 2017,
+    "arxiv": "1711.05101",
+    "topic": "adaptive-optimizers"
+  },
+  "claims": [
+    {
+      "id": "adamw2017-c1",
+      "text": "L2 regularization and weight decay are not equivalent for Adam; Adam-with-L2 under-regularizes weights with large gradient magnitudes.",
+      "metric": null
+    },
+    {
+      "id": "adamw2017-c2",
+      "text": "Decoupled weight decay (AdamW) substantially improves Adam's generalization, making it competitive with SGD with momentum on image classification.",
+      "metric": "test error on CIFAR-10 / ImageNet32x32"
+    },
+    {
+      "id": "adamw2017-c3",
+      "text": "Decoupling makes the optimal weight decay factor independent of the learning rate.",
+      "metric": null
+    }
+  ],
+  "methods": [
+    {
+      "id": "adamw2017-m1",
+      "name": "AdamW (decoupled weight decay)",
+      "description": "Modify Adam to apply weight decay directly at the parameter update (theta -= alpha*(m_hat/(sqrt(v_hat)+eps) + lambda*theta)) instead of adding lambda*theta to the gradient.",
+      "runnable_hint": "Implement Adam-with-L2 and AdamW in numpy on a regularized logistic regression task; compare test error at matched settings. Metric: test_error_adam_l2 vs test_error_adamw."
+    }
+  ],
+  "datasets": [
+    {"id": "cifar10", "name": "CIFAR-10"}
+  ],
+  "cites": ["adam2014", "wilson2017"],
+  "claim_relations": [
+    {"from": "adamw2017-c2", "to": "wilson2017-c1", "type": "CONTRADICTS"},
+    {"from": "adamw2017-c1", "to": "adam2014-c2", "type": "CONTRADICTS"}
+  ]
+}

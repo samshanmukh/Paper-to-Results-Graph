@@ -1,4 +1,4 @@
-# Paper-to-Results Graph — Autonomous Build Loop State
+# Verigraph — Autonomous Build Loop State
 
 This file is the single source of truth for the build loop. Each loop iteration:
 1. Reads this file top to bottom.
@@ -67,7 +67,7 @@ This file is the single source of truth for the build loop. Each loop iteration:
 
 ### M6 — RocketRide orchestration
 - [x] Read RocketRide docs (README, QUICKSTART, PIPELINE_RULES, COMPONENT_REFERENCE, COMMON_MISTAKES) + services-catalog + schemas for llm_openai_api/db_neo4j/tool_python/tool_daytona
-- [x] `pipelines/paper2result.pipe`: chat → agent_rocketride (waves+memory) → response_answers; agent controls llm_openai_api (Butterbase AI gateway!), memory_internal, db_neo4j (Aura), tool_python. db_neo4j shares the same LLM node for NL→Cypher
+- [x] `pipelines/verigraph.pipe`: chat → agent_rocketride (waves+memory) → response_answers; agent controls llm_openai_api (Butterbase AI gateway!), memory_internal, db_neo4j (Aura), tool_python. db_neo4j shares the same LLM node for NL→Cypher
 - [x] VERIFIED live via `scripts/check_pipeline.py`: agent answered "which claims have executable evidence" citing real run id, VALIDATES verdicts, metrics from the graph
 - [ ] Polish: agent sometimes misquotes metric values (said 0.05 vs actual 0.425) — tighten instructions or db_description; add tool_daytona node when key arrives
 
