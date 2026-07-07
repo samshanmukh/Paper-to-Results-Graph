@@ -18,6 +18,12 @@ import sys
 import time
 from datetime import datetime, timezone
 
+import certifi
+
+# macOS python.org builds lack system CAs (same fix as app/db.py); must be
+# set before the Daytona SDK opens TLS connections.
+os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.codegen import materialize, parse_result_line
 

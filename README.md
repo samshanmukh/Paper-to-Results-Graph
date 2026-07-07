@@ -132,7 +132,7 @@ Before a live demo: `.venv/bin/python scripts/reset_demo.py` (pristine "no runs 
 | Neo4j knowledge graph (28 nodes, 4 cross-paper conflicts) | ✅ verified |
 | Codegen + Wilson counterexample (paper effect reproduced) | ✅ verified |
 | Runner — local backend | ✅ verified |
-| Runner — Daytona backend | 🔶 code-complete, needs `DAYTONA_API_KEY` |
+| Runner — Daytona backend | ✅ verified (real sandbox, 4.9s) |
 | Closed loop (run → graph update → evidence flip) | ✅ verified |
 | RocketRide agent pipeline (graph Q&A with citations) | ✅ verified |
 | Demo UI | ✅ verified in browser |

@@ -33,7 +33,7 @@ This file is the single source of truth for the build loop. Each loop iteration:
 
 ## Blockers (loop appends here; user resolves)
 
-- DAYTONA_API_KEY not set — M4 sandbox execution blocked until provided; build local-subprocess fallback runner meanwhile.
+- (resolved) DAYTONA_API_KEY provided 2026-07-07; sandbox execution verified.
 
 ## Milestones
 
@@ -58,7 +58,7 @@ This file is the single source of truth for the build loop. Each loop iteration:
 
 ### M4 — Sandbox execution
 - [x] `app/runner.py` local backend verified: materialize → run → capture → `runs/<run_id>.json` record → claim verdicts printed. Failures are captured as data (error field), not crashes
-- [x] Daytona backend code-complete against daytona_sdk 0.194 real API (Daytona(DaytonaConfig) → create() → process.exec pip numpy → code_run → delete) — [BLOCKED: DAYTONA_API_KEY] unverified until key lands in .env; `--backend auto` picks daytona iff key present
+- [x] Daytona backend VERIFIED live (2026-07-07): real sandbox run in 4.9s, both wilson claims VALIDATE; full closed loop via daytona confirmed. Note: org must have a default region set in the Daytona Dashboard (API cannot set it). `--backend auto` now picks daytona
 
 ### M5 — Close the loop
 - [x] `app/curator.py`: Run + Artifact (stdout, capped 4k chars) nodes, IMPLEMENTS/VALIDATES/REFUTES edges with detail; failed runs curated too
