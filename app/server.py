@@ -1,7 +1,8 @@
 """FastAPI backend for the Paper-to-Results demo UI.
 
 Endpoints:
-  GET  /             -> static demo page
+  GET  /             -> landing page
+  GET  /demo         -> live demo page
   GET  /api/graph    -> full project graph (nodes + edges) for visualization
   GET  /api/evidence -> evidence table rows
   POST /api/run/{method_id}?backend=auto|local|daytona -> closed loop:
@@ -33,8 +34,23 @@ app = FastAPI(title="Paper-to-Results Graph")
 
 
 @app.get("/")
-def index():
+def landing():
+    return FileResponse(os.path.join(STATIC, "landing.html"))
+
+
+@app.get("/demo")
+def demo():
     return FileResponse(os.path.join(STATIC, "index.html"))
+
+
+@app.post("/api/reset")
+def reset_demo():
+    from app.demo_reset import reset_demo_state
+
+    try:
+        return reset_demo_state()
+    except Exception as e:
+        raise HTTPException(500, f"reset failed: {e}")
 
 
 @app.get("/api/graph")

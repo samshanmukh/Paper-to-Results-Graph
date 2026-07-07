@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>groundtruth — executable evidence from research papers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:#FBFBF9;color:#16161A;font-family:'IBM Plex Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:#6C4CF1;text-decoration:none}
+  a:hover{color:#5636d6}
+  ::selection{background:#E4DCFB}
+</style>
+</head>
+<body>
+<div style="max-width:1160px;margin:0 auto;padding:0 32px">
+
+  <nav style="display:flex;align-items:center;justify-content:space-between;height:76px">
+    <div style="display:flex;align-items:center;gap:9px">
+      <span style="width:11px;height:11px;border-radius:50%;background:#6C4CF1;display:inline-block"></span>
+      <span style="font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:17px;letter-spacing:-0.01em">groundtruth</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:28px;font-size:14.5px;color:#4A4A52">
+      <a href="#loop" style="color:#4A4A52">How it works</a>
+      <a href="#features" style="color:#4A4A52">Features</a>
+      <a href="#stack" style="color:#4A4A52">Built with</a>
+      <a href="/demo" style="display:inline-flex;align-items:center;gap:7px;background:#16161A;color:#fff;padding:9px 15px;border-radius:8px;font-weight:500;font-size:14px">Try the demo <span style="font-family:'IBM Plex Mono',monospace">→</span></a>
+    </div>
+  </nav>
+
+  <header style="padding:76px 0 60px;text-align:center;border-bottom:1px solid rgba(20,20,26,0.08)">
+    <div style="display:inline-flex;align-items:center;gap:8px;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#6C4CF1;background:#F1EDFD;border:1px solid #E1D8FB;padding:6px 12px;border-radius:999px;margin-bottom:26px">
+      <span style="width:6px;height:6px;border-radius:50%;background:#6C4CF1"></span> HackWithBay 3.0 · Thoughtful Agents for Productivity
+    </div>
+    <h1 style="font-size:62px;line-height:1.03;letter-spacing:-0.035em;font-weight:700;margin:0 auto;max-width:900px">
+      Turn research papers into <span style="color:#6C4CF1">executable evidence.</span>
+    </h1>
+    <p style="font-size:20px;line-height:1.5;color:#55555E;max-width:620px;margin:24px auto 0;text-wrap:pretty">
+      Most tools stop at summaries. Groundtruth closes the loop — select a method from a paper, generate runnable code, execute it in a sandbox, and watch the result attach itself to a knowledge graph as <strong style="color:#1F9D5B;font-weight:600">VALIDATES</strong> or <strong style="color:#D9483B;font-weight:600">REFUTES</strong>.
+    </p>
+    <div style="margin:36px 0 0;display:inline-flex;gap:12px;align-items:center">
+      <a href="/demo" style="display:inline-flex;align-items:center;gap:9px;background:#6C4CF1;color:#fff;padding:14px 24px;border-radius:10px;font-weight:600;font-size:16px;box-shadow:0 4px 16px rgba(108,76,241,0.28)">Run the live demo <span style="font-family:'IBM Plex Mono',monospace">▶</span></a>
+      <a href="#loop" style="display:inline-flex;align-items:center;gap:8px;color:#16161A;padding:14px 20px;border-radius:10px;font-weight:500;font-size:16px;border:1px solid rgba(20,20,26,0.14)">See the loop</a>
+    </div>
+    <p style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#8A8A92;margin:40px 0 0;letter-spacing:-0.01em">
+      Paper <span style="color:#B9B9C0">→</span> Claim <span style="color:#B9B9C0">→</span> Method <span style="color:#B9B9C0">→</span> Code <span style="color:#B9B9C0">→</span> Sandbox&nbsp;Run <span style="color:#B9B9C0">→</span> Result <span style="color:#B9B9C0">→</span> <span style="color:#6C4CF1">Graph&nbsp;Update</span>
+    </p>
+  </header>
+
+  <section style="padding:56px 0 8px">
+    <div style="border:1px solid rgba(20,20,26,0.10);border-radius:16px;background:#fff;box-shadow:0 24px 60px -30px rgba(20,20,26,0.35);overflow:hidden">
+      <div style="display:flex;align-items:center;gap:8px;padding:13px 16px;border-bottom:1px solid rgba(20,20,26,0.08);background:#F7F7F4">
+        <span style="width:11px;height:11px;border-radius:50%;background:#E4483B;display:inline-block"></span>
+        <span style="width:11px;height:11px;border-radius:50%;background:#E8B23A;display:inline-block"></span>
+        <span style="width:11px;height:11px;border-radius:50%;background:#3FB669;display:inline-block"></span>
+        <span style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#8A8A92;margin-left:10px">localhost:8787 — the research graph</span>
+      </div>
+      <div style="position:relative;height:360px;background:radial-gradient(circle at 1px 1px,rgba(20,20,26,0.05) 1px,transparent 0);background-size:22px 22px">
+        <svg viewBox="0 0 1096 360" style="position:absolute;inset:0;width:100%;height:100%">
+          <line x1="250" y1="110" x2="548" y2="90" stroke="#C9C9D0" stroke-width="1.5"></line>
+          <line x1="820" y1="120" x2="548" y2="90" stroke="#C9C9D0" stroke-width="1.5"></line>
+          <line x1="820" y1="120" x2="250" y2="110" stroke="#C9C9D0" stroke-width="1.5"></line>
+          <line x1="330" y1="150" x2="520" y2="150" stroke="#D8A21C" stroke-width="1.5" stroke-dasharray="5 4"></line>
+          <line x1="620" y1="150" x2="800" y2="160" stroke="#D8A21C" stroke-width="1.5" stroke-dasharray="5 4"></line>
+          <line x1="548" y1="230" x2="548" y2="150" stroke="#6C4CF1" stroke-width="1.5"></line>
+          <line x1="548" y1="300" x2="548" y2="252" stroke="#1F9D5B" stroke-width="2"></line>
+          <line x1="500" y1="300" x2="420" y2="168" stroke="#1F9D5B" stroke-width="2" stroke-dasharray="4 4"></line>
+        </svg>
+        <div style="position:absolute;left:180px;top:92px;transform:translate(-50%,-50%);font-family:'IBM Plex Mono',monospace;font-size:12px;background:#fff;border:1px solid rgba(20,20,26,0.18);padding:7px 11px;border-radius:8px;font-weight:500;box-shadow:0 2px 6px rgba(0,0,0,0.05)">📄 Adam</div>
+        <div style="position:absolute;left:548px;top:72px;transform:translate(-50%,-50%);font-family:'IBM Plex Mono',monospace;font-size:12px;background:#fff;border:1px solid rgba(20,20,26,0.18);padding:7px 11px;border-radius:8px;font-weight:500;box-shadow:0 2px 6px rgba(0,0,0,0.05)">📄 Wilson et al.</div>
+        <div style="position:absolute;left:880px;top:102px;transform:translate(-50%,-50%);font-family:'IBM Plex Mono',monospace;font-size:12px;background:#fff;border:1px solid rgba(20,20,26,0.18);padding:7px 11px;border-radius:8px;font-weight:500;box-shadow:0 2px 6px rgba(0,0,0,0.05)">📄 AdamW</div>
+        <div style="position:absolute;left:295px;top:150px;transform:translate(-50%,-50%);font-size:11px;background:#FDF6E3;color:#8A6410;border:1px solid #EAD59A;padding:5px 9px;border-radius:999px;white-space:nowrap">claim · defaults fine</div>
+        <div style="position:absolute;left:665px;top:150px;transform:translate(-50%,-50%);font-size:11px;background:#FDF6E3;color:#8A6410;border:1px solid #EAD59A;padding:5px 9px;border-radius:999px;white-space:nowrap">claim · Adam ~50%</div>
+        <div style="position:absolute;left:548px;top:236px;transform:translate(-50%,-50%);font-size:11.5px;color:#fff;background:#6C4CF1;padding:7px 12px;border-radius:8px;white-space:nowrap;box-shadow:0 4px 12px rgba(108,76,241,0.35);font-weight:500">◆ Linearly-separable counterexample</div>
+        <div style="position:absolute;left:548px;top:322px;transform:translate(-50%,-50%);font-size:11.5px;color:#fff;background:#1F9D5B;padding:7px 12px;border-radius:8px;white-space:nowrap;box-shadow:0 4px 12px rgba(31,157,91,0.3);font-weight:600">⚡ run · GD 0.000 vs Adam 0.425</div>
+      </div>
+    </div>
+    <p style="text-align:center;font-size:13.5px;color:#8A8A92;margin:16px 0 0">Three papers that genuinely disagree — with four cross-paper <span style="color:#B98A12">CONTRADICTS</span> edges — settled by a run that reproduces the result digit-for-digit.</p>
+  </section>
+
+  <section id="loop" style="padding:76px 0 20px;scroll-margin-top:20px">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:8px">
+      <h2 style="font-size:34px;letter-spacing:-0.025em;font-weight:700;margin:0">The closed loop</h2>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#8A8A92">app/ · 8 modules</span>
+    </div>
+    <p style="font-size:17px;color:#55555E;max-width:640px;margin:0 0 40px">Each step is a real module. The graph doesn't just know what papers <em>say</em> — it knows what has been <strong style="font-weight:600">tested</strong>.</p>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(20,20,26,0.10);border:1px solid rgba(20,20,26,0.10);border-radius:14px;overflow:hidden">
+      <div style="background:#fff;padding:22px 20px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#6C4CF1;margin-bottom:12px">01 · extract.py</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:6px">Extract</div>
+        <p style="font-size:13.5px;color:#66666E;line-height:1.5;margin:0">Paper text → claims, methods, datasets, and citations as structured JSON.</p>
+      </div>
+      <div style="background:#fff;padding:22px 20px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#6C4CF1;margin-bottom:12px">02 · graph.py</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:6px">Load</div>
+        <p style="font-size:13.5px;color:#66666E;line-height:1.5;margin:0">Idempotent MERGE into Neo4j, with CONTRADICTS edges between conflicting claims.</p>
+      </div>
+      <div style="background:#fff;padding:22px 20px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#6C4CF1;margin-bottom:12px">03 · codegen.py</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:6px">Generate</div>
+        <p style="font-size:13.5px;color:#66666E;line-height:1.5;margin:0">Turn a method node into a runnable single-file experiment.</p>
+      </div>
+      <div style="background:#fff;padding:22px 20px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#6C4CF1;margin-bottom:12px">04 · runner.py</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:6px">Run</div>
+        <p style="font-size:13.5px;color:#66666E;line-height:1.5;margin:0">Execute in a Daytona sandbox, with a local fallback that keeps the demo unkillable.</p>
+      </div>
+      <div style="background:#fff;padding:22px 20px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#6C4CF1;margin-bottom:12px">05 · curator.py</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:6px">Curate</div>
+        <p style="font-size:13.5px;color:#66666E;line-height:1.5;margin:0">Write Run &amp; Artifact nodes back with IMPLEMENTS / VALIDATES / REFUTES edges.</p>
+      </div>
+      <div style="background:#fff;padding:22px 20px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#6C4CF1;margin-bottom:12px">06 · queries.py</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:6px">Evidence</div>
+        <p style="font-size:13.5px;color:#66666E;line-height:1.5;margin:0">Canned queries surface which claims now carry executable evidence.</p>
+      </div>
+      <div style="background:#fff;padding:22px 20px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#6C4CF1;margin-bottom:12px">07 · db_neo4j</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:6px">Ask</div>
+        <p style="font-size:13.5px;color:#66666E;line-height:1.5;margin:0">Natural language → Cypher over the graph, answered with run ids and metrics.</p>
+      </div>
+      <div style="background:#fff;padding:22px 20px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#6C4CF1;margin-bottom:12px">08 · butterbase.py</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:6px">Mirror</div>
+        <p style="font-size:13.5px;color:#66666E;line-height:1.5;margin:0">Every run auto-mirrored to the paper2result app — papers &amp; run history.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="features" style="padding:72px 0 20px;scroll-margin-top:20px">
+    <h2 style="font-size:34px;letter-spacing:-0.025em;font-weight:700;margin:0 0 40px">Why it's different</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div style="border:1px solid rgba(20,20,26,0.10);border-radius:14px;padding:28px;background:#fff">
+        <div style="font-size:22px;margin-bottom:14px">◆</div>
+        <div style="font-size:19px;font-weight:600;margin-bottom:8px">Claims become executable</div>
+        <p style="font-size:15px;color:#55555E;line-height:1.55;margin:0">A method node isn't documentation — it's a button. Generate the implementation, run it, and get a verdict backed by logs, metrics, and failure data.</p>
+      </div>
+      <div style="border:1px solid rgba(20,20,26,0.10);border-radius:14px;padding:28px;background:#fff">
+        <div style="font-size:22px;margin-bottom:14px;color:#B98A12">⇄</div>
+        <div style="font-size:19px;font-weight:600;margin-bottom:8px">Contradictions are first-class</div>
+        <p style="font-size:15px;color:#55555E;line-height:1.55;margin:0">When papers disagree, the graph shows it as a CONTRADICTS edge — then lets a run decide which side reproduces.</p>
+      </div>
+      <div style="border:1px solid rgba(20,20,26,0.10);border-radius:14px;padding:28px;background:#fff">
+        <div style="font-size:22px;margin-bottom:14px;color:#1F9D5B">⚡</div>
+        <div style="font-size:19px;font-weight:600;margin-bottom:8px">Sandboxed, reproducible runs</div>
+        <p style="font-size:15px;color:#55555E;line-height:1.55;margin:0">Experiments execute in an isolated Daytona sandbox. A local subprocess fallback means the loop never stalls mid-demo.</p>
+      </div>
+      <div style="border:1px solid rgba(20,20,26,0.10);border-radius:14px;padding:28px;background:#fff">
+        <div style="font-size:22px;margin-bottom:14px;color:#6C4CF1">◈</div>
+        <div style="font-size:19px;font-weight:600;margin-bottom:8px">Ask in plain language</div>
+        <p style="font-size:15px;color:#55555E;line-height:1.55;margin:0">A RocketRide agent translates questions to Cypher over Neo4j — "which claims now have executable evidence?" — and answers with exact numbers.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="stack" style="padding:72px 0 20px;scroll-margin-top:20px">
+    <h2 style="font-size:34px;letter-spacing:-0.025em;font-weight:700;margin:0 0 8px">Built with</h2>
+    <p style="font-size:17px;color:#55555E;margin:0 0 36px">Four partner systems, one closed loop.</p>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px">
+      <div style="border:1px solid rgba(20,20,26,0.10);border-radius:12px;padding:22px;background:#fff">
+        <div style="font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:15px;margin-bottom:8px">RocketRide</div>
+        <p style="font-size:13px;color:#66666E;line-height:1.5;margin:0">Wave agent with memory, db_neo4j (NL→Cypher) &amp; tool_python.</p>
+      </div>
+      <div style="border:1px solid rgba(20,20,26,0.10);border-radius:12px;padding:22px;background:#fff">
+        <div style="font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:15px;margin-bottom:8px">Neo4j Aura</div>
+        <p style="font-size:13px;color:#66666E;line-height:1.5;margin:0">The product <em>is</em> the graph — papers, claims, methods, runs, edges.</p>
+      </div>
+      <div style="border:1px solid rgba(20,20,26,0.10);border-radius:12px;padding:22px;background:#fff">
+        <div style="font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:15px;margin-bottom:8px">Butterbase</div>
+        <p style="font-size:13px;color:#66666E;line-height:1.5;margin:0">AI gateway for every LLM call + a paper2result app storing run history.</p>
+      </div>
+      <div style="border:1px solid rgba(20,20,26,0.10);border-radius:12px;padding:22px;background:#fff">
+        <div style="font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:15px;margin-bottom:8px">Daytona</div>
+        <p style="font-size:13px;color:#66666E;line-height:1.5;margin:0">Sandbox backend for real execution, with a local fallback.</p>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding:80px 0">
+    <div style="border-radius:20px;background:#16161A;color:#fff;padding:64px 48px;text-align:center;position:relative;overflow:hidden">
+      <div style="position:absolute;inset:0;background:radial-gradient(circle at 50% -10%,rgba(108,76,241,0.5),transparent 60%)"></div>
+      <div style="position:relative">
+        <h2 style="font-size:40px;letter-spacing:-0.03em;font-weight:700;margin:0 0 16px;line-height:1.08">See it validate a real paper.</h2>
+        <p style="font-size:18px;color:#B9B9C0;max-width:520px;margin:0 auto 32px;line-height:1.5">Click the violet method node, watch the code run, and see the evidence table flip live — in under two minutes.</p>
+        <a href="/demo" style="display:inline-flex;align-items:center;gap:9px;background:#6C4CF1;color:#fff;padding:15px 28px;border-radius:11px;font-weight:600;font-size:17px">Open the demo <span style="font-family:'IBM Plex Mono',monospace">▶</span></a>
+      </div>
+    </div>
+  </section>
+
+  <footer style="border-top:1px solid rgba(20,20,26,0.08);padding:28px 0 48px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+    <div style="display:flex;align-items:center;gap:9px">
+      <span style="width:9px;height:9px;border-radius:50%;background:#6C4CF1;display:inline-block"></span>
+      <span style="font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:14px">groundtruth</span>
+    </div>
+    <div style="font-size:13px;color:#8A8A92">Built for HackWithBay 3.0 · July 2026</div>
+  </footer>
+
+</div>
+</body>
+</html>
