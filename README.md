@@ -2,6 +2,8 @@
 
 **Turn research papers into executable evidence.**
 
+🔴 **Live evidence explorer: [paper2result.butterbase.dev](https://paper2result.butterbase.dev)** — the real research graph (papers, claims, conflicts, runs, verdicts) served from Butterbase; experiment execution runs in the local demo.
+
 Built for **HackwithBay 3.0** (July 7, 2026, AWS Builder Loft SF) — theme: *Thoughtful Agents for Productivity*.
 
 ---
