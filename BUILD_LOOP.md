@@ -28,7 +28,7 @@ This file is the single source of truth for the build loop. Each loop iteration:
 | NEO4J_URI / USER / PASSWORD | ✅ verified (36 nodes) | `.env` (Aura instance d0b99ba9) |
 | BUTTERBASE_API_KEY / APP_ID / SERVICE_KEY / MCP_URL | ✅ in `.env` | from `../sceneshop/.env` |
 | RocketRide local engine | ✅ running on :5565 | `PIPELINE_URL` in `.env` |
-| DAYTONA_API_KEY | ❌ MISSING (empty in sceneshop/.env too) | user must provide in `.env` |
+| DAYTONA_API_KEY | ✅ provided + verified (sandbox run 4.9s) | `.env` |
 | LLM access | ✅ SOLVED via Butterbase AI gateway | OpenAI-compatible: `$BUTTERBASE_API_URL/v1/$APP_ID/chat/completions`, Bearer = SERVICE_KEY, model `anthropic/claude-sonnet-4.5` (verified). Wired as ROCKETRIDE_GATEWAY_* in .env |
 
 ## Blockers (loop appends here; user resolves)
