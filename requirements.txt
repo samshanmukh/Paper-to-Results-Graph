@@ -6,3 +6,5 @@ daytona-sdk>=0.10
 fastapi>=0.110
 uvicorn>=0.29
 certifi>=2024.0
+pypdf>=4.0
+python-multipart>=0.0.9
