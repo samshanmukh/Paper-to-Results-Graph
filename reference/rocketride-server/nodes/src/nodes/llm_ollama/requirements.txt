@@ -1,0 +1,6 @@
+# Plugin Ollama core
+langchain-openai
+
+# LangChain deps
+langchain-core
+langchain

@@ -1,0 +1,423 @@
+name: Release
+
+# Default least-privilege permissions for the workflow. Individual
+# release jobs below raise to write where they actually need it
+# (tag pushes, GitHub releases, package publishing).
+# Closes Scorecard TokenPermissionsID #516.
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to check out (branch, tag, or sha). Empty uses the default.
+        required: false
+        type: string
+        default: ''
+      prerelease:
+        description: Create a prerelease (skips registry publishing, force-pushes tags)
+        required: false
+        type: boolean
+        default: false
+      environment:
+        description: GitHub deployment environment name (leave empty to skip)
+        required: false
+        type: string
+        default: ''
+      server_version:
+        required: true
+        type: string
+      vscode_version:
+        required: true
+        type: string
+      client_mcp_version:
+        required: true
+        type: string
+      client_python_version:
+        required: true
+        type: string
+      client_typescript_version:
+        required: true
+        type: string
+
+jobs:
+  release:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - type: server
+            name: Server
+            version: ${{ inputs.server_version }}
+            tag_name: server-v${{ inputs.server_version }}${{ inputs.prerelease && '-prerelease' || '' }}
+            download_pattern: server-artifacts-*
+          - type: client-typescript
+            name: TypeScript Client
+            version: ${{ inputs.client_typescript_version }}
+            tag_name: client-typescript-v${{ inputs.client_typescript_version }}${{ inputs.prerelease && '-prerelease' || '' }}
+            download_pattern: typescript-client-artifacts
+          - type: client-python
+            name: Python Client
+            version: ${{ inputs.client_python_version }}
+            tag_name: client-python-v${{ inputs.client_python_version }}${{ inputs.prerelease && '-prerelease' || '' }}
+            download_pattern: python-client-artifacts
+          - type: client-mcp
+            name: MCP Client
+            version: ${{ inputs.client_mcp_version }}
+            tag_name: client-mcp-v${{ inputs.client_mcp_version }}${{ inputs.prerelease && '-prerelease' || '' }}
+            download_pattern: mcp-client-artifacts
+          - type: vscode
+            name: VS Code Extension
+            version: ${{ inputs.vscode_version }}
+            tag_name: vscode-v${{ inputs.vscode_version }}${{ inputs.prerelease && '-prerelease' || '' }}
+            download_pattern: vscode-artifacts
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: ${{ inputs.prerelease && 1 || 0 }}
+
+      - name: Check if tag exists
+        id: tag_check
+        if: inputs.prerelease == false
+        run: |
+          if git rev-parse "${{ matrix.tag_name }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Tag ${{ matrix.tag_name }} already exists — skipping"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download artifacts
+        if: inputs.prerelease || steps.tag_check.outputs.exists == 'false'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: ${{ matrix.download_pattern }}
+          merge-multiple: true
+          path: release-assets
+
+      - name: List artifacts
+        if: inputs.prerelease || steps.tag_check.outputs.exists == 'false'
+        run: find release-assets -type f | sort
+
+      # --- GPG-sign server tarballs/zips ---
+      #
+      # Produces detached ASCII-armored signatures (.asc) attached to the
+      # GitHub release alongside the originals. Skips cleanly when the
+      # signing secrets aren't configured, so this is safe to merge before
+      # key generation.
+      #
+      # User verification:
+      #   gpg --verify rocketride-server-X.Y.Z-linux-x64.tar.gz.asc \
+      #                rocketride-server-X.Y.Z-linux-x64.tar.gz
+      #
+      # One-time setup:
+      #   1. Generate a dedicated release-signing key (offline, on a trusted machine):
+      #        gpg --quick-generate-key 'RocketRide Releases <releases@rocketride.ai>' ed25519 sign 2y
+      #   2. Export the private key and store as repo secret GPG_SIGNING_KEY:
+      #        gpg --armor --export-secret-keys releases@rocketride.ai
+      #   3. Store the key passphrase as repo secret GPG_SIGNING_PASSPHRASE.
+      #   4. Publish the public key for users:
+      #        gpg --armor --export releases@rocketride.ai > scripts/release-pubkey.asc
+      #      Commit it; also upload to keys.openpgp.org and add the
+      #      fingerprint to README/SECURITY.md.
+      - name: Check GPG signing availability
+        id: gpg_check
+        if: matrix.type == 'server' && (inputs.prerelease || steps.tag_check.outputs.exists == 'false')
+        env:
+          GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
+          GPG_SIGNING_PASSPHRASE: ${{ secrets.GPG_SIGNING_PASSPHRASE }}
+        run: |
+          # Require BOTH secrets — the signing step pipes the passphrase to
+          # gpg via --passphrase-fd 0, so a key-only setup would hard-fail
+          # at sign time. Skip cleanly on partial setup; surface which
+          # secret is missing for faster debugging.
+          if [ -n "${GPG_SIGNING_KEY:-}" ] && [ -n "${GPG_SIGNING_PASSPHRASE:-}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            missing=()
+            [ -z "${GPG_SIGNING_KEY:-}" ] && missing+=("GPG_SIGNING_KEY")
+            [ -z "${GPG_SIGNING_PASSPHRASE:-}" ] && missing+=("GPG_SIGNING_PASSPHRASE")
+            echo "::warning::Missing secret(s): ${missing[*]} — server tarballs will be released unsigned"
+          fi
+
+      - name: GPG-sign server artifacts
+        if: matrix.type == 'server' && (inputs.prerelease || steps.tag_check.outputs.exists == 'false') && steps.gpg_check.outputs.available == 'true'
+        env:
+          GPG_SIGNING_KEY: ${{ secrets.GPG_SIGNING_KEY }}
+          GPG_SIGNING_PASSPHRASE: ${{ secrets.GPG_SIGNING_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          echo "$GPG_SIGNING_KEY" | gpg --batch --import
+          KEY_ID=$(gpg --list-secret-keys --with-colons | awk -F: '/^sec:/ {print $5; exit}')
+          echo "Signing with key ${KEY_ID}"
+          shopt -s nullglob
+          # Fail loudly if invoked with no input — reaching this step
+          # means both secrets are configured, so signing is expected
+          # to happen. Silent no-ops here would ship the release
+          # unsigned without any warning.
+          files=(release-assets/*.tar.gz release-assets/*.zip)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::No server archives (.tar.gz/.zip) found in release-assets/ to sign"
+            ls -la release-assets/ || true
+            exit 1
+          fi
+          for f in "${files[@]}"; do
+            echo "$GPG_SIGNING_PASSPHRASE" | gpg --batch --yes \
+              --pinentry-mode loopback --passphrase-fd 0 \
+              --local-user "$KEY_ID" \
+              --detach-sign --armor \
+              --output "${f}.asc" "$f"
+            echo "Signed ${f} -> ${f}.asc"
+          done
+          ls -la release-assets/
+
+      # --- npm: rocketride ---
+      - name: Set up Node.js
+        if: inputs.prerelease == false && steps.tag_check.outputs.exists == 'false' && matrix.type == 'client-typescript'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish to npm
+        if: inputs.prerelease == false && steps.tag_check.outputs.exists == 'false' && matrix.type == 'client-typescript'
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          # OIDC trusted publishing — no NPM_TOKEN. Auth uses this job's
+          # id-token (already granted for --provenance). Requires npm >= 11.5.1;
+          # Node 20 ships npm 10.x, so upgrade in place. The trusted publisher
+          # must be configured on npmjs.com against the CALLER workflow
+          # (release.yaml) + environment "release" — not this reusable child.
+          npm install -g npm@11.5.1
+          npm --version
+          case "$VERSION" in
+            ''|*[!0-9A-Za-z.+-]*)
+              echo "::error::Invalid package version: $VERSION"
+              exit 1
+              ;;
+          esac
+          if npm view "rocketride@${VERSION}" version 2>/dev/null; then
+            echo "rocketride@${VERSION} already exists on npm — skipping"
+          else
+            TARBALL=$(find release-assets -name '*.tgz' | head -n1)
+            echo "Publishing ${TARBALL}"
+            npm publish "./${TARBALL}" --access public --provenance
+          fi
+
+      # --- PyPI ---
+      - name: Set up Python
+        if: inputs.prerelease == false && steps.tag_check.outputs.exists == 'false' && (matrix.type == 'client-python' || matrix.type == 'client-mcp')
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+
+      - name: Publish rocketride to PyPI
+        if: inputs.prerelease == false && steps.tag_check.outputs.exists == 'false' && matrix.type == 'client-python'
+        env:
+          VERSION: ${{ matrix.version }}
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          pip install twine==6.1.0
+          case "$VERSION" in
+            ''|*[!0-9A-Za-z.+-]*)
+              echo "::error::Invalid package version: $VERSION"
+              exit 1
+              ;;
+          esac
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/rocketride/${VERSION}/json")
+          if [ "$STATUS" = "200" ]; then
+            echo "rocketride==${VERSION} already exists on PyPI — skipping"
+          else
+            twine upload release-assets/*.whl release-assets/*.tar.gz
+          fi
+
+      - name: Publish rocketride-mcp to PyPI
+        if: inputs.prerelease == false && steps.tag_check.outputs.exists == 'false' && matrix.type == 'client-mcp'
+        env:
+          VERSION: ${{ matrix.version }}
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          pip install twine==6.1.0
+          case "$VERSION" in
+            ''|*[!0-9A-Za-z.+-]*)
+              echo "::error::Invalid package version: $VERSION"
+              exit 1
+              ;;
+          esac
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/rocketride-mcp/${VERSION}/json")
+          if [ "$STATUS" = "200" ]; then
+            echo "rocketride-mcp==${VERSION} already exists on PyPI — skipping"
+          else
+            twine upload release-assets/*.whl release-assets/*.tar.gz
+          fi
+
+      # --- VS Code Marketplace + Open VSX ---
+      - name: Set up Node.js for vsce
+        if: inputs.prerelease == false && steps.tag_check.outputs.exists == 'false' && matrix.type == 'vscode'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+
+      - name: Publish to VS Code Marketplace
+        if: inputs.prerelease == false && steps.tag_check.outputs.exists == 'false' && matrix.type == 'vscode'
+        run: |
+          npm install -g @vscode/vsce@3.7.1
+          VSIX=$(find release-assets -name '*.vsix' | head -n1)
+          echo "Publishing ${VSIX}"
+          OUTPUT=$(vsce publish --packagePath "${VSIX}" 2>&1) && exit 0
+          if echo "$OUTPUT" | grep -qi "already exists"; then
+            echo "Version already exists on Marketplace — skipping"
+          else
+            echo "$OUTPUT"
+            exit 1
+          fi
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Publish to Open VSX
+        if: inputs.prerelease == false && steps.tag_check.outputs.exists == 'false' && matrix.type == 'vscode'
+        run: |
+          npm install -g ovsx@0.10.9
+          VSIX=$(find release-assets -name '*.vsix' | head -n1)
+          echo "Publishing ${VSIX}"
+          OUTPUT=$(ovsx publish "${VSIX}" -p "$OVSX_PAT" 2>&1) && exit 0
+          if echo "$OUTPUT" | grep -qiE "already exists|already published"; then
+            echo "Version already exists on Open VSX — skipping"
+          else
+            echo "$OUTPUT"
+            exit 1
+          fi
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+
+      # --- Tag and GitHub Release ---
+      #
+      # Mint a short-lived GitHub App installation token for the tag push. The
+      # tag points at a commit whose tree contains workflow files, so the
+      # pushing identity needs Workflows:write — GITHUB_TOKEN can't, and an App
+      # token avoids a long-lived PAT that silently expires. The App
+      # (RELEASE_BOT_APP_ID) is installed on this repo with Contents:write +
+      # Workflows:write; the token lives only for this job.
+      - name: Generate release-bot token
+        id: bot_token
+        if: inputs.prerelease || steps.tag_check.outputs.exists == 'false'
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
+      - name: Create tag
+        if: inputs.prerelease || steps.tag_check.outputs.exists == 'false'
+        env:
+          BOT_TOKEN: ${{ steps.bot_token.outputs.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Authenticate the push with the App installation token (this step's
+          # git config only; gone when the runner tears down).
+          git remote set-url origin "https://x-access-token:${BOT_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if [ "${{ inputs.prerelease }}" = "true" ]; then
+            git tag -f "${{ matrix.tag_name }}"
+            git push -f origin "${{ matrix.tag_name }}"
+          else
+            git tag "${{ matrix.tag_name }}"
+            git push origin "${{ matrix.tag_name }}"
+          fi
+
+      - name: Set release body
+        id: release_body
+        env:
+          SERVER_VERSION: ${{ inputs.server_version }}
+        run: |
+          # Source GitHub Release notes from CHANGELOG.md so releases show the
+          # curated, human-written change list. The "Create GitHub release"
+          # step below keeps generate_release_notes OFF, so this body is the
+          # ENTIRE published notes — no appended, squashed stage->main merge-PR
+          # list (which is all GitHub's auto-notes would add under squash-merge).
+          #
+          #   Prerelease (nightly): emit the current [Unreleased] section — the
+          #     "what's cooking on stage" view a prerelease should expose.
+          #   Stable: emit the most recent *released* section (the first "## ["
+          #     that is NOT [Unreleased]). The version-bump PR archives
+          #     [Unreleased] into that dated, versioned section via
+          #     scripts/release/cut-changelog.mjs, so the notes are scoped to
+          #     this release instead of re-emitting the whole growing
+          #     [Unreleased] blob on every release. See RELEASE.md.
+          #
+          # Both extractors are fenced-code aware: a "## [" line inside a ```
+          # (or ~~~) block is body text, not a section header, so it must not
+          # split sections.
+          if [ "${{ inputs.prerelease }}" = "true" ]; then
+            NOTES="$(awk '
+              /^(```|~~~)/        { fence = !fence }
+              !fence && /^## \[/  { c++ }
+              c == 1              { print }
+              c == 2              { exit }
+            ' CHANGELOG.md | sed '1d')"
+          else
+            NOTES="$(awk '
+              /^(```|~~~)/ { fence = !fence }
+              !fence && /^## \[/ {
+                if (cap) exit                       # next header after capture -> done
+                if ($0 ~ /^## \[Unreleased/) next   # skip the [Unreleased] header and its body
+                cap = 1; next                        # first released header -> capture its body
+              }
+              cap { print }
+            ' CHANGELOG.md)"
+            # Warn (do NOT fail) if the top released section is not this
+            # release — the usual cause is a version bump that forgot to run
+            # scripts/release/cut-changelog.mjs. A stale-but-real body beats
+            # bricking the release, so this is a warning, not an error. Match
+            # the bracketed "[x.y.z]" form so 3.2.0 does not match [13.2.0].
+            TOP="$(awk '/^(```|~~~)/{fence=!fence; next} fence{next} /^## \[Unreleased/{next} /^## \[/{print; exit}' CHANGELOG.md)"
+            case "$TOP" in
+              *"[$SERVER_VERSION]"*) : ;;
+              *) echo "::warning::Top released CHANGELOG section ($TOP) does not mention [$SERVER_VERSION] — did the version-bump PR run scripts/release/cut-changelog.mjs?" ;;
+            esac
+          fi
+          # Run-unique heredoc delimiter so free-form CHANGELOG content can
+          # never collide with it and truncate/corrupt $GITHUB_OUTPUT.
+          DELIM="RR_RELEASE_BODY_${GITHUB_RUN_ID:-0}_${GITHUB_RUN_ATTEMPT:-0}_${RANDOM}${RANDOM}"
+          {
+            echo "body<<${DELIM}"
+            if [ "${{ inputs.prerelease }}" = "true" ]; then
+              echo "_Automated prerelease from \`${{ github.ref_name }}\` — **${{ matrix.name }}** v${{ matrix.version }}._"
+              echo ""
+            fi
+            if [ -n "$NOTES" ]; then
+              echo "$NOTES"
+            else
+              echo "**${{ matrix.name }}** v${{ matrix.version }}"
+            fi
+            echo "${DELIM}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        if: inputs.prerelease || steps.tag_check.outputs.exists == 'false'
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ matrix.tag_name }}
+          name: RocketRide ${{ matrix.name }} v${{ matrix.version }}${{ inputs.prerelease && ' (prerelease)' || '' }}
+          prerelease: ${{ inputs.prerelease }}
+          # Keep OFF. softprops/action-gh-release APPENDS GitHub's auto-notes
+          # to `body` when this is true — under squash-merge stage->main that
+          # is just the one batched merge PR, which is exactly the noise the
+          # curated CHANGELOG body (Set release body step) replaces.
+          generate_release_notes: false
+          body: ${{ steps.release_body.outputs.body }}
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

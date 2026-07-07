@@ -1,0 +1,455 @@
+# MIT License
+#
+# Copyright (c) 2026 Aparavi Software AG
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+"""
+Pipeline Execution Management for RocketRide Client.
+
+This module provides pipeline execution capabilities including starting, monitoring,
+and terminating RocketRide processing pipelines. Pipelines are the core processing
+units in RocketRide that handle data transformation, analysis, and AI operations.
+
+Key Features:
+- Start pipelines from configuration files or objects
+- Monitor pipeline execution status and progress
+- Terminate running pipelines when needed
+- Support for various pipeline configurations
+- Custom arguments and threading options
+
+Usage:
+    # Start a pipeline from a configuration file
+    token = await client.use(filepath="text_processor.json")
+
+    # Start with custom parameters
+    result = await client.use(
+        filepath="data_analyzer.json",
+        threads=4,
+        args=["--verbose", "--output-format=json"]
+    )
+
+    # Monitor pipeline status
+    status = await client.get_task_status(token)
+    print(f"Pipeline state: {status['state']}")
+
+    # Terminate if needed
+    await client.terminate(token)
+"""
+
+import asyncio
+import json
+import copy
+import os
+from typing import Dict, Any, List, Optional
+from ..core import DAPClient
+from ..types.pipeline import PipelineConfig
+from ..types.task import TASK_STATUS
+
+try:
+    import json5
+except ImportError:
+    json5 = None
+
+
+class ExecutionMixin(DAPClient):
+    """
+    Provides pipeline execution capabilities for the RocketRide client.
+
+    This mixin adds the ability to start, monitor, and control RocketRide pipelines.
+    Pipelines are processing workflows that can handle data transformation,
+    analysis, AI operations, and other tasks defined in configuration files.
+
+    Pipeline execution follows this pattern:
+    1. Start a pipeline with use() - returns a token
+    2. Send data to the pipeline using the token
+    3. Monitor progress with get_task_status()
+    4. Terminate if needed with terminate()
+
+    This is automatically included when you use RocketRideClient, so you can
+    call methods like client.use() and client.get_task_status() directly.
+    """
+
+    def __init__(self, **kwargs):
+        """Initialize pipeline execution capabilities."""
+        super().__init__(**kwargs)
+
+    async def use(
+        self,
+        *,
+        token: str = None,
+        filepath: str = None,
+        pipeline: Optional[PipelineConfig] = None,
+        source: str = None,
+        threads: int = None,
+        use_existing: bool = None,
+        args: List[str] = None,
+        ttl: int = None,
+        pipelineTraceLevel: str = None,
+        name: str = None,
+        env: Dict[str, str] = None,
+        team_id: str = None,
+    ) -> Dict[str, Any]:
+        """
+        Start an RocketRide pipeline for processing data.
+
+        This is your main method for starting pipelines. Pipelines define how your
+        data will be processed - they can analyze text, extract information, perform
+        AI operations, transform data formats, and more.
+
+        You can start pipelines from:
+        - Configuration files (JSON or JSON5 format, including ``.pipe`` files)
+        - Pipeline configuration objects (dictionaries)
+        - Both with custom parameters and arguments
+
+        When loading from a file via ``filepath``, the client automatically unwraps
+        ``.pipe`` files that use the ``{ "pipeline": { ... } }`` wrapper format. If the
+        file contains a top-level ``pipeline`` key, the inner object is extracted;
+        otherwise the file content is used as-is.
+
+        When passing a ``pipeline`` dict directly, provide a flat PipelineConfig with
+        ``components``, ``source``, and ``project_id`` at the top level — do NOT wrap
+        it in ``{ "pipeline": { ... } }``.
+
+        Args:
+            token: Custom task token (server generates one if not provided)
+            filepath: Path to a ``.pipe`` or JSON/JSON5 pipeline configuration file
+            pipeline: Flat PipelineConfig dict (components, source, project_id at top level)
+            source: Override the source specified in the pipeline config
+            threads: Number of processing threads to use (default: server decides)
+            use_existing: Whether to reuse existing pipeline with same token
+            args: Command-line style arguments to pass to the pipeline
+            ttl: Time-to-live in seconds for idle pipelines (optional, server default
+                if not provided; use 0 for no timeout)
+            pipelineTraceLevel: Pipeline trace level ('none', 'metadata', 'summary',
+                'full'). When set, captures every lane write and invoke call in the
+                response under '_trace'.
+
+        Returns:
+            Dict containing:
+            - token: Task token for sending data and monitoring (str)
+            - Additional pipeline startup information
+
+        Raises:
+            ValueError: If neither filepath nor pipeline provided, or API key missing
+            RuntimeError: If pipeline execution fails to start
+            FileNotFoundError: If filepath doesn't exist
+            json.JSONDecodeError: If configuration file has invalid JSON
+
+        Example:
+            # Start from a .pipe file (wrapper is automatically unwrapped)
+            result = await client.use(filepath='chat.pipe')
+            token = result['token']
+
+            # Send data to the pipeline
+            response = await client.send(token, "Analyze this text")
+
+            # Start with custom parameters
+            result = await client.use(
+                filepath='data_processor.pipe',
+                threads=8,                    # Use 8 processing threads
+                args=['--verbose'],           # Enable verbose logging
+                source='custom_input'         # Override input source
+            )
+
+            # Reuse an existing pipeline
+            result = await client.use(filepath='chat.pipe', use_existing=True)
+
+            # Start from a flat Python configuration
+            config: PipelineConfig = {
+                'project_id': 'e30fee74-0f71-4af2-8dab-5d89deee8f84',
+                'source': 'webhook_1',
+                'components': [
+                    {'id': 'webhook_1', 'provider': 'webhook', 'config': {}},
+                    {'id': 'ai_chat_1', 'provider': 'ai_chat', 'config': {'model': 'gpt-4'},
+                     'input': [{'from': 'webhook_1', 'lane': 'output'}]},
+                    {'id': 'response_1', 'provider': 'response', 'config': {},
+                     'input': [{'from': 'ai_chat_1', 'lane': 'answer'}]}
+                ]
+            }
+            result = await client.use(pipeline=config)
+
+        Pipeline Configuration Format (PipelineConfig):
+            {
+                "source": "entry_component_id",
+                "project_id": "unique-guid",
+                "components": [
+                    {"id": "comp_1", "provider": "webhook", "config": {...}},
+                    {"id": "comp_2", "provider": "ai_chat", "config": {...},
+                     "input": [{"from": "comp_1", "lane": "output"}]}
+                ]
+            }
+
+        Tips:
+            - JSON5 files support comments and trailing commas for easier editing
+            - Use threads parameter for CPU-intensive operations
+            - Custom args are passed to pipeline steps that support them
+            - The returned token is needed for all data operations with this pipeline
+        """
+        # Validate required parameters
+        if not pipeline and not filepath:
+            raise ValueError('Pipeline configuration or file path is required and must be specified')
+
+        # Load pipeline configuration from file if needed
+        if not pipeline:
+
+            def _load_pipeline_config(path: str):
+                with open(path, 'r', encoding='utf-8') as file:
+                    parsed = json5.load(file) if json5 else json.load(file)
+                return parsed.get('pipeline', parsed) if isinstance(parsed, dict) else parsed
+
+            try:
+                if hasattr(asyncio, 'to_thread'):
+                    pipeline_config = await asyncio.to_thread(_load_pipeline_config, filepath)
+                else:
+                    loop = asyncio.get_running_loop()
+                    pipeline_config = await loop.run_in_executor(None, _load_pipeline_config, filepath)
+            except FileNotFoundError as err:
+                raise FileNotFoundError(
+                    f"Pipeline file not found: '{filepath}'. Please provide a valid file path or use inline pipeline configuration."
+                ) from err
+        else:
+            # Keep behavior consistent with filepath-based loading
+            pipeline_config = pipeline.get('pipeline', pipeline) if isinstance(pipeline, dict) else pipeline
+
+        # Create a deep copy to avoid modifying the original
+        processed_config = copy.deepcopy(pipeline_config)
+
+        # Override source if specified
+        if source is not None:
+            processed_config['source'] = source
+
+        # Build execution request with all parameters
+        arguments = {
+            'pipeline': processed_config,
+            'args': args or [],
+        }
+
+        # Add TTL if provided (server uses its default if not specified)
+        if ttl is not None:
+            arguments['ttl'] = ttl
+
+        # Add optional parameters if specified
+        if token is not None:
+            arguments['token'] = token
+        if threads is not None:
+            arguments['threads'] = threads
+        if use_existing is not None:
+            arguments['useExisting'] = use_existing
+        if pipelineTraceLevel is not None:
+            arguments['pipelineTraceLevel'] = pipelineTraceLevel
+        # Build ROCKETRIDE_* env from client's .env + caller overrides
+        rocket_env: Dict[str, str] = {}
+        if hasattr(self, '_env'):
+            for k, v in self._env.items():
+                if k.startswith('ROCKETRIDE_'):
+                    rocket_env[k] = v
+        if env:
+            rocket_env.update(env)
+        if rocket_env:
+            arguments['env'] = rocket_env
+
+        # Derive display name from filepath if not explicitly provided
+        effective_name = name
+        if effective_name is None and filepath:
+            base = os.path.basename(filepath)
+            for ext in ('.pipe.json', '.pipe'):
+                if base.endswith(ext):
+                    base = base[: -len(ext)]
+                    break
+            effective_name = base
+        if effective_name is not None:
+            arguments['name'] = effective_name
+        if team_id is not None:
+            arguments['teamId'] = team_id
+
+        # Send execution request to server
+        response_body = await self.call('execute', **arguments)
+
+        # Extract and validate response
+        task_token = response_body.get('token', '')
+
+        if not task_token:
+            raise RuntimeError('Server did not return a task token in successful response')
+
+        self.debug_message(f'Pipeline execution started successfully, task token: {task_token}')
+        return response_body
+
+    async def terminate(self, token: str) -> None:
+        """
+        Terminate a running pipeline.
+
+        Stops the execution of a pipeline gracefully. The pipeline will complete
+        any currently processing items but won't accept new data. Use this when
+        you need to stop a long-running or problematic pipeline.
+
+        Args:
+            token: Task token of the pipeline to terminate (from use())
+
+        Raises:
+            RuntimeError: If termination fails
+            ValueError: If token is invalid
+
+        Example:
+            # Start a pipeline
+            result = await client.use(filepath="long_processor.json")
+            token = result['token']
+
+            # Send some data
+            await client.send(token, "Process this")
+
+            # Terminate if needed (perhaps user cancelled)
+            try:
+                await client.terminate(token)
+                print("Pipeline terminated successfully")
+            except RuntimeError as e:
+                print(f"Failed to terminate pipeline: {e}")
+
+        Notes:
+            - Termination is graceful - current operations complete
+            - The pipeline becomes unusable after termination
+            - You'll need to start a new pipeline for further processing
+            - Termination is final - pipelines cannot be restarted
+        """
+        # Send termination request
+        await self.call('terminate', token=token)
+
+    async def restart(
+        self,
+        *,
+        project_id: str,
+        source: str,
+        pipeline: PipelineConfig,
+        token: Optional[str] = None,
+    ) -> None:
+        """
+        Restart a running pipeline with a new configuration.
+
+        Looks up the existing task by project/source, terminates it, and starts
+        a new execution in one server round-trip.
+
+        Args:
+            project_id: The project identifier.
+            source: The source component identifier.
+            pipeline: The pipeline configuration to restart with.
+            token: Existing task token (optional; resolved server-side if omitted).
+
+        Raises:
+            RuntimeError: If the restart fails.
+        """
+        request = self.build_request(
+            command='restart',
+            arguments={
+                'token': token,
+                'projectId': project_id,
+                'source': source,
+                'pipeline': pipeline,
+            },
+        )
+        response = await self.request(request)
+        if self.did_fail(response):
+            raise RuntimeError(response.get('message', 'Restart failed'))
+
+    async def get_task_status(self, token: str) -> TASK_STATUS:
+        """
+        Get the current status of a running pipeline.
+
+        Retrieves detailed information about a pipeline's execution state,
+        progress, performance metrics, and any errors. Use this to monitor
+        long-running pipelines and provide user feedback.
+
+        Args:
+            token: Task token of the pipeline to check (from use())
+
+        Returns:
+            Dict containing status information:
+            - state: Current execution state ('starting', 'running', 'completed', 'failed', etc.)
+            - progress: Progress information if available (items processed, percentage, etc.)
+            - error: Error message if pipeline failed
+            - started_at: When execution started (timestamp)
+            - completed_at: When execution finished (timestamp, if completed)
+            - performance: Processing speed and resource usage metrics
+            - Additional pipeline-specific status data
+
+        Raises:
+            RuntimeError: If status retrieval fails
+            ValueError: If token is invalid
+
+        Example:
+            # Start pipeline and monitor status
+            result = await client.use(filepath="data_processor.json")
+            token = result['token']
+
+            # Send data to process
+            await client.send(token, large_dataset)
+
+            # Monitor until completion
+            while True:
+                status = await client.get_task_status(token)
+                state = status.get('state')
+
+                if state == 'running':
+                    progress = status.get('progress', {})
+                    print(f"Processing: {progress.get('percentage', 0):.1f}%")
+                elif state == 'completed':
+                    print("Pipeline completed successfully!")
+                    break
+                elif state == 'failed':
+                    error = status.get('error', 'Unknown error')
+                    print(f"Pipeline failed: {error}")
+                    break
+
+                await asyncio.sleep(1)  # Check every second
+
+        Status States:
+            - 'starting': Pipeline is initializing
+            - 'running': Pipeline is actively processing data
+            - 'waiting': Pipeline is waiting for more data
+            - 'completed': Pipeline finished successfully
+            - 'failed': Pipeline encountered an error
+            - 'terminated': Pipeline was stopped by user
+
+        Tips:
+            - Poll status regularly for long-running operations
+            - Check 'progress' field for completion percentage
+            - Use 'error' field for detailed error information
+            - Performance metrics help optimize pipeline configurations
+        """
+        # Send status request
+        return await self.call('rrext_get_task_status', token=token)
+
+    async def get_task_token(self, project_id: str, source: str) -> str | None:
+        """
+        Resolve a running task's token from its project ID and source component.
+
+        The token is required for operations like terminate and restart.
+        Returns None if no task is currently running for the given project/source.
+
+        Args:
+            project_id: The project identifier.
+            source: The source component identifier.
+
+        Returns:
+            The task token string, or None if no running task was found.
+        """
+        try:
+            body = await self.call('rrext_get_token', projectId=project_id, source=source)
+            return body.get('token')
+        except RuntimeError:
+            return None

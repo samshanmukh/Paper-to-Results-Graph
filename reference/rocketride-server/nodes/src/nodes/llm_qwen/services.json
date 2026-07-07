@@ -1,0 +1,304 @@
+{
+	//
+	// Required:
+	//		The displayable name of this node
+	//
+	"title": "Qwen",
+	//
+	// Required:
+	//		The protocol is the endpoint protocol
+	//
+	"protocol": "llm_qwen://",
+	//
+	// Required:
+	//		Class type of the node - what it does
+	//
+	"classType": ["llm"],
+	//
+	// Required:
+	//		Capabilities are flags that change the behavior of the underlying
+	//		engine
+	//
+	"capabilities": ["invoke"],
+	//
+	// Optional:
+	//		Register is either filter, endpoint or ignored if not specified. If the
+	//		type is specified, a factory is registered of that given type
+	//
+	"register": "filter",
+	//
+	// Optional:
+	//		The node is the actual physical node to instantiate - if
+	//		not specified, the protocol will be used
+	//
+	"node": "python",
+	//
+	// Optional:
+	//		The path is the executable/script code - it is node dependent
+	// 		and is optional for most node
+	//
+	"path": "nodes.llm_qwen",
+	//
+	// Required:
+	//		The prefix map when added/removed when convertting URLs <=> paths
+	//
+	"prefix": "llm",
+	//
+	// Optional:
+	//		Description to of this driver
+	//
+	"description": ["A component that connects to Alibaba Cloud's Qwen large language models via the ", "DashScope API. It supports tasks such as text generation, summarization, question ", "answering, and chat-based interactions. With access to models like Qwen Plus ", "and Qwen Flash, this component enables high-quality, context-aware responses. Configurable ", "with API keys, it allows seamless integration into AI-driven workflows with scalable ", "performance."],
+	//
+	// Optional:
+	//	  The icon is the icon to display in the UI for this node
+	//
+	"icon": "qwen.svg",
+	"documentation": "https://docs.rocketride.org",
+	//
+	//
+	//  Optional:
+	//      Rendering hints to the UI which indicate which fields of
+	//      the configuration should be used to display information
+	//
+	"tile": ["Model: ${parameters.llm_qwen.profile}"],
+	//
+	//	Optional:
+	//		As a pipe component, define what this pipe component takes
+	//		and what it produces
+	//
+	"lanes": {
+		"questions": ["answers"]
+	},
+	//
+	//	Optional:
+	//		Profile section are configuration optoins used by the driver
+	//		itself
+	//
+	"preconfig": {
+		// Define the values that will be merged into any profile configuration
+		// specified, unless the profile is 'absolute'
+		"default": "qwen-flash",
+		// Defines profiles used with the "profile": key
+		"profiles": {
+			"qwen-plus": {
+				"title": "Qwen Plus",
+				"model": "qwen-plus",
+				"modelSource": "manual",
+				"modelTotalTokens": 1000000, // openrouter
+				"modelOutputTokens": 32768, // openrouter
+				"region": "us",
+				"apikey": ""
+			},
+			"qwen-flash": {
+				"title": "Qwen Flash",
+				"model": "qwen-flash",
+				"modelSource": "manual",
+				"modelTotalTokens": 131072,
+				"modelOutputTokens": 4096, // default
+				"region": "us",
+				"apikey": ""
+			},
+			"qwen-2-5-72b-instruct": {
+				"title": "Qwen2.5 72B Instruct",
+				"model": "qwen-2.5-72b-instruct",
+				"modelSource": "openrouter",
+				"modelTotalTokens": 32768, // openrouter
+				"modelOutputTokens": 16384, // openrouter
+				"apikey": ""
+			},
+			"qwen-2-5-7b-instruct": {
+				"title": "Qwen: Qwen2.5 7B Instruct",
+				"model": "qwen-2.5-7b-instruct",
+				"modelSource": "openrouter",
+				"modelTotalTokens": 32768, // openrouter
+				"modelOutputTokens": 32768, // openrouter
+				"apikey": ""
+			},
+			"qwen-2-5-coder-32b-instruct": {
+				"title": "Qwen2.5 Coder 32B Instruct",
+				"model": "qwen-2.5-coder-32b-instruct",
+				"modelSource": "openrouter",
+				"modelTotalTokens": 32768, // openrouter
+				"modelOutputTokens": 4096, // default
+				"apikey": ""
+			},
+			"qwen-max": {
+				"title": "Qwen: Qwen-Max ",
+				"model": "qwen-max",
+				"modelSource": "openrouter",
+				"modelTotalTokens": 32768, // openrouter
+				"modelOutputTokens": 8192, // openrouter
+				"apikey": ""
+			},
+			"qwen-plus-2025-07-28": {
+				"title": "Qwen: Qwen Plus 0728",
+				"model": "qwen-plus-2025-07-28",
+				"modelSource": "openrouter",
+				"modelTotalTokens": 1000000, // openrouter
+				"modelOutputTokens": 32768, // openrouter
+				"apikey": ""
+			},
+			"qwen-plus-2025-07-28-thinking": {
+				"title": "Qwen: Qwen Plus 0728 (thinking)",
+				"model": "qwen-plus-2025-07-28:thinking",
+				"modelSource": "openrouter",
+				"modelTotalTokens": 1000000, // openrouter
+				"modelOutputTokens": 32768, // openrouter
+				"apikey": ""
+			},
+			"qwen-turbo": {
+				"title": "Qwen: Qwen-Turbo",
+				"model": "qwen-turbo",
+				"modelSource": "openrouter",
+				"modelTotalTokens": 131072, // openrouter
+				"modelOutputTokens": 8192, // openrouter
+				"apikey": ""
+			}
+		}
+	},
+	//
+	// Optional:
+	//		Local fields definitions - these define fields only for the
+	//		current service. You may specify them here, or directly
+	//		in the shape
+	//
+	"fields": {
+		"model": {
+			"type": "string",
+			"title": "Model",
+			"description": "Qwen model"
+		},
+		"modelTotalTokens": {
+			"type": "number",
+			"title": "Tokens",
+			"description": "Maximum context length in tokens"
+		},
+		"qwen.region": {
+			"type": "string",
+			"title": "Region",
+			"description": "DashScope regional endpoint. API keys are not interchangeable between regions.",
+			"default": "us",
+			"enum": [
+				["us", "US (Virginia)"],
+				["intl", "Singapore"],
+				["cn", "China (Beijing)"]
+			]
+		},
+		"qwen.custom": {
+			"object": "custom",
+			"properties": ["model", "modelTotalTokens", "llm.cloud.apikey", "qwen.region", "llm.cloud.modelSource"]
+		},
+		"qwen.qwen-plus": {
+			"object": "qwen-plus",
+			"properties": ["llm.cloud.apikey", "qwen.region", "llm.cloud.modelSource"]
+		},
+		"qwen.qwen-flash": {
+			"object": "qwen-flash",
+			"properties": ["llm.cloud.apikey", "qwen.region", "llm.cloud.modelSource"]
+		},
+		"qwen.qwen-2-5-72b-instruct": {
+			"object": "qwen-2-5-72b-instruct",
+			"properties": ["llm.cloud.apikey", "qwen.region", "llm.cloud.modelSource"]
+		},
+		"qwen.qwen-2-5-7b-instruct": {
+			"object": "qwen-2-5-7b-instruct",
+			"properties": ["llm.cloud.apikey", "qwen.region", "llm.cloud.modelSource"]
+		},
+		"qwen.qwen-2-5-coder-32b-instruct": {
+			"object": "qwen-2-5-coder-32b-instruct",
+			"properties": ["llm.cloud.apikey", "qwen.region", "llm.cloud.modelSource"]
+		},
+		"qwen.qwen-max": {
+			"object": "qwen-max",
+			"properties": ["llm.cloud.apikey", "qwen.region", "llm.cloud.modelSource"]
+		},
+		"qwen.qwen-plus-2025-07-28": {
+			"object": "qwen-plus-2025-07-28",
+			"properties": ["llm.cloud.apikey", "qwen.region", "llm.cloud.modelSource"]
+		},
+		"qwen.qwen-plus-2025-07-28-thinking": {
+			"object": "qwen-plus-2025-07-28-thinking",
+			"properties": ["llm.cloud.apikey", "qwen.region", "llm.cloud.modelSource"]
+		},
+		"qwen.qwen-turbo": {
+			"object": "qwen-turbo",
+			"properties": ["llm.cloud.apikey", "qwen.region", "llm.cloud.modelSource"]
+		},
+		"qwen.profile": {
+			"title": "Model",
+			"description": "Qwen AI model selection",
+			"type": "string",
+			"default": "qwen-flash",
+			"enum": ["*>preconfig.profiles.*.title"],
+			"conditional": [
+				{
+					"value": "custom",
+					"properties": ["qwen.custom"]
+				},
+				{
+					"value": "qwen-plus",
+					"properties": ["qwen.qwen-plus"]
+				},
+				{
+					"value": "qwen-flash",
+					"properties": ["qwen.qwen-flash"]
+				},
+				{
+					"value": "qwen-2-5-72b-instruct",
+					"properties": ["qwen.qwen-2-5-72b-instruct"]
+				},
+				{
+					"value": "qwen-2-5-7b-instruct",
+					"properties": ["qwen.qwen-2-5-7b-instruct"]
+				},
+				{
+					"value": "qwen-2-5-coder-32b-instruct",
+					"properties": ["qwen.qwen-2-5-coder-32b-instruct"]
+				},
+				{
+					"value": "qwen-max",
+					"properties": ["qwen.qwen-max"]
+				},
+				{
+					"value": "qwen-plus-2025-07-28",
+					"properties": ["qwen.qwen-plus-2025-07-28"]
+				},
+				{
+					"value": "qwen-plus-2025-07-28-thinking",
+					"properties": ["qwen.qwen-plus-2025-07-28-thinking"]
+				},
+				{
+					"value": "qwen-turbo",
+					"properties": ["qwen.qwen-turbo"]
+				}
+			]
+		}
+	},
+	//
+	// Required:
+	//		Defines the fields (shape) of the service. Either source or target
+	//		map be specified, or both, but at least one is required
+	//
+	"shape": [
+		{
+			"section": "Pipe",
+			"title": "Qwen",
+			"properties": ["qwen.profile"]
+		}
+	],
+	"test": {
+		"profiles": ["qwen-flash"],
+		"outputs": ["answers"],
+		"cases": [
+			{
+				"name": "LLM returns mock response",
+				"text": "What is 2+2?",
+				"expect": {
+					"answers": {
+						"contains": "Mock LLM response"
+					}
+				}
+			}
+		]
+	}
+}

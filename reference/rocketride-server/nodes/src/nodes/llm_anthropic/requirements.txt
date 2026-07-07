@@ -1,0 +1,7 @@
+# Plugin Anthropic core
+langchain-anthropic
+anthropic
+
+# LangChain deps
+langchain-core
+langchain
