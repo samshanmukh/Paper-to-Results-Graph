@@ -1,0 +1,108 @@
+# MIT License
+#
+# Copyright (c) 2026 Aparavi Software AG
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+"""
+RocketRide AI Configuration Constants.
+
+Global configuration values for metrics, billing, and system tuning.
+"""
+
+# =============================================================================
+# Metrics Sampling and Reporting Intervals
+# =============================================================================
+CONST_METRICS_SAMPLE_INTERVAL = 0.25  # seconds between metric samples (250ms)
+CONST_BILLING_REPORT_INTERVAL = 15.0  # 5 * 60.0  # seconds between billing reports (5 minutes)
+CONST_METRICS_STOP_TIMEOUT = 5.0  # seconds to wait for metrics monitoring to stop gracefully
+
+# =============================================================================
+# Billing API Configuration
+# =============================================================================
+CONST_BILLING_API_TIMEOUT = 10.0  # seconds timeout for HTTP requests to billing API
+
+# Billing rates are loaded from the metrics_conversions DB table at startup
+# and cached in Account._billing_rates. See Account.get_billing_rates().
+# Admins manage rates via the Billing Rates page in the admin UI.
+
+# =============================================================================
+# Task Engine Configuration
+# =============================================================================
+CONST_DEFAULT_MAX_THREADS = 64  # default thread pool size for task execution
+CONST_CANCEL_WAIT_TIMEOUT_SECONDS = 5  # seconds to wait for graceful task cancellation
+CONST_STATUS_UPDATE_FREQ = 1.0  # seconds between status broadcast updates
+CONST_MAX_READY_TIME = 5 * 60  # seconds to wait for task to become ready
+CONST_READY_POLL_INTERVAL = 0.250  # seconds between readiness checks
+CONST_SUBPROCESS_BUFFER_LIMIT = 16 * 1024 * 1024  # bytes for subprocess stdin/stdout/stderr buffers (16MB)
+CONST_STATUS_UPDATE_CANCEL_TIMEOUT = 2.0  # seconds to wait for status update task cancellation
+CONST_DEFAULT_TTL = 15 * 60  # default time-to-live for idle tasks in seconds (15 minutes)
+CONST_TTL_CHECK = 60  # check for tasks to kill every 60 seconds
+
+# =============================================================================
+# Task Server Configuration
+# =============================================================================
+CONST_CLEANUP_DELAY_TIME = 5 * 60  # seconds grace period to keep completed tasks (5 minutes)
+CONST_CLEANUP_SLEEP_TIME = 1 * 60  # seconds between cleanup scans (1 minute)
+
+# =============================================================================
+# Web Server Configuration
+# =============================================================================
+CONST_AUTH_PENDING_TIMEOUT = 600  # seconds before an OAuth-pending connection is dropped (10 minutes)
+CONST_MAX_PENDING_OAUTH_STATES = 500  # global cap on simultaneous OAuth state nonces
+CONST_MAX_UNAUTHED_CONNS_PER_IP = 10  # max unauthenticated WebSocket connections per client IP
+CONST_MAX_UNAUTHED_IPS = 10_000  # global cap on distinct IPs holding unauthenticated slots
+CONST_AUTH_MAX_ATTEMPTS_PER_CONN = 5  # max rrext_account_authenticate calls per connection
+CONST_DEFAULT_WEB_PORT = 5565  # default web server port
+CONST_DEFAULT_WEB_HOST = 'localhost'  # default bind address (localhost only; use 0.0.0.0 in Docker/K8s)
+CONST_WEB_WS_MAX_SIZE = 250 * 1024 * 1024  # maximum WebSocket message size in bytes (250MB)
+
+# =============================================================================
+# Data Connection Configuration
+# =============================================================================
+CONST_DATA_PIPE_TIMEOUT = 60.0  # seconds of inactivity before pipe is considered zombie
+CONST_DATA_SHUTDOWN_TIMEOUT = 30.0  # seconds to wait for data connection shutdown
+
+# =============================================================================
+# HTTP/Stream Configuration
+# =============================================================================
+CONST_HTTP_CHUNK_SIZE = 64 * 1024  # bytes per chunk for streaming data (64KB)
+
+# =============================================================================
+# Chat/LLM Retry Configuration
+# =============================================================================
+CONST_CHAT_MAX_RETRIES = 5  # maximum network/API retry attempts
+CONST_CHAT_BASE_DELAY = 1.0  # base delay in seconds for exponential backoff
+CONST_CHAT_MAX_DELAY = 60.0  # maximum delay in seconds between retries
+
+# =============================================================================
+# Transport/DAP Configuration
+# =============================================================================
+CONST_TRANSPORT_PROCESS_WAIT_TIMEOUT = 5.0  # seconds to wait for process termination
+
+# =============================================================================
+# Model Server Configuration
+# =============================================================================
+CONST_MODEL_SERVER_PORT = 5590  # default model server port
+CONST_MODEL_SERVER_HOST = 'localhost'  # default bind address (localhost only; use 0.0.0.0 in Docker/K8s)
+CONST_SCALE_UP_DRAIN_TIME_S = 30  # scale up if estimated drain time exceeds this (seconds)
+CONST_SCALE_UP_DELAY_S = 15  # ...sustained for this long before acting (seconds)
+CONST_SCALE_DOWN_DRAIN_TIME_S = 2  # scale down if drain time below this (seconds)
+CONST_SCALE_DOWN_DELAY_S = 300  # ...sustained for this long (5 min)
+CONST_REPLICA_MANAGER_INTERVAL_S = 10  # seconds between auto-scaling checks

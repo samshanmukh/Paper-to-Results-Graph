@@ -1,0 +1,7 @@
+# Plugin Perplexity core
+openai
+langchain-openai
+
+# LangChain deps
+langchain-core
+langchain

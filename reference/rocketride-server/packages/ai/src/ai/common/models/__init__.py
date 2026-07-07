@@ -1,0 +1,119 @@
+"""
+Model Wrappers: Combined loader and user-facing API for various model types.
+
+This package provides:
+- BaseLoader: Base class with shared model ID generation and identity logic
+- *Loader classes: Static methods for load/preprocess/inference/postprocess
+  (used by model server and local mode)
+- User-facing classes: Automatic local/remote mode detection
+  (used by connectors)
+
+Subpackages:
+- audio: Whisper (transcription), Kokoro TTS (model server)
+- gliner: GLiNER (zero-shot NER)
+- ocr: EasyOCR, DocTR, Surya, TrOCR
+- transformers: SentenceTransformer, pipeline, AutoModel, AutoTokenizer
+
+The loaders use a unified interface so the model server can work with any
+model type without model-specific branching.
+"""
+
+# Base loader class
+from .base import BaseLoader
+
+# Audio models
+from .audio import KokoroLoader, Whisper, WhisperLoader
+
+# GLiNER models (zero-shot NER)
+from .gliner import GLiNER, GLiNERLoader
+
+# OCR models
+from .ocr import EasyOCR, EasyOCRLoader
+from .ocr import DocTR, DocTRLoader
+from .ocr import Surya, SuryaLoader
+from .ocr import TrOCR, TrOCRLoader
+
+# Transformer models
+from .transformers import SentenceTransformer, SentenceTransformerLoader
+from .transformers import pipeline, AutoModel, AutoTokenizer, TransformersLoader
+
+# Vision family: CLIP / ViT image embedding, depth estimation, object detection
+from .vision import (
+    VisionLoader,
+    CLIPModel,
+    ViTModel,
+    DepthEstimatorLoader,
+    DepthEstimator,
+    DetectorLoader,
+    Detector,
+    CaptionerLoader,
+    Captioner,
+    BackgroundRemoverLoader,
+    BackgroundRemover,
+    PoseEstimatorLoader,
+    PoseEstimator,
+)
+
+# Detection / segmentation backends (relocated under vision/)
+from .vision.detection import MmGDinoLoader, RFDetrLoader
+from .vision.segmentation import (
+    Mask2FormerInstanceLoader,
+    Mask2FormerSemanticLoader,
+    SegmenterLoader,
+    Segmenter,
+)
+
+__all__ = [
+    # Base
+    'BaseLoader',
+    # Audio
+    'KokoroLoader',
+    'Whisper',
+    'WhisperLoader',
+    # GLiNER
+    'GLiNER',
+    'GLiNERLoader',
+    # OCR
+    'EasyOCR',
+    'EasyOCRLoader',
+    'DocTR',
+    'DocTRLoader',
+    'Surya',
+    'SuryaLoader',
+    'TrOCR',
+    'TrOCRLoader',
+    # Transformers
+    'SentenceTransformer',
+    'SentenceTransformerLoader',
+    'pipeline',
+    'AutoModel',
+    'AutoTokenizer',
+    'TransformersLoader',
+    # Vision
+    'VisionLoader',
+    'CLIPModel',
+    'ViTModel',
+    # Depth
+    'DepthEstimatorLoader',
+    'DepthEstimator',
+    # Detection (served)
+    'DetectorLoader',
+    'Detector',
+    # Segmentation (served)
+    'SegmenterLoader',
+    'Segmenter',
+    # Caption (served)
+    'CaptionerLoader',
+    'Captioner',
+    # Background removal (served)
+    'BackgroundRemoverLoader',
+    'BackgroundRemover',
+    # Pose estimation (served)
+    'PoseEstimatorLoader',
+    'PoseEstimator',
+    # Detection / segmentation (plain backends)
+    'Mask2FormerInstanceLoader',
+    'Mask2FormerSemanticLoader',
+    'MmGDinoLoader',
+    'RFDetrLoader',
+]

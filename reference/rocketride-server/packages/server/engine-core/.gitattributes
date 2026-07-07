@@ -1,0 +1,4 @@
+* text=auto
+
+# patches EOL need to be as it is
+cmake/ports/**/*.patch -text

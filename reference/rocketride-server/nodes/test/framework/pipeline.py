@@ -1,0 +1,389 @@
+# =============================================================================
+# MIT License
+# Copyright (c) 2026 Aparavi Software AG
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# =============================================================================
+
+import os
+import uuid
+from typing import List, Dict, Any, Optional
+from .discovery import NodeTestConfig, get_node_test_config
+
+# Maps ROCKETRIDE_<PROVIDER>_<ATTR> attribute names to config field names.
+# Used by _parse_credential_env_var() to derive credentials from env var names.
+_ENV_ATTR_MAP = {
+    'SECRET_KEY': 'secretKey',
+    'ACCESS_KEY': 'accessKey',
+    'APIKEY': 'apikey',
+    'KEY': 'apikey',
+    'REGION': 'region',
+    'HOST': 'host',
+    'PORT': 'port',
+}
+
+
+def _parse_credential_env_var(env_var: str, provider: str) -> Optional[str]:
+    """Resolve a `requires` env var name to a node config field name.
+
+    Algorithm
+    ---------
+    The env var must follow ``ROCKETRIDE_<PROVIDER>_<ATTR>``:
+
+    1. Verify the ``ROCKETRIDE_`` prefix.
+    2. Match the next segment against ``provider`` (case-insensitive),
+       accepting either the full directory name (``LLM_OPENAI``) or the
+       short form with ``llm_``/``tool_`` stripped (``OPENAI``). Strict
+       match — this catches typos and cross-provider pollution where a
+       services.json lists an env var for the wrong node.
+    3. Whatever remains is ``<ATTR>``. Look it up in ``_ENV_ATTR_MAP``
+       for known tokens (``KEY`` → ``apikey``, ``SECRET_KEY`` →
+       ``secretKey``); otherwise fall back to ``attr.lower()``
+       (e.g. ``SERVERBASE`` → ``serverbase``).
+
+    Examples (provider='llm_openai'):
+        ROCKETRIDE_OPENAI_KEY         → 'apikey'
+        ROCKETRIDE_LLM_OPENAI_KEY     → 'apikey'   (full form also OK)
+        ROCKETRIDE_ANTHROPIC_KEY      → None       (wrong provider)
+
+    Examples (provider='llm_gmi_cloud'):
+        ROCKETRIDE_GMI_CLOUD_KEY           → 'apikey'
+        ROCKETRIDE_LLM_GMI_CLOUD_SECRET_KEY → 'secretKey'
+        ROCKETRIDE_GMICLOUD_KEY            → None       (missing underscore)
+
+    Possible issues
+    ---------------
+    * Hidden prefix-stripping rule: a hypothetical directory named
+      ``tool_xyz`` that isn't semantically a tool node would still have
+      ``tool_`` stripped. Today every ``llm_*``/``tool_*`` directory is
+      a real LLM/tool node, so this doesn't bite in practice.
+    * Provider whose short name collides with an ATTR token (e.g. a
+      pathological provider ``llm_key``): the strict provider check
+      still fires first, so ``ROCKETRIDE_KEY_REGION`` for that provider
+      parses to ``region``. No real provider triggers this.
+    * Returns ``None`` for structural mismatches (wrong prefix, wrong
+      provider, empty attr). Callers must treat ``None`` as a
+      services.json ``requires`` bug — NOT as "env var missing in the
+      environment", which is detected separately via
+      ``os.environ.get(env_var)``.
+    """
+    if not env_var.startswith('ROCKETRIDE_'):
+        return None
+    suffix = env_var[len('ROCKETRIDE_') :]  # e.g. 'OPENAI_KEY'
+
+    # Accept both full provider name ('LLM_OPENAI') and short form
+    # ('OPENAI'). Full form is tried first so that an exact directory
+    # name always wins over the prefix-stripped form.
+    candidates = [provider.upper()]
+    for pfx in ('llm_', 'tool_'):
+        if provider.startswith(pfx):
+            candidates.append(provider[len(pfx) :].upper())
+            break
+
+    suffix_upper = suffix.upper()
+    for candidate in candidates:
+        token = candidate + '_'
+        if suffix_upper.startswith(token):
+            attr = suffix[len(token) :]
+            if not attr:
+                return None
+            return _ENV_ATTR_MAP.get(attr.upper(), attr.lower())
+
+    return None
+
+
+# Placeholder credentials for LLM nodes when ROCKETRIDE_MOCK is set (mocks handle requests)
+# apikey: format must pass each provider's validation (sk-ant, xai-, sk-, AI..., etc.)
+# Bedrock uses accessKey/secretKey; Vertex uses GCP service account (not covered here)
+_LLM_MOCK_CREDENTIALS = {
+    'llm_anthropic': {'apikey': 'sk-ant-mock-placeholder-for-tests'},
+    'llm_xai': {'apikey': 'xai-mock-placeholder-for-tests'},
+    'llm_openai': {'apikey': 'sk-mock-placeholder-for-tests'},
+    'llm_perplexity': {'apikey': 'sk-mock-placeholder-for-tests'},
+    'llm_deepseek': {'apikey': 'sk-mock-placeholder-for-tests'},
+    'llm_mistral': {'apikey': 'mock-mistral-placeholder-for-tests'},
+    'llm_vision_mistral': {'apikey': 'mock-mistral-placeholder-for-tests'},
+    'llm_gemini': {'apikey': 'AIza-mock-placeholder-for-tests'},
+    'accessibility_describe': {'apikey': 'AIza-mock-placeholder-for-tests'},
+    'llm_ibm_watson': {'apikey': 'mock-watson-placeholder-for-tests'},
+    'llm_bedrock': {'accessKey': 'mock-access-key', 'secretKey': 'mock-secret-key', 'region': 'us-east-1'},
+    'llm_openai_api': {'apikey': 'sk-mock-placeholder-for-tests', 'model': 'mock-model'},
+    'llm_gmi_cloud': {'apikey': 'sk-mock-placeholder-for-tests'},
+    'llm_qwen': {'apikey': 'sk-mock-placeholder-for-tests'},
+    'llm_minimax': {'apikey': 'sk-mock-placeholder-for-tests'},
+    'llm_baidu_qianfan': {'apikey': 'mock-baidu-qianfan-placeholder-for-tests'},
+    'llm_vision_ollama': {'apikey': 'sk-mock-placeholder-for-tests'},
+    'rerank_cohere': {'apikey': 'mock-cohere-placeholder-for-tests'},
+    'tool_apify': {'apikey': 'mock-apify-placeholder-for-tests'},
+    'tool_daytona': {'apikey': 'mock-daytona-placeholder-for-tests'},
+    'tool_exa_search': {'apikey': 'mock-exa-search-placeholder-for-tests'},
+    'tool_tavily': {'apikey': 'mock-tavily-placeholder-for-tests'},
+    'tool_deepl': {'apikey': 'mock-deepl-placeholder-for-tests'},
+}
+
+
+class PipelineBuilder:
+    """
+    Builds test pipelines for node testing.
+
+    Creates pipelines in the form:
+        webhook → [chain nodes] → [node under test] → [chain nodes] → response(s)
+
+    With control nodes attached to the node under test.
+    """
+
+    def __init__(self, config: NodeTestConfig, profile: Optional[str] = None):
+        """
+        Initialize the pipeline builder.
+
+        Args:
+            config: The node test configuration
+            profile: Optional profile name to use (from preconfig.profiles)
+        """
+        self.config = config
+        self.profile = profile
+        self._component_counter = 0
+
+    def _next_id(self, prefix: str) -> str:
+        """Generate a unique component ID."""
+        self._component_counter += 1
+        return f'{prefix}_{self._component_counter}'
+
+    def _get_node_config(self, provider: str, profile: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get configuration for a node, optionally with a profile.
+
+        Args:
+            provider: The node provider name
+            profile: Optional profile name
+
+        Returns:
+            Configuration dict for the node
+        """
+        config = {}
+        if profile:
+            config['profile'] = profile
+
+        if provider == self.config.provider and self.config.config:
+            config.update(self.config.config)
+        # Inject credentials into the pipeline config.
+        #
+        # `ROCKETRIDE_MOCK` (set by the test runner) and per-group
+        # `avoidMocks` control the mock-SDK baseline. `requires` is
+        # independent — it always overlays real env var values on top.
+        #
+        #   MOCK + !avoidMocks + requires=[]   → mock placeholders only
+        #   MOCK + !avoidMocks + requires=[…]  → mock placeholders baseline,
+        #                                        env vars override (tester
+        #                                        with real creds still
+        #                                        exercises the real config
+        #                                        path even under mocked SDK)
+        #   avoidMocks=true + requires=[…]     → env vars only (real API)
+        #   MOCK unset + requires=[…]          → env vars only (real SDK)
+        creds: Dict[str, Any] = {}
+        if profile:
+            if os.environ.get('ROCKETRIDE_MOCK') and not self.config.avoid_mocks and provider in _LLM_MOCK_CREDENTIALS:
+                creds.update(_LLM_MOCK_CREDENTIALS[provider])
+            if self.config.requires:
+                for env_var in self.config.requires:
+                    val = os.environ.get(env_var)
+                    field = _parse_credential_env_var(env_var, provider)
+                    if val and field:
+                        creds[field] = val
+        if creds:
+            overrides = config.get(profile, {})
+            if isinstance(overrides, dict):
+                config[profile] = {**overrides, **creds}
+        return config
+
+    def _build_chain_component(
+        self, provider: str, component_id: str, input_from: str, input_lanes: List[str]
+    ) -> Dict[str, Any]:
+        """Build a component for a chain node.
+
+        Wires all input_lanes that the chain node supports (e.g. embedding_transformer
+        receives both documents and questions so vector DB search-with-question works).
+        """
+        node_config = get_node_test_config(provider)
+        profile = None
+        if node_config and node_config.profiles:
+            profile = node_config.profiles[0]  # Use first profile
+
+        # Wire every lane that both the pipeline and the chain node support
+        if node_config and node_config.lanes:
+            chain_lanes = list(node_config.lanes.keys())
+            lanes_to_wire = [lane for lane in input_lanes if lane in chain_lanes]
+        else:
+            lanes_to_wire = []
+        if not lanes_to_wire:
+            lanes_to_wire = [input_lanes[0]] if input_lanes else ['text']
+
+        return {
+            'id': component_id,
+            'provider': provider,
+            'config': self._get_node_config(provider, profile),
+            'input': [{'lane': lane, 'from': input_from} for lane in lanes_to_wire],
+        }
+
+    def _build_control_components(self, target_id: str) -> List[Dict[str, Any]]:
+        """Build control node components attached to the target node."""
+        components = []
+
+        for control_provider in self.config.controls:
+            control_id = self._next_id(control_provider)
+
+            # Get control node's test config for profile
+            control_config = get_node_test_config(control_provider)
+            profile = None
+            if control_config and control_config.profiles:
+                profile = control_config.profiles[0]
+
+            components.append(
+                {
+                    'id': control_id,
+                    'provider': control_provider,
+                    'config': self._get_node_config(control_provider, profile),
+                    'control': target_id,  # Attach as control to target
+                }
+            )
+
+        return components
+
+    def _build_response_components(self, input_from: str) -> List[Dict[str, Any]]:
+        """Build response node components for each output lane."""
+        components = []
+
+        for output_lane in self.config.outputs:
+            response_id = self._next_id(f'response_{output_lane}')
+            components.append(
+                {
+                    'id': response_id,
+                    'provider': 'response',
+                    'config': {},
+                    'input': [{'lane': output_lane, 'from': input_from}],
+                }
+            )
+
+        # Sink nodes (outputs=[]): no response components needed
+        if not self.config.outputs:
+            return components
+        # No outputs inferred: add default response on text lane
+        if not components:
+            response_id = self._next_id('response')
+            components.append(
+                {
+                    'id': response_id,
+                    'provider': 'response',
+                    'config': {},
+                    'input': [{'lane': 'text', 'from': input_from}],
+                }
+            )
+
+        return components
+
+    def build(self) -> Dict[str, Any]:
+        """
+        Build the complete test pipeline.
+
+        Returns:
+            Pipeline configuration dict ready for client.use()
+        """
+        project_id = f'test_{self.config.node_name}_{uuid.uuid4().hex[:8]}'
+        components = []
+
+        # Start with webhook
+        webhook_id = self._next_id('webhook')
+        components.append({'id': webhook_id, 'provider': 'webhook', 'config': {}, 'input': []})
+
+        # Process chain, finding where * (node under test) goes
+        chain = self.config.chain if self.config.chain else ['*']
+
+        # Ensure * is in the chain
+        if '*' not in chain:
+            chain = chain + ['*']
+
+        prev_id = webhook_id
+        # Get all input lanes from the node's lanes config
+        input_lanes = list(self.config.lanes.keys()) if self.config.lanes else []
+        # Fallback: infer from test cases if no lanes defined
+        if not input_lanes and self.config.cases:
+            input_lanes = [self.config.cases[0].input_lane]
+        # Ultimate fallback
+        if not input_lanes:
+            input_lanes = ['text']
+
+        for chain_item in chain:
+            if chain_item == '*':
+                # This is the node under test
+                node_id = self._next_id(self.config.provider)
+
+                # Wire ALL input lanes from webhook to the node
+                node_inputs = [{'lane': lane, 'from': prev_id} for lane in input_lanes]
+
+                components.append(
+                    {
+                        'id': node_id,
+                        'provider': self.config.provider,
+                        'config': self._get_node_config(self.config.provider, self.profile),
+                        'input': node_inputs,
+                    }
+                )
+
+                # Add control nodes attached to this node
+                control_components = self._build_control_components(node_id)
+                components.extend(control_components)
+
+                prev_id = node_id
+            else:
+                # Chain node (before or after node under test)
+                chain_id = self._next_id(chain_item)
+                components.append(self._build_chain_component(chain_item, chain_id, prev_id, input_lanes))
+                prev_id = chain_id
+
+        # Add response nodes for each output lane
+        response_components = self._build_response_components(prev_id)
+        components.extend(response_components)
+
+        pipeline = {'project_id': project_id, 'source': webhook_id, 'components': components}
+        if self.config.avoid_mocks:
+            pipeline['avoidMocks'] = True
+        return pipeline
+
+    def get_required_env_vars(self) -> List[str]:
+        """
+        Get all required environment variables for this pipeline.
+
+        Includes requirements from the node under test and all chain/control nodes.
+        """
+        required = set(self.config.requires)
+
+        # Add requirements from control nodes
+        for control in self.config.controls:
+            control_config = get_node_test_config(control)
+            if control_config:
+                required.update(control_config.requires)
+
+        # Add requirements from chain nodes
+        for chain_item in self.config.chain:
+            if chain_item != '*':
+                chain_config = get_node_test_config(chain_item)
+                if chain_config:
+                    required.update(chain_config.requires)
+
+        return list(required)
