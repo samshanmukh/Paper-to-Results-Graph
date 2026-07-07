@@ -102,7 +102,145 @@ def load_extracted_to_graph() -> dict:
     return stats
 
 
+def _paper_manifest() -> list[dict]:
+    if not os.path.isdir(EXTRACTED_DIR):
+        return []
+    out = []
+    for fname in sorted(f for f in os.listdir(EXTRACTED_DIR) if f.endswith(".json")):
+        with open(os.path.join(EXTRACTED_DIR, fname)) as f:
+            data = json.load(f)
+        p = data["paper"]
+        out.append({
+            "id": p["id"],
+            "title": p["title"],
+            "year": p.get("year"),
+            "arxiv": p.get("arxiv"),
+            "claims": len(data.get("claims", [])),
+            "methods": len(data.get("methods", [])),
+        })
+    return out
+
+
+def _clear_runs_for_methods(method_ids: list[str]) -> int:
+    runs_dir = os.path.join(ROOT, "runs")
+    if not method_ids or not os.path.isdir(runs_dir):
+        return 0
+    allowed = set(method_ids)
+    removed = 0
+    for fname in os.listdir(runs_dir):
+        if not fname.endswith(".json"):
+            continue
+        path = os.path.join(runs_dir, fname)
+        try:
+            with open(path) as f:
+                rec = json.load(f)
+            if rec.get("method_id") in allowed:
+                os.remove(path)
+                removed += 1
+        except (OSError, json.JSONDecodeError):
+            continue
+    gen_dir = os.path.join(ROOT, "generated")
+    if os.path.isdir(gen_dir):
+        for name in os.listdir(gen_dir):
+            fp = os.path.join(gen_dir, name)
+            if not os.path.isfile(fp):
+                continue
+            if any(name.startswith(f"{mid}-") or name.startswith(mid) for mid in allowed):
+                os.remove(fp)
+    return removed
+
+
+def _delete_paper_files(paper_id: str, method_ids: list[str]) -> None:
+    for path in (
+        os.path.join(EXTRACTED_DIR, f"{paper_id}.json"),
+        os.path.join(PAPERS_DIR, f"{paper_id}.txt"),
+    ):
+        if os.path.isfile(path):
+            os.remove(path)
+    if os.path.isdir(IMPL_DIR):
+        for name in os.listdir(IMPL_DIR):
+            if not name.endswith(".py"):
+                continue
+            if name.startswith(f"{paper_id}-") or name == f"{paper_id}.py":
+                os.remove(os.path.join(IMPL_DIR, name))
+
+
+def _delete_paper_from_graph(driver, paper_id: str, method_ids: list[str], claim_ids: list[str]) -> None:
+    if method_ids:
+        driver.execute_query(
+            """
+            MATCH (m:Method) WHERE m.id IN $mids
+            OPTIONAL MATCH (r:Run)-[:IMPLEMENTS]->(m)
+            OPTIONAL MATCH (r)-[:PRODUCED]->(a:Artifact)
+            DETACH DELETE r, a
+            """,
+            mids=method_ids, database_=DATABASE,
+        )
+    if claim_ids:
+        driver.execute_query(
+            "MATCH (c:Claim) WHERE c.id IN $cids DETACH DELETE c",
+            cids=claim_ids, database_=DATABASE,
+        )
+    if method_ids:
+        driver.execute_query(
+            "MATCH (m:Method) WHERE m.id IN $mids DETACH DELETE m",
+            mids=method_ids, database_=DATABASE,
+        )
+    driver.execute_query(
+        """
+        MATCH (p:Paper {id: $pid})-[:EVALUATED_ON]->(d:Dataset)
+        WHERE NOT EXISTS {
+            MATCH (other:Paper)-[:EVALUATED_ON]->(d) WHERE other.id <> $pid
+        }
+        DETACH DELETE d
+        """,
+        pid=paper_id, database_=DATABASE,
+    )
+    driver.execute_query(
+        "MATCH (p:Paper {id: $pid}) DETACH DELETE p",
+        pid=paper_id, database_=DATABASE,
+    )
+    driver.execute_query(
+        "MATCH (a:Author) WHERE NOT (a)-[:WROTE]->() DELETE a",
+        database_=DATABASE,
+    )
+
+
+def remove_paper(paper_id: str) -> dict:
+    """Remove one paper from the workspace (files, runs, graph nodes)."""
+    path = os.path.join(EXTRACTED_DIR, f"{paper_id}.json")
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"paper not in workspace: {paper_id}")
+
+    with open(path) as f:
+        data = json.load(f)
+    method_ids = [m["id"] for m in data.get("methods", [])]
+    claim_ids = [c["id"] for c in data.get("claims", [])]
+    title = data["paper"]["title"]
+
+    runs_removed = _clear_runs_for_methods(method_ids)
+    _delete_paper_files(paper_id, method_ids)
+
+    with get_driver() as driver:
+        _delete_paper_from_graph(driver, paper_id, method_ids, claim_ids)
+        rows = run_query(driver, "evidence")
+        remaining = _paper_manifest()
+
+    return {
+        "removed": paper_id,
+        "title": title,
+        "runs_removed": runs_removed,
+        "empty": len(remaining) == 0,
+        "papers": len(remaining),
+        "claims": len(rows),
+        "paper_ids": [p["id"] for p in remaining],
+        "papers_detail": remaining,
+        "message": f"Removed {paper_id} from workspace.",
+    }
+
+
 def workspace_status() -> dict:
+    manifest = _paper_manifest()
     files = [f for f in os.listdir(EXTRACTED_DIR) if f.endswith(".json")] if os.path.isdir(EXTRACTED_DIR) else []
     empty = len(files) == 0
     with get_driver() as driver:
@@ -114,6 +252,7 @@ def workspace_status() -> dict:
         "claims": len(rows),
         "runs": runs[0]["c"] if runs else 0,
         "paper_ids": [f[:-5] for f in sorted(files)],
+        "papers_detail": manifest,
     }
 
 

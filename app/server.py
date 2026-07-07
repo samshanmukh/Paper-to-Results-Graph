@@ -6,6 +6,7 @@ Endpoints:
   GET  /api/workspace     -> workspace status (papers, empty, runs)
   POST /api/workspace/new -> blank workspace (wipe graph + papers)
   POST /api/workspace/load-demo -> restore bundled demo papers
+  DELETE /api/workspace/papers/{paper_id} -> remove one paper from workspace
   POST /api/reset         -> clear runs on current workspace (pristine evidence)
   GET  /api/evidence -> evidence table rows
   POST /api/run/{method_id}?backend=auto|local|daytona -> closed loop:
@@ -94,6 +95,18 @@ def workspace_load_demo():
         return load_demo_workspace()
     except Exception as e:
         raise HTTPException(500, f"load demo failed: {e}")
+
+
+@app.delete("/api/workspace/papers/{paper_id}")
+def workspace_remove_paper(paper_id: str):
+    from app.workspace import remove_paper
+
+    try:
+        return remove_paper(paper_id)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"remove paper failed: {e}")
 
 
 @app.get("/api/graph")

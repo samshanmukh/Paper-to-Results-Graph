@@ -124,6 +124,20 @@ a:hover{color:var(--purple-dim)}
 .evidence-header h2{font-size:15px;font-weight:600}
 .evidence-count{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--dim)}
 .evidence-sub{font-size:13px;color:var(--dim);margin:0 0 16px;line-height:1.45}
+.papers-panel{margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid rgba(20,20,26,0.08)}
+.papers-panel h3{font-size:13px;font-weight:600;margin-bottom:8px}
+.papers-sub{font-size:12px;color:var(--dim);margin:0 0 10px;line-height:1.4}
+.paper-row{display:flex;align-items:flex-start;gap:8px;padding:9px 10px;border:1px solid rgba(20,20,26,0.08);
+  border-radius:9px;margin-bottom:7px;background:#FBFBF9;transition:background .15s,border-color .15s}
+.paper-row:hover{background:#fff}
+.paper-row.selected{border-color:#C9B8F8;background:#F6F3FE}
+.paper-row-main{flex:1;min-width:0}
+.paper-row-id{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--dim)}
+.paper-row-title{font-size:13px;line-height:1.35;color:#2A2A30;margin-top:2px}
+.paper-row-meta{font-size:11px;color:var(--faint);margin-top:3px}
+.btn-remove{flex:none;width:28px;height:28px;border:1px solid rgba(20,20,26,0.12);border-radius:7px;
+  background:#fff;color:var(--dim);cursor:pointer;font-size:14px;line-height:1}
+.btn-remove:hover{color:var(--red);border-color:#F0B8B0;background:#FDECEA}
 .ev-card{border:1px solid rgba(20,20,26,0.08);background:#fff;border-radius:10px;
   padding:12px 13px;margin-bottom:9px}
 .ev-card.validated{border-color:#9AD3AE;background:#F3FBF6}
@@ -301,6 +315,11 @@ div.vis-tooltip{font-size:11px!important;color:var(--ink)!important;background:#
       </div>
       <div class="tab-body gt-scroll">
         <div class="tab-pane active" id="tab-evidence">
+          <div id="papers-panel" class="papers-panel" style="display:none">
+            <h3>Workspace papers</h3>
+            <p class="papers-sub">Click a paper in the graph or remove one from your workspace.</p>
+            <div id="papers-list"></div>
+          </div>
           <div class="evidence-header">
             <h2>Evidence table</h2>
             <span class="evidence-count" id="ev-count">0/0 with evidence</span>
@@ -383,7 +402,7 @@ const LABEL_LINE_H = 13;
 const DEMO_METHOD_ID = "wilson2017-m1";
 let network, nodesDS, edgesDS, selectedMethod=null, running=false, activeTab='evidence';
 let methodParams = [], lastEvidence = {}, guidedDemoRunning = false, panelCollapsed = false;
-let prevEvidenceValid = 0, graphAnimating = false;
+let prevEvidenceValid = 0, graphAnimating = false, selectedPaper = null, workspacePapers = [];
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -600,6 +619,7 @@ async function animateGraph(nodes, edges, {initial=false, focusNew=false, existi
       if(!p.nodes.length) return;
       const n = nodesDS.get(p.nodes[0]);
       if(n._raw?.label==="Method") selectMethod(n._raw);
+      else if(n._raw?.label==="Paper") selectPaper(n._raw, n.id);
     });
     network.on("hoverNode", ()=>document.body.style.cursor="pointer");
     network.on("blurNode", ()=>document.body.style.cursor="default");
@@ -786,6 +806,7 @@ async function loadGraph(focusNew=false){
     `${nConf} CONTRADICTS · ${nRuns ? nRuns+" run"+(nRuns>1?"s":"") : "no runs yet"}`;
   updateWorkspaceBadge(nPapers, isEmpty);
   showEmptyState(isEmpty);
+  await refreshWorkspaceMeta();
 
   const existing = nodesDS ? new Set(nodesDS.getIds()) : new Set();
   const nodes = buildLayout(g);
@@ -831,6 +852,8 @@ document.getElementById("params-reset").addEventListener("click", ()=>{
 
 function selectMethod(raw){
   selectedMethod = raw.props.id;
+  selectedPaper = null;
+  renderPapersList();
   methodCard.style.display = "block";
   consoleEmpty.style.display = "none";
   setTab("console");
@@ -840,6 +863,108 @@ function selectMethod(raw){
   try{ methodParams = JSON.parse(raw.props.params || "[]"); }catch{ methodParams = []; }
   renderParams();
   document.getElementById("run-btn").disabled = running;
+}
+
+function selectPaper(raw, eid=null){
+  selectedPaper = raw.props?.id || raw.key;
+  selectedMethod = null;
+  methodCard.style.display = "none";
+  consoleEmpty.style.display = "block";
+  setTab("evidence");
+  renderPapersList();
+  if(network){
+    const nodeId = eid || findPaperNodeEid(selectedPaper);
+    if(nodeId){
+      network.selectNodes([nodeId]);
+      network.focus(nodeId, {scale:1.05, animation:{duration:500, easingFunction:"easeInOutCubic"}});
+    }
+  }
+}
+
+function findPaperNodeEid(paperId){
+  if(!nodesDS) return null;
+  for(const n of nodesDS.get()){
+    if(n._raw?.label === "Paper" && (n._raw.props?.id === paperId || n._raw.key === paperId))
+      return n.id;
+  }
+  return null;
+}
+
+function renderPapersList(){
+  const panel = document.getElementById("papers-panel");
+  const list = document.getElementById("papers-list");
+  if(!workspacePapers.length){
+    panel.style.display = "none";
+    list.innerHTML = "";
+    return;
+  }
+  panel.style.display = "block";
+  list.innerHTML = workspacePapers.map(p=>{
+    const sel = selectedPaper === p.id ? " selected" : "";
+    const year = p.year ? ` · ${p.year}` : "";
+    return `<div class="paper-row${sel}" data-paper-id="${p.id}">
+      <div class="paper-row-main">
+        <div class="paper-row-id">${p.id}${year}</div>
+        <div class="paper-row-title">${(p.title||"").replace(/</g,"&lt;")}</div>
+        <div class="paper-row-meta">${p.claims} claims · ${p.methods} methods</div>
+      </div>
+      <button type="button" class="btn-remove" data-remove-paper="${p.id}" title="Remove from workspace">✕</button>
+    </div>`;
+  }).join("");
+  list.querySelectorAll("[data-remove-paper]").forEach(btn=>{
+    btn.addEventListener("click", e=>{
+      e.stopPropagation();
+      removePaper(btn.dataset.removePaper);
+    });
+  });
+  list.querySelectorAll(".paper-row").forEach(row=>{
+    row.addEventListener("click", ()=>{
+      selectedPaper = row.dataset.paperId;
+      renderPapersList();
+      const eid = findPaperNodeEid(selectedPaper);
+      if(eid && network){
+        network.selectNodes([eid]);
+        network.focus(eid, {scale:1.05, animation:{duration:450, easingFunction:"easeInOutCubic"}});
+      }
+    });
+  });
+}
+
+async function refreshWorkspaceMeta(){
+  try{
+    const ws = await (await fetch("/api/workspace")).json();
+    workspacePapers = ws.papers_detail || [];
+    updateWorkspaceBadge(ws.papers, ws.empty);
+    renderPapersList();
+    return ws;
+  }catch{
+    return null;
+  }
+}
+
+async function removePaper(paperId){
+  const paper = workspacePapers.find(p=>p.id === paperId);
+  const label = paper ? `${paper.title} (${paperId})` : paperId;
+  if(!confirm(`Remove "${label}" from the workspace?\n\nThis deletes its claims, methods, and any runs for those methods. Other papers stay untouched.`))
+    return;
+  try{
+    const res = await fetch(`/api/workspace/papers/${encodeURIComponent(paperId)}`, {method:"DELETE"});
+    const r = await res.json();
+    if(!res.ok) throw new Error(r.detail || "remove failed");
+    if(selectedPaper === paperId) selectedPaper = null;
+    if(selectedMethod && selectedMethod.startsWith(paperId + "-")){
+      selectedMethod = null;
+      methodCard.style.display = "none";
+      consoleEmpty.style.display = "block";
+      document.getElementById("run-btn").disabled = true;
+    }
+    chatArea.innerHTML = `<div class="chat-bubble agent">${r.empty
+      ? "Workspace is empty. Add a paper or load the demo."
+      : `Removed <b>${paperId}</b> — ${r.papers} paper${r.papers!==1?"s":""} remain.`}</div>`;
+    await refreshWorkspaceMeta();
+    await loadGraph();
+    await loadEvidence();
+  }catch(e){ alert("Remove failed: "+e.message); }
 }
 
 const emptyWorkspace = document.getElementById("empty-workspace");
@@ -854,7 +979,7 @@ function showEmptyState(empty){
 }
 
 function resetUIState(agentMsg){
-  selectedMethod = null; methodParams = []; lastEvidence = {}; prevEvidenceValid = 0;
+  selectedMethod = null; selectedPaper = null; methodParams = []; lastEvidence = {}; prevEvidenceValid = 0;
   methodCard.style.display = "none";
   consoleLogWrap.style.display = "none";
   consoleEmpty.style.display = "block";
@@ -1159,10 +1284,7 @@ document.getElementById("empty-add-btn").addEventListener("click", ()=>{
 document.getElementById("empty-load-demo").addEventListener("click", e=>{ e.preventDefault(); doLoadDemo(false); });
 
 (async ()=>{
-  try{
-    const ws = await (await fetch("/api/workspace")).json();
-    updateWorkspaceBadge(ws.papers, ws.empty);
-  }catch{}
+  await refreshWorkspaceMeta();
   await loadGraph(); await loadEvidence();
 })();
 </script>
