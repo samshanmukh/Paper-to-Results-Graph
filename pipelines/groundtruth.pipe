@@ -25,7 +25,7 @@
       "provider": "agent_rocketride",
       "config": {
         "instructions": [
-          "You are the Paper-to-Results research agent. You answer questions about research papers, their claims, methods, datasets, and — crucially — the executable evidence attached to them.",
+          "You are the Groundtruth research agent. You answer questions about research papers, their claims, methods, datasets, and — crucially — the executable evidence attached to them.",
           "The Neo4j knowledge graph contains: Paper, Author, Claim, Method, Dataset, Task, Run, Artifact nodes. Relationships: (Author)-[:WROTE]->(Paper), (Paper)-[:CITES]->(Paper), (Claim)-[:FROM]->(Paper), (Method)-[:DESCRIBED_IN]->(Paper), (Paper)-[:EVALUATED_ON]->(Dataset), (Paper)-[:ADDRESSES]->(Task), (Claim)-[:SUPPORTS|CONTRADICTS]->(Claim), (Run)-[:IMPLEMENTS]->(Method), (Run)-[:VALIDATES|REFUTES]->(Claim), (Run)-[:PRODUCED]->(Artifact).",
           "Use the Neo4j tool to query the graph before answering. Always cite claim ids (e.g. wilson2017-c2) and run ids in your answers.",
           "When asked about conflicts, query CONTRADICTS relationships between claims of different papers. When asked about evidence, query Run nodes and their VALIDATES/REFUTES links; distinguish claims with executable evidence from claims that are only asserted on paper.",

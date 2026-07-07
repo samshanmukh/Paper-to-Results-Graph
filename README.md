@@ -1,8 +1,8 @@
-# Paper→Results Graph
+# Groundtruth
 
 **Turn research papers into executable evidence.**
 
-Most research tools stop at summaries. Paper→Results closes the loop between what papers *claim* and what actually *runs*:
+Most research tools stop at summaries. **Groundtruth** closes the loop between what papers *claim* and what actually *runs*:
 
 > **Paper → Claim → Method → Code → Sandbox Run → Result → Graph Update**
 
@@ -24,7 +24,7 @@ Three real papers that genuinely disagree are preloaded:
 
 The graph shows 4 cross-paper `CONTRADICTS` edges between their claims.
 
-1. Open the UI — graph of papers, claims, methods, citations, conflicts. Evidence table: *"no runs yet"* on all 9 claims.
+1. Open the UI at `/demo` — graph of papers, claims, methods, citations, conflicts. Evidence table: *"no runs yet"* on all claims.
 2. Click the violet **Linearly separable counterexample** method node → **▶ RUN THIS METHOD**.
 3. Watch the experiment console: code generated → executed → `VALIDATES wilson2017-c2 — GD test error 0.000 vs Adam 0.425`.
 4. A new ⚡ **Run** node appears in the graph, wired `IMPLEMENTS`→Method and `VALIDATES`→Claims. The evidence table flips live.
@@ -38,7 +38,7 @@ The graph shows 4 cross-paper `CONTRADICTS` edges between their claims.
 
 ```
                        ┌─────────────────────────────────────────────┐
-                       │              demo UI (static/)              │
+                       │         Groundtruth UI (static/)            │
                        │  graph viz · RUN button · console · ask box │
                        └──────────────────┬──────────────────────────┘
                                           │ FastAPI (app/server.py)
@@ -54,10 +54,10 @@ The graph shows 4 cross-paper `CONTRADICTS` edges between their claims.
    │  methods · runs ·   │◄────── db_neo4j (NL→Cypher) ────┤  + memory
    │  VALIDATES/REFUTES  │                                 │  + tool_python
    └─────────────────────┘        LLM: Butterbase AI ──────┘
-                                  gateway (claude-sonnet-4.5)
+                                  gateway (x-ai/grok-4.3)
    ┌─────────────────────┐
    │  Butterbase app     │◄────── every run auto-mirrored
-   │  "paper2result"     │        (papers + runs tables)
+   │  (paper2result)     │        (papers + runs tables)
    └─────────────────────┘
 ```
 
@@ -65,9 +65,9 @@ The graph shows 4 cross-paper `CONTRADICTS` edges between their claims.
 
 | Partner | How it's used |
 |---|---|
-| **RocketRide** (local engine) | `pipelines/paper2result.pipe` — wave agent with internal memory, `db_neo4j` tool (natural language → Cypher over the research graph), `tool_python`; LLM routed through one node |
+| **RocketRide** (local engine) | `pipelines/groundtruth.pipe` — wave agent with internal memory, `db_neo4j` tool (natural language → Cypher over the research graph), `tool_python`; LLM routed through one node |
 | **Neo4j Aura** | The product *is* the graph: papers, claims, methods, runs, `CONTRADICTS`/`VALIDATES`/`REFUTES` edges |
-| **Butterbase** | AI gateway (OpenAI-compatible endpoint powers ALL LLM calls — no separate OpenAI key anywhere) + dedicated app `paper2result` storing papers & run history |
+| **Butterbase** | AI gateway (OpenAI-compatible endpoint powers ALL LLM calls) + dedicated app storing papers & run history |
 | **Daytona** | Sandbox backend in `app/runner.py` (auto-selected when `DAYTONA_API_KEY` is set; local subprocess fallback keeps the demo unkillable) |
 
 ---
@@ -82,16 +82,15 @@ app/
   codegen.py     method node → runnable single-file experiment
   runner.py      execute (daytona | local), capture, persist run record
   curator.py     write Run/Artifact + IMPLEMENTS/VALIDATES/REFUTES back
-  butterbase.py  papers + run history in the paper2result Butterbase app
+  butterbase.py  papers + run history mirrored to Butterbase
   server.py      FastAPI backing the UI
   db.py          shared driver (Aura is shared with another project —
                  all destructive ops are label-scoped)
 papers/          3 paper excerpts + golden extractions + curated impls
-pipelines/       paper2result.pipe (RocketRide agent pipeline)
+pipelines/       groundtruth.pipe (RocketRide agent pipeline)
 scripts/         check_neo4j / check_pipeline / demo_loop / reset_demo
-static/          the demo UI
-BUILD_LOOP.md    autonomous build log (this project was built by a
-                 self-pacing Claude agent loop — every milestone verified)
+static/          landing page + live demo UI
+BUILD_LOOP.md    autonomous build log (every milestone verified)
 ```
 
 ---
@@ -129,7 +128,7 @@ Before a live demo: `.venv/bin/python scripts/reset_demo.py` (pristine "no runs 
 | Component | Status |
 |---|---|
 | Extraction (3 papers, golden JSON + schema validation) | ✅ verified |
-| Neo4j knowledge graph (28 nodes, 4 cross-paper conflicts) | ✅ verified |
+| Neo4j knowledge graph (conflicts + evidence queries) | ✅ verified |
 | Codegen + Wilson counterexample (paper effect reproduced) | ✅ verified |
 | Runner — local backend | ✅ verified |
 | Runner — Daytona backend | ✅ verified (real sandbox, 4.9s) |
@@ -141,6 +140,6 @@ Before a live demo: `.venv/bin/python scripts/reset_demo.py` (pristine "no runs 
 
 ## Why this beats "Paper2Code"
 
-Paper2Code stops at code generation. Here, the code **runs**, and the outcome — success, failure, error, metric — becomes a first-class graph citizen attached to the claims it tests. Failed runs are evidence too.
+Paper2Code stops at code generation. Groundtruth runs the code, and the outcome — success, failure, error, metric — becomes a first-class graph citizen attached to the claims it tests. Failed runs are evidence too.
 
 > Research should not end at reading. It should end in evidence.

@@ -20,7 +20,7 @@ import urllib.request
 
 from pypdf import PdfReader
 
-_USER_AGENT = "paper2result/1.0 (hackathon demo)"
+_USER_AGENT = "groundtruth/1.0 (hackathon demo)"
 _ARXIV_ID = re.compile(r"(\d{4}\.\d{4,5})(v\d+)?", re.I)
 
 

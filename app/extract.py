@@ -95,7 +95,7 @@ def extract_mock(paper_id: str) -> dict:
         return json.load(f)
 
 
-EXTRACTION_PROMPT = """You are the extraction stage of Paper-to-Results Graph.
+EXTRACTION_PROMPT = """You are the extraction stage of Groundtruth.
 Given a research paper's text, produce ONLY a JSON object (no prose) with:
 
 {

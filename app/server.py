@@ -1,4 +1,4 @@
-"""FastAPI backend for the Paper-to-Results demo UI.
+"""FastAPI backend for the Groundtruth demo UI.
 
 Endpoints:
   GET  /             -> landing page
@@ -28,9 +28,9 @@ from app.runner import execute
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC = os.path.join(ROOT, "static")
-PIPE = os.path.join(ROOT, "pipelines", "paper2result.pipe")
+PIPE = os.path.join(ROOT, "pipelines", "groundtruth.pipe")
 
-app = FastAPI(title="Paper-to-Results Graph")
+app = FastAPI(title="Groundtruth")
 
 
 @app.get("/")
