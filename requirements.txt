@@ -1,0 +1,8 @@
+neo4j>=5.20
+python-dotenv>=1.0
+openai>=1.30
+anthropic>=0.30
+daytona-sdk>=0.10
+fastapi>=0.110
+uvicorn>=0.29
+certifi>=2024.0
