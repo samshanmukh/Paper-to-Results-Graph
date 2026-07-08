@@ -359,6 +359,14 @@ function answerAsk(question: string, ctx: WorkspaceCtx) {
     return answerBrief(ctx).answer;
   }
 
+  if (/cognee|semantic memory|memory recall/.test(q)) {
+    return (
+      "Cognee semantic memory runs on the **local FastAPI stack** only (not this Butterbase deploy). " +
+      "Set `COGNEE_ENABLED=true` in `.env`, run `scripts/sync_cognee.py`, then use `/api/ask` on localhost:8787.\n\n" +
+      "On this deploy, answers come from the persisted graph — try _Which claims have executable evidence?_"
+    );
+  }
+
   const validated = evidenced.filter((c) => c.evidence?.verdict === "VALIDATES").length;
   const refuted = evidenced.filter((c) => c.evidence?.verdict === "REFUTES").length;
   return (
