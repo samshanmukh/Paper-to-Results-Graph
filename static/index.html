@@ -412,6 +412,33 @@ const DEMO_METHOD_ID = "wilson2017-m1";
 let network, nodesDS, edgesDS, selectedMethod=null, running=false, activeTab='evidence';
 let methodParams = [], lastEvidence = {}, guidedDemoRunning = false, panelCollapsed = false;
 let prevEvidenceValid = 0, graphAnimating = false, selectedPaper = null, workspacePapers = [];
+const BB_VIEW_KEY = "vg_bb_view";
+
+function setBbView(mode){
+  if(mode && mode !== "full") sessionStorage.setItem(BB_VIEW_KEY, mode);
+  else sessionStorage.removeItem(BB_VIEW_KEY);
+}
+function getBbView(){
+  return sessionStorage.getItem(BB_VIEW_KEY) || "full";
+}
+function filterGraphByView(g){
+  const view = getBbView();
+  if(view === "empty") return {nodes: [], edges: []};
+  if(view === "no-runs"){
+    const nodes = g.nodes.filter(n => n.label !== "Run");
+    const ids = new Set(nodes.map(n => n.eid));
+    const edges = g.edges.filter(e =>
+      ids.has(e.src) && ids.has(e.dst) && e.rel !== "VALIDATES" && e.rel !== "REFUTES");
+    return {nodes, edges};
+  }
+  return g;
+}
+function filterEvidenceByView(rows){
+  const view = getBbView();
+  if(view === "empty") return [];
+  if(view === "no-runs") return rows.map(r => ({...r, evidence: "no runs yet"}));
+  return rows;
+}
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -939,7 +966,8 @@ function edgeStyle(e){
 }
 
 async function loadGraph(focusNew=false){
-  const g = await (await fetch("/api/graph")).json();
+  let g = await (await fetch("/api/graph")).json();
+  g = filterGraphByView(g);
   const keep = new Set(["Paper","Claim","Method","Run"]);
   g.nodes = g.nodes.filter(n=>keep.has(n.label));
   const keepIds = new Set(g.nodes.map(n=>n.eid));
@@ -1086,6 +1114,13 @@ function renderPapersList(){
 async function refreshWorkspaceMeta(){
   try{
     const ws = await (await fetch("/api/workspace")).json();
+    const view = getBbView();
+    if(view === "empty"){
+      workspacePapers = [];
+      updateWorkspaceBadge(0, true);
+      renderPapersList();
+      return {empty: true, papers: 0, papers_detail: []};
+    }
     workspacePapers = ws.papers_detail || [];
     updateWorkspaceBadge(ws.papers, ws.empty);
     renderPapersList();
@@ -1144,7 +1179,8 @@ function resetUIState(agentMsg){
 }
 
 async function loadEvidence(){
-  const rows = await (await fetch("/api/evidence")).json();
+  let rows = await (await fetch("/api/evidence")).json();
+  rows = filterEvidenceByView(rows);
   if(!rows.length){
     document.getElementById("evidence").innerHTML =
       '<div class="evidence-empty">No claims yet. Add a paper to extract claims and methods, then run a method to attach evidence.</div>';
@@ -1327,7 +1363,8 @@ document.getElementById("reset-btn").addEventListener("click", async ()=>{
     const res = await fetch("/api/reset", {method:"POST"});
     const r = await res.json();
     if(!res.ok) throw new Error(r.detail || "reset failed");
-    resetUIState('Runs cleared — all claims show "no runs yet". Select a method and press RUN to generate evidence.');
+    if(r.view) setBbView(r.view);
+    resetUIState(r.message || 'Runs cleared — all claims show "no runs yet". Select a method and press RUN to generate evidence.');
     setTab("evidence");
     await loadGraph(); await loadEvidence();
   }catch(e){ alert("Reset failed: "+e.message); }
@@ -1342,7 +1379,8 @@ async function doNewWorkspace(){
     const res = await fetch("/api/workspace/new", {method:"POST"});
     const r = await res.json();
     if(!res.ok) throw new Error(r.detail || "failed");
-    resetUIState("New workspace ready. Add a paper via arXiv or PDF — I'll extract claims, methods, and conflicts into the graph.");
+    if(r.view) setBbView(r.view);
+    resetUIState(r.message || "New workspace ready. Add a paper via arXiv or PDF — I'll extract claims, methods, and conflicts into the graph.");
     setTab("evidence");
     await loadGraph(); await loadEvidence();
     backdrop.classList.add("show");
@@ -1359,7 +1397,8 @@ async function doLoadDemo(silent=false){
     const res = await fetch("/api/workspace/load-demo", {method:"POST"});
     const r = await res.json();
     if(!res.ok) throw new Error(r.detail || "failed");
-    resetUIState(`Demo loaded — ${r.papers} papers (Adam · Wilson · AdamW), no runs yet. Click a violet method node and press RUN.`);
+    if(r.view) setBbView(r.view);
+    resetUIState(r.message || `Demo loaded — ${r.papers} papers (Adam · Wilson · AdamW), no runs yet. Click a violet method node and press RUN.`);
     setTab("evidence");
     await loadGraph(); await loadEvidence();
     return true;
@@ -1395,7 +1434,10 @@ async function runMethodAndWait(){
       log(`[error  ] run failed: ${rec.error}`, "t-bad");
       return false;
     } else {
-      if(rec.replay) log("[runner ] replaying persisted run (Butterbase deploy — graph/evidence from stored history)", "t-warn");
+      if(rec.replay){
+        log("[runner ] replaying persisted run (Butterbase deploy — graph/evidence from stored history)", "t-warn");
+        setBbView("full");
+      }
       log(`[runner ] ${rec.run_id} [${rec.backend}] exit=${rec.exit_code} · ${rec.duration_s}s`, "");
       (rec.stdout||"").trim().split("\n").slice(0,-1).forEach(l=>log("  "+l, "t-dim"));
       (rec.result?.claim_checks||[]).forEach(c=>

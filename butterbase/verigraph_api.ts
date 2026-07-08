@@ -2,6 +2,7 @@
  *  Routes via ?route=graph|evidence|workspace|...
  *  POST run/{method_id} replays the latest persisted run from Butterbase.
  *  POST ask/investigate/brief/conduct answer from persisted graph + run history.
+ *  POST workspace/new and reset clear the local view (shared Butterbase data unchanged).
  *  Upload/delete still require the full FastAPI backend.
  */
 
@@ -521,7 +522,35 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
           papers: papers.length,
           claims: buildEvidence(papers, runs).length,
           empty: false,
-          message: `Demo data loaded — ${papers.length} papers on Butterbase.`,
+          replay: true,
+          view: "no-runs",
+          message: `Demo loaded — ${papers.length} papers (Adam · Wilson · AdamW), no runs yet.`,
+        });
+      }
+      if (route === "workspace/new") {
+        return json({
+          empty: true,
+          papers: 0,
+          claims: 0,
+          runs: 0,
+          replay: true,
+          view: "empty",
+          message:
+            "New workspace ready. On this Butterbase deploy the view is cleared locally — " +
+            "use Load demo to restore the paper graph, or run the full stack locally to add papers.",
+        });
+      }
+      if (route === "reset") {
+        const claimCount = buildEvidence(papers, runs).length;
+        return json({
+          empty: papers.length === 0,
+          papers: papers.length,
+          claims: claimCount,
+          runs: 0,
+          pristine: true,
+          replay: true,
+          view: "no-runs",
+          message: 'Runs cleared — all claims show "no runs yet" in this view.',
         });
       }
       if (route.startsWith("run/")) {
