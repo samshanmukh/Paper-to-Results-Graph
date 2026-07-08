@@ -1395,6 +1395,7 @@ async function runMethodAndWait(){
       log(`[error  ] run failed: ${rec.error}`, "t-bad");
       return false;
     } else {
+      if(rec.replay) log("[runner ] replaying persisted run (Butterbase deploy — graph/evidence from stored history)", "t-warn");
       log(`[runner ] ${rec.run_id} [${rec.backend}] exit=${rec.exit_code} · ${rec.duration_s}s`, "");
       (rec.stdout||"").trim().split("\n").slice(0,-1).forEach(l=>log("  "+l, "t-dim"));
       (rec.result?.claim_checks||[]).forEach(c=>

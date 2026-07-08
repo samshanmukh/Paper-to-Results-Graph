@@ -1,6 +1,7 @@
 /** Verigraph read API for Butterbase static deploy.
  *  Routes via ?route=graph|evidence|workspace|...
- *  Write endpoints (run, ask, upload) return 501 — use full FastAPI backend for sandbox.
+ *  POST run/{method_id} replays the latest persisted run from Butterbase.
+ *  Other write endpoints (ask, upload) return 501 — use full FastAPI backend for sandbox.
  */
 
 const CORS = {
@@ -106,6 +107,33 @@ function buildGraph(papers: any[], runs: any[]) {
   return { nodes, edges };
 }
 
+function runRowToRecord(row: any) {
+  const checks = row.claim_checks?.items || row.claim_checks || [];
+  return {
+    run_id: row.id,
+    method_id: row.method_id,
+    backend: row.backend || "daytona",
+    exit_code: row.exit_code ?? 0,
+    duration_s: Number(row.duration_s) || 0,
+    stdout: row.stdout || "",
+    stderr: "",
+    error: row.error || null,
+    result: {
+      method_id: row.method_id,
+      metrics: row.metrics || {},
+      claim_checks: checks,
+    },
+    replay: true,
+  };
+}
+
+function latestRunForMethod(runs: any[], methodId: string) {
+  const hits = runs.filter((r) => r.method_id === methodId);
+  if (!hits.length) return null;
+  hits.sort((a, b) => String(b.id).localeCompare(String(a.id)));
+  return hits[0];
+}
+
 function buildEvidence(papers: any[], runs: any[]) {
   const runByClaim: Record<string, any> = {};
   for (const r of runs) {
@@ -182,9 +210,16 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
         });
       }
       if (route.startsWith("run/")) {
-        return notImplemented(
-          "Live method execution requires the full Verigraph backend (Neo4j + Daytona + RocketRide). " +
-          "This Butterbase deploy shows persisted papers, graph, and run history."
+        const methodId = route.slice(4);
+        const hit = latestRunForMethod(runs, methodId);
+        if (hit) return json(runRowToRecord(hit));
+        return json(
+          {
+            detail:
+              `No persisted run for ${methodId} on this deploy. ` +
+              "Load the demo or run wilson2017-m1 locally against the full Verigraph backend.",
+          },
+          404
         );
       }
       if (route === "ask") {
