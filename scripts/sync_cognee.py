@@ -62,7 +62,11 @@ def main() -> int:
     ap.add_argument("--runs-only", action="store_true")
     args = ap.parse_args()
     if not is_enabled():
-        print("Cognee disabled — set COGNEE_ENABLED=true and ROCKETRIDE_GATEWAY_* in .env", file=sys.stderr)
+        print(
+            "Cognee disabled — set COGNEE_ENABLED=true and either "
+            "ROCKETRIDE_GATEWAY_* (local) or COGNEE_CLOUD + COGNEE_SERVICE_URL + COGNEE_API_KEY",
+            file=sys.stderr,
+        )
         return 1
 
     docs: list[tuple[str, list[str]]] = []

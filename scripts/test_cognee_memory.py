@@ -14,8 +14,7 @@ sys.path.insert(0, ROOT)
 
 class CogneeConfigTests(unittest.TestCase):
     def test_disabled_by_default(self):
-        env = {k: v for k, v in os.environ.items() if k != "COGNEE_ENABLED"}
-        with patch.dict(os.environ, env, clear=True):
+        with patch.dict(os.environ, {"COGNEE_ENABLED": "false", "COGNEE_CLOUD": "false"}, clear=False):
             from app import cognee_memory
 
             self.assertFalse(cognee_memory.is_enabled())
@@ -34,7 +33,26 @@ class CogneeConfigTests(unittest.TestCase):
             from app import cognee_memory
 
             self.assertTrue(cognee_memory.is_enabled())
+            self.assertFalse(cognee_memory.is_cloud_mode())
+            self.assertEqual(cognee_memory.dataset_name(), "verigraph")
             self.assertEqual(cognee_memory._llm_model(), "openai/x-ai/grok-4.3")
+
+    def test_enabled_cloud_mode(self):
+        with patch.dict(
+            os.environ,
+            {
+                "COGNEE_ENABLED": "true",
+                "COGNEE_CLOUD": "true",
+                "COGNEE_SERVICE_URL": "https://tenant.aws.cognee.ai",
+                "COGNEE_API_KEY": "ck_test",
+            },
+            clear=False,
+        ):
+            from app import cognee_memory
+
+            self.assertTrue(cognee_memory.is_enabled())
+            self.assertTrue(cognee_memory.is_cloud_mode())
+            self.assertEqual(cognee_memory.dataset_name(), "default_dataset")
 
 
 class CogneeDocumentTests(unittest.TestCase):
@@ -83,9 +101,10 @@ class CogneeRecallTests(unittest.IsolatedAsyncioTestCase):
             clear=False,
         ):
             with patch("app.cognee_memory._import_cognee", return_value=mock_cognee):
-                from app.cognee_memory import recall
+                with patch("app.cognee_memory._ensure_connected", new=AsyncMock()):
+                    from app.cognee_memory import recall
 
-                out = await recall("Adam generalization")
+                    out = await recall("Adam generalization")
         self.assertEqual(out, ["GD 0.000 vs Adam 0.425"])
 
 

@@ -285,10 +285,10 @@ The demo ships three optimizer papers that **genuinely disagree** (Adam, Wilson 
 
 **Two memories, one product:** Neo4j holds proof (structured verdicts); Cognee holds context (prose and logs). Together the Ask tab feels like talking to a lab notebook, not a database console.
 
-### Enable locally
+### Enable locally (default)
 
 ```bash
-# .env
+# .env — local storage in .cognee/, fastembed embeddings
 COGNEE_ENABLED=true
 ROCKETRIDE_GATEWAY_BASE_URL=...   # same gateway as extraction/codegen
 ROCKETRIDE_GATEWAY_KEY=...
@@ -298,10 +298,28 @@ ROCKETRIDE_GATEWAY_MODEL=x-ai/grok-4.3
 COGNEE_ENABLED=true .venv/bin/python scripts/sync_cognee.py
 
 # Smoke test
-COGNEE_ENABLED=true .venv/bin/python scripts/test_cognee_memory.py
+.venv/bin/python scripts/test_cognee_memory.py
 ```
 
 Embeddings run locally via **fastembed**; graph extraction uses the Butterbase gateway. Storage stays in `.cognee/` (gitignored), separate from Neo4j — no schema collisions.
+
+### Enable Cognee Cloud (Sessions + Brain on platform.cognee.ai)
+
+By default, local mode does **not** send data to your Cognee Cloud workspace — that is why Sessions and Brain stay empty on the dashboard. To route `remember()` / `recall()` to the cloud:
+
+```bash
+# .env — from platform.cognee.ai → API Keys
+COGNEE_ENABLED=true
+COGNEE_CLOUD=true
+COGNEE_SERVICE_URL=https://your-tenant.aws.cognee.ai
+COGNEE_API_KEY=ck_...
+# optional: COGNEE_SESSION_ID=verigraph  (groups agent writes in Sessions tab)
+
+# Backfill into default_dataset on your cloud tenant
+.venv/bin/python scripts/sync_cognee.py
+```
+
+Uses `cognee.serve()` under the hood. Dataset defaults to `default_dataset` in cloud mode (override with `COGNEE_DATASET`). After sync, refresh **Brain** and **Sessions** on the Cognee dashboard.
 
 > **Note:** Cognee is wired into the **local FastAPI stack** only. The Butterbase-deployed read-only demo replays persisted runs but does not run Cognee indexing server-side.
 
@@ -370,6 +388,7 @@ scripts/
   check_pipeline.py   Agent pipeline smoke test.
   sync_cognee.py      Backfill Cognee index from papers/ + runs/.
   test_cognee_memory.py  Unit smoke test for remember/recall.
+  check_cognee_cloud.py  Smoke test Cognee Cloud connectivity (COGNEE_CLOUD=true).
   demo_loop.py        Whole closed loop in one command + graph diff.
   reset_demo.py       Pristine pre-demo state: clears Run/Artifact only,
                       reloads papers → every claim shows "no runs yet".

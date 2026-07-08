@@ -1,11 +1,14 @@
 """Cognee semantic memory for Verigraph (alongside Neo4j).
 
 Indexes paper text and run stdout/metrics for semantic recall via
-cognee.remember() / cognee.recall(). Storage lives under .cognee/ and is
-separate from the Verigraph Neo4j graph.
+cognee.remember() / cognee.recall(). Separate from the Verigraph Neo4j graph.
 
-Enable with COGNEE_ENABLED=true and the same Butterbase gateway vars used by
-app/llm.py (ROCKETRIDE_GATEWAY_*). Embeddings default to local fastembed.
+Local mode (default): storage under .cognee/, fastembed embeddings, Butterbase
+gateway for LLM. Set COGNEE_ENABLED=true + ROCKETRIDE_GATEWAY_*.
+
+Cloud mode (opt-in): routes to Cognee Cloud via cognee.serve() so Sessions and
+Brain populate on platform.cognee.ai. Set COGNEE_ENABLED=true, COGNEE_CLOUD=true,
+COGNEE_SERVICE_URL, and COGNEE_API_KEY (from the dashboard API Keys page).
 """
 
 from __future__ import annotations
@@ -21,10 +24,10 @@ from dotenv import load_dotenv
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv(os.path.join(ROOT, ".env"))
 
-DATASET = os.environ.get("COGNEE_DATASET", "verigraph")
 _COGNEE_LOCK = threading.Lock()
 _CONFIGURED = False
 _MIGRATED = False
+_CLOUD_CONNECTED = False
 _BG_LOOP: asyncio.AbstractEventLoop | None = None
 _BG_THREAD: threading.Thread | None = None
 
@@ -59,9 +62,30 @@ def _truthy(name: str, default: str = "false") -> bool:
     return os.environ.get(name, default).lower() in ("1", "true", "yes", "on")
 
 
+def is_cloud_mode() -> bool:
+    return _truthy("COGNEE_CLOUD")
+
+
+def _cloud_url() -> str:
+    return (os.environ.get("COGNEE_SERVICE_URL") or os.environ.get("COGNEE_BASE_URL") or "").rstrip("/")
+
+
+def _cloud_credentials_ok() -> bool:
+    return bool(_cloud_url() and os.environ.get("COGNEE_API_KEY"))
+
+
+def dataset_name() -> str:
+    explicit = os.environ.get("COGNEE_DATASET")
+    if explicit:
+        return explicit
+    return "default_dataset" if is_cloud_mode() else "verigraph"
+
+
 def is_enabled() -> bool:
     if not _truthy("COGNEE_ENABLED"):
         return False
+    if is_cloud_mode():
+        return _cloud_credentials_ok()
     return bool(os.environ.get("ROCKETRIDE_GATEWAY_BASE_URL") and os.environ.get("ROCKETRIDE_GATEWAY_KEY"))
 
 
@@ -77,34 +101,45 @@ def _configure_env() -> None:
     with _COGNEE_LOCK:
         if _CONFIGURED:
             return
-        cognee_root = os.path.join(ROOT, ".cognee")
-        os.makedirs(os.path.join(cognee_root, "system"), exist_ok=True)
-        os.makedirs(os.path.join(cognee_root, "data"), exist_ok=True)
-
-        base = os.environ["ROCKETRIDE_GATEWAY_BASE_URL"].rstrip("/")
-        key = os.environ["ROCKETRIDE_GATEWAY_KEY"]
-
-        defaults = {
-            "ENABLE_BACKEND_ACCESS_CONTROL": "false",
-            "REQUIRE_AUTHENTICATION": "false",
-            "TELEMETRY_DISABLED": "true",
+        defaults: dict[str, str] = {
             "LOG_LEVEL": os.environ.get("COGNEE_LOG_LEVEL", "ERROR"),
             "COGNEE_LOG_FILE": "false",
             "COGNEE_SKIP_CONNECTION_TEST": "true",
-            "SYSTEM_ROOT_DIRECTORY": os.path.join(cognee_root, "system"),
-            "DATA_ROOT_DIRECTORY": os.path.join(cognee_root, "data"),
-            "LLM_PROVIDER": "openai",
-            "LLM_API_KEY": key,
-            "LLM_ENDPOINT": base,
-            "LLM_MODEL": _llm_model(),
-            "EMBEDDING_PROVIDER": os.environ.get("COGNEE_EMBEDDING_PROVIDER", "fastembed"),
-            "EMBEDDING_MODEL": os.environ.get(
-                "COGNEE_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
-            ),
-            "EMBEDDING_DIMENSIONS": os.environ.get("COGNEE_EMBEDDING_DIMENSIONS", "384"),
         }
+        if is_cloud_mode():
+            defaults.update(
+                {
+                    "COGNEE_SERVICE_URL": _cloud_url(),
+                    "COGNEE_API_KEY": os.environ.get("COGNEE_API_KEY", ""),
+                }
+            )
+        else:
+            cognee_root = os.path.join(ROOT, ".cognee")
+            os.makedirs(os.path.join(cognee_root, "system"), exist_ok=True)
+            os.makedirs(os.path.join(cognee_root, "data"), exist_ok=True)
+            base = os.environ["ROCKETRIDE_GATEWAY_BASE_URL"].rstrip("/")
+            key = os.environ["ROCKETRIDE_GATEWAY_KEY"]
+            defaults.update(
+                {
+                    "ENABLE_BACKEND_ACCESS_CONTROL": "false",
+                    "REQUIRE_AUTHENTICATION": "false",
+                    "TELEMETRY_DISABLED": "true",
+                    "SYSTEM_ROOT_DIRECTORY": os.path.join(cognee_root, "system"),
+                    "DATA_ROOT_DIRECTORY": os.path.join(cognee_root, "data"),
+                    "LLM_PROVIDER": "openai",
+                    "LLM_API_KEY": key,
+                    "LLM_ENDPOINT": base,
+                    "LLM_MODEL": _llm_model(),
+                    "EMBEDDING_PROVIDER": os.environ.get("COGNEE_EMBEDDING_PROVIDER", "fastembed"),
+                    "EMBEDDING_MODEL": os.environ.get(
+                        "COGNEE_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
+                    ),
+                    "EMBEDDING_DIMENSIONS": os.environ.get("COGNEE_EMBEDDING_DIMENSIONS", "384"),
+                }
+            )
         for k, v in defaults.items():
-            os.environ.setdefault(k, v)
+            if v:
+                os.environ.setdefault(k, v)
         _CONFIGURED = True
 
 
@@ -123,19 +158,42 @@ async def _ensure_migrated(cognee) -> None:
     _MIGRATED = True
 
 
+async def _ensure_connected(cognee) -> None:
+    global _CLOUD_CONNECTED
+    if is_cloud_mode():
+        if _CLOUD_CONNECTED:
+            return
+        url = _cloud_url()
+        api_key = os.environ.get("COGNEE_API_KEY", "")
+        await cognee.serve(url=url, api_key=api_key)
+        _CLOUD_CONNECTED = True
+        return
+    await _ensure_migrated(cognee)
+
+
+def _remember_kwargs(*, node_set: list[str] | None = None) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
+        "dataset_name": dataset_name(),
+        "self_improvement": False,
+    }
+    if node_set:
+        kwargs["node_set"] = node_set
+    session_id = os.environ.get("COGNEE_SESSION_ID")
+    if is_cloud_mode():
+        kwargs["session_id"] = session_id or "verigraph"
+    elif session_id:
+        kwargs["session_id"] = session_id
+    return kwargs
+
+
 async def remember_many(docs: list[tuple[str, list[str]]]) -> None:
     """Batch remember for sync scripts — one event loop, many documents."""
     if not is_enabled() or not docs:
         return
     cognee = _import_cognee()
-    await _ensure_migrated(cognee)
+    await _ensure_connected(cognee)
     for text, node_set in docs:
-        await cognee.remember(
-            text,
-            dataset_name=DATASET,
-            node_set=node_set,
-            self_improvement=False,
-        )
+        await cognee.remember(text, **_remember_kwargs(node_set=node_set))
 
 
 def remember_many_sync(docs: list[tuple[str, list[str]]]) -> None:
@@ -191,29 +249,22 @@ async def remember_paper(
     if not is_enabled():
         return
     cognee = _import_cognee()
-    await _ensure_migrated(cognee)
+    await _ensure_connected(cognee)
     doc = _format_paper_document(paper_id, title, text, extraction)
-    await cognee.remember(
-        doc,
-        dataset_name=DATASET,
-        node_set=[paper_id, "paper"],
-        self_improvement=False,
-    )
+    await cognee.remember(doc, **_remember_kwargs(node_set=[paper_id, "paper"]))
 
 
 async def remember_run(record: dict) -> None:
     if not is_enabled():
         return
     cognee = _import_cognee()
-    await _ensure_migrated(cognee)
+    await _ensure_connected(cognee)
     method_id = record.get("method_id") or "unknown-method"
     paper_id = method_id.rsplit("-", 1)[0] if "-" in method_id else method_id
     doc = _format_run_document(record)
     await cognee.remember(
         doc,
-        dataset_name=DATASET,
-        node_set=[record.get("run_id", "run"), method_id, paper_id, "run"],
-        self_improvement=False,
+        **_remember_kwargs(node_set=[record.get("run_id", "run"), method_id, paper_id, "run"]),
     )
 
 
@@ -221,10 +272,10 @@ async def recall(query: str, *, paper_id: str | None = None, top_k: int = 5) -> 
     if not is_enabled():
         return []
     cognee = _import_cognee()
-    await _ensure_migrated(cognee)
+    await _ensure_connected(cognee)
     kwargs: dict[str, Any] = {
         "query_text": query,
-        "datasets": [DATASET],
+        "datasets": [dataset_name()],
         "top_k": top_k,
         "include_references": True,
     }

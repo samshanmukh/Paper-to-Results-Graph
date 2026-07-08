@@ -500,7 +500,8 @@ async def memory_recall(body: MemoryRecall):
     if not is_enabled():
         raise HTTPException(
             501,
-            "Cognee memory is disabled. Set COGNEE_ENABLED=true and configure ROCKETRIDE_GATEWAY_*.",
+            "Cognee memory is disabled. Set COGNEE_ENABLED=true and configure "
+            "ROCKETRIDE_GATEWAY_* (local) or COGNEE_CLOUD + COGNEE_SERVICE_URL + COGNEE_API_KEY.",
         )
     snippets = await recall(body.query, paper_id=body.paper_id, top_k=body.top_k)
     return {"query": body.query, "results": snippets, "count": len(snippets)}
