@@ -1240,7 +1240,12 @@ async function ask(q){
       headers:{"Content-Type":"application/json"}, body:JSON.stringify({question:q})});
     const raw = await res.text();
     thinking.remove();
-    try{ addBubble("agent", mdLite(JSON.parse(raw).answer)); }
+    try{
+      const r = JSON.parse(raw);
+      let answer = r.answer || "";
+      if(r.memory_used) answer = "[semantic memory ✓]\n\n" + answer;
+      addBubble("agent", mdLite(answer));
+    }
     catch{ addBubble("agent", `agent error (HTTP ${res.status}): ${raw.slice(0,200)}`); }
   }catch(e){ thinking.remove(); addBubble("agent", "agent error: "+e); }
   chatArea.scrollTop = chatArea.scrollHeight;

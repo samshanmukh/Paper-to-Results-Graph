@@ -7,3 +7,4 @@ __pycache__/
 generated/
 runs/
 deploy/site.zip
+.cognee/

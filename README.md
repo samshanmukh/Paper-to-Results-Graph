@@ -242,6 +242,7 @@ Engineering detail worth knowing: the engine refuses to start the same pipeline 
 | **Butterbase** | Two jobs: the **AI gateway** serves all LLM calls (no OpenAI key in the project), and a dedicated app (`paper2result`) archives papers + run history in Postgres tables | `app/llm.py`, `app/butterbase.py` |
 | **Daytona** | Safe hands: every generated experiment executes in a fresh, isolated sandbox — visible in the dashboard, auto-cleaned | `app/runner.py` |
 | **Bright Data** *(optional)* | Web Unlocker fallback when direct arXiv PDF/HTML downloads fail (timeouts, bot blocks) | `app/brightdata.py`, `app/arxiv.py` |
+| **Cognee** *(optional)* | Semantic memory over paper text and run logs; `recall()` augments `/api/ask` | `app/cognee_memory.py`, `scripts/sync_cognee.py` |
 
 ---
 
@@ -275,8 +276,10 @@ app/
   arxiv.py       Fetches paper text from arXiv URLs (PDF + HTML fallbacks).
                  Optional Bright Data Web Unlocker when BRIGHTDATA_API_TOKEN is set.
   brightdata.py  Thin wrapper around brightdata-sdk scrape_url for paper ingestion.
+  cognee_memory.py  Optional Cognee remember/recall for paper text and run stdout.
   server.py      FastAPI. Endpoints: GET /api/graph, GET /api/evidence,
-                 POST /api/run/{method_id}, POST /api/ask,
+                 POST /api/run/{method_id},                  POST /api/ask,
+                 POST /api/memory/recall,
                  POST /api/upload | /upload-file | /upload-arxiv.
   db.py          Shared Neo4j driver + macOS certifi fix + OUR_LABELS.
   llm.py         The one LLM door: chat() against the Butterbase gateway,
@@ -316,6 +319,7 @@ BUILD_LOOP.md    The autonomous build log — this project was built by a
 - A Daytona API key (free tier works; org must have a default region set in the dashboard)
 - RocketRide engine running locally on `:5565` (VS Code extension)
 - *(Optional)* Bright Data API token for resilient arXiv fetch (`BRIGHTDATA_API_TOKEN`)
+- *(Optional)* Cognee semantic memory (`COGNEE_ENABLED=true` + gateway vars; run `scripts/sync_cognee.py`)
 
 ### Setup
 

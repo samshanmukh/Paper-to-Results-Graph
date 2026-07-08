@@ -73,6 +73,12 @@ def curate_run(tx, record: dict):
 def curate(record: dict) -> None:
     with get_driver() as driver, driver.session(database=DATABASE) as session:
         session.execute_write(curate_run, record)
+    try:
+        from app.cognee_memory import remember_run_sync
+
+        remember_run_sync(record)
+    except Exception:
+        pass
 
 
 def main() -> int:

@@ -11,7 +11,8 @@ Endpoints:
   GET  /api/evidence -> evidence table rows
   POST /api/run/{method_id}?backend=auto|local|daytona -> closed loop:
        codegen -> execute -> curate -> return run record
-  POST /api/ask      -> question through the RocketRide agent pipeline
+  POST /api/ask      -> question through the RocketRide agent pipeline (+ Cognee recall when enabled)
+  POST /api/memory/recall -> semantic search over indexed papers and runs (Cognee)
 
 Run: .venv/bin/uvicorn app.server:app --port 8787
 """
@@ -192,6 +193,13 @@ def _ingest_paper_text(text: str) -> dict:
                           "arxiv": data["paper"].get("arxiv"),
                           "topic": data["paper"].get("topic"),
                           "extraction": data})
+    except Exception:
+        pass
+
+    try:
+        from app.cognee_memory import remember_paper_sync
+
+        remember_paper_sync(pid, data["paper"]["title"], text, data)
     except Exception:
         pass
 
@@ -462,7 +470,40 @@ def _parse_p2r_block(answer: str) -> dict:
 
 @app.post("/api/ask")
 async def ask(body: Ask):
-    return {"answer": await _agent_chat(PIPE, body.question)}
+    from app.cognee_memory import is_enabled, recall_context
+
+    question = body.question.strip()
+    memory = ""
+    if is_enabled():
+        memory = await recall_context(question)
+    prompt = question
+    if memory:
+        prompt = (
+            "You have semantic memory from indexed papers and experiment runs (Cognee). "
+            "Use it together with Neo4j graph queries. Cite exact metrics when present.\n\n"
+            f"Semantic memory:\n{memory}\n\nQuestion: {question}"
+        )
+    answer = await _agent_chat(_pipe_path(), prompt)
+    return {"answer": answer, "memory_used": bool(memory)}
+
+
+class MemoryRecall(BaseModel):
+    query: str
+    paper_id: str | None = None
+    top_k: int = 5
+
+
+@app.post("/api/memory/recall")
+async def memory_recall(body: MemoryRecall):
+    from app.cognee_memory import is_enabled, recall
+
+    if not is_enabled():
+        raise HTTPException(
+            501,
+            "Cognee memory is disabled. Set COGNEE_ENABLED=true and configure ROCKETRIDE_GATEWAY_*.",
+        )
+    snippets = await recall(body.query, paper_id=body.paper_id, top_k=body.top_k)
+    return {"query": body.query, "results": snippets, "count": len(snippets)}
 
 
 INVESTIGATE_PIPE = os.path.join(ROOT, "pipelines", "paper-investigate.pipe")
