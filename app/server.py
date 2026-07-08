@@ -502,6 +502,12 @@ async def ask(body: Ask):
         answer = answer_ask(question)
     if memory and not answer.startswith("[semantic") and not answer.startswith("**Cognee"):
         answer = f"[semantic memory ✓]\n\n{answer}"
+    try:
+        from app.cognee_memory import log_session_qa_sync
+
+        log_session_qa_sync(question, answer)
+    except Exception:
+        pass
     return {"answer": answer, "memory_used": bool(memory), "grounded": grounded}
 
 

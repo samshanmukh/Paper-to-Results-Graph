@@ -23,6 +23,90 @@ function notImplemented(msg: string) {
   return json({ detail: msg }, 501);
 }
 
+/** Cognee Cloud session logging — Sessions tab needs POST /api/v1/remember/entry (qa/trace). */
+function cogneeReady(ctx: any): boolean {
+  return (
+    ctx?.env?.COGNEE_ENABLED === "true" &&
+    !!ctx.env.COGNEE_SERVICE_URL &&
+    !!ctx.env.COGNEE_API_KEY
+  );
+}
+
+async function cogneeLogSession(
+  ctx: any,
+  question: string,
+  answer: string,
+) {
+  if (!cogneeReady(ctx)) return;
+  const base = String(ctx.env.COGNEE_SERVICE_URL).replace(/\/$/, "");
+  const dataset = ctx.env.COGNEE_DATASET || "default_dataset";
+  const sessionId = ctx.env.COGNEE_SESSION_ID || "verigraph-cloud-demo";
+  try {
+    const res = await fetch(`${base}/api/v1/remember/entry`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Api-Key": ctx.env.COGNEE_API_KEY,
+      },
+      body: JSON.stringify({
+        entry: { type: "qa", question, answer: answer.slice(0, 8000) },
+        dataset_name: dataset,
+        session_id: sessionId,
+      }),
+    });
+    if (!res.ok) {
+      console.error("cognee remember/entry", res.status, await res.text());
+    }
+  } catch (e) {
+    console.error("cognee session log failed", e);
+  }
+}
+
+async function cogneeAugmentAsk(ctx: any, question: string, answer: string): Promise<string> {
+  if (!cogneeReady(ctx) || !/cognee|semantic memory|memory recall/i.test(question)) {
+    return answer;
+  }
+  const base = String(ctx.env.COGNEE_SERVICE_URL).replace(/\/$/, "");
+  try {
+    const res = await fetch(`${base}/api/v1/search`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Api-Key": ctx.env.COGNEE_API_KEY,
+      },
+      body: JSON.stringify({
+        query: question,
+        search_type: "CHUNKS",
+        datasets: [ctx.env.COGNEE_DATASET || "default_dataset"],
+      }),
+    });
+    if (res.ok) {
+      const hits = await res.json();
+      const snippets = Array.isArray(hits)
+        ? hits
+            .slice(0, 3)
+            .map((h: any) => (typeof h === "string" ? h : h.text || h.content || JSON.stringify(h)))
+            .filter(Boolean)
+        : [];
+      if (snippets.length) {
+        return (
+          "**Cognee recall** (semantic memory):\n\n" +
+          snippets.join("\n\n---\n\n") +
+          "\n\n---\n\n" +
+          answer
+        );
+      }
+    }
+  } catch (_) {
+    /* fall through */
+  }
+  return (
+    answer +
+    "\n\n_(Cognee is configured on this deploy. Run `scripts/sync_cognee.py` locally to index papers, " +
+    "or ask a graph question — this interaction is logged to your Cognee Sessions tab.)_"
+  );
+}
+
 function buildGraph(papers: any[], runs: any[]) {
   const nodes: any[] = [];
   const edges: any[] = [];
@@ -360,10 +444,14 @@ function answerAsk(question: string, ctx: WorkspaceCtx) {
   }
 
   if (/cognee|semantic memory|memory recall/.test(q)) {
+    const evidenced = claimsWithEvidence(ctx);
     return (
-      "Cognee semantic memory runs on the **local FastAPI stack** only (not this Butterbase deploy). " +
-      "Set `COGNEE_ENABLED=true` in `.env`, run `scripts/sync_cognee.py`, then use `/api/ask` on localhost:8787.\n\n" +
-      "On this deploy, answers come from the persisted graph — try _Which claims have executable evidence?_"
+      "Cognee is **active on this cloud deploy** — each Ask / workflow action is logged to your " +
+      "**Sessions** tab on platform.cognee.ai (session `verigraph-cloud-demo`).\n\n" +
+      `Graph snapshot: ${ctx.papers.length} papers, ${evidenced.length} claims with evidence, ` +
+      `${ctx.runs.length} persisted runs.\n\n` +
+      "Run `scripts/sync_cognee.py` locally to index paper text into **Brain**. " +
+      "Try: _Which claims have executable evidence?_"
     );
   }
 
@@ -564,7 +652,15 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
       if (route.startsWith("run/")) {
         const methodId = route.slice(4);
         const hit = latestRunForMethod(runs, methodId);
-        if (hit) return json(runRowToRecord(hit));
+        if (hit) {
+          const rec = runRowToRecord(hit);
+          const checks = hit.claim_checks?.items || hit.claim_checks || [];
+          const summary =
+            `[run replay ${hit.id}] method ${methodId} ` +
+            checks.map((c: any) => `${c.verdict} ${c.claim_id}`).join(", ");
+          await cogneeLogSession(ctx, `RUN ${methodId}`, summary);
+          return json(rec);
+        }
         return json(
           {
             detail:
@@ -578,11 +674,28 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
         const body = await readJsonBody(req);
         const question = String(body.question || "").trim();
         if (!question) return json({ detail: "question is required" }, 400);
-        return json({ answer: answerAsk(question, ws), replay: true });
+        let answer = answerAsk(question, ws);
+        answer = await cogneeAugmentAsk(ctx, question, answer);
+        await cogneeLogSession(ctx, question, answer);
+        return json({ answer, replay: true, cognee_session: cogneeReady(ctx) });
       }
-      if (route === "investigate") return json(answerInvestigate(ws));
-      if (route === "brief") return json(answerBrief(ws));
-      if (route === "conduct") return json(answerConduct(ws));
+      if (route === "investigate") {
+        const r = answerInvestigate(ws);
+        await cogneeLogSession(ctx, "Investigate graph audit", r.answer);
+        return json(r);
+      }
+      if (route === "brief") {
+        const r = answerBrief(ws);
+        await cogneeLogSession(ctx, "Evidence brief", r.answer);
+        return json(r);
+      }
+      if (route === "conduct") {
+        const body = await readJsonBody(req);
+        const r = answerConduct(ws);
+        const msg = String(body.message || "Full evidence workflow");
+        await cogneeLogSession(ctx, msg, r.answer);
+        return json(r);
+      }
       return notImplemented(`POST ${route} is not available on the Butterbase read-only deploy.`);
     }
 

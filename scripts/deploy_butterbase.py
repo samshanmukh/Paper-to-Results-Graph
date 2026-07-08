@@ -78,9 +78,27 @@ def sync_data() -> None:
     print(f"  syncing {sync_runs()} runs…")
 
 
+def cognee_env_vars() -> dict[str, str]:
+    """Pass Cognee Cloud credentials to the Butterbase edge function (from .env)."""
+    keys = (
+        "COGNEE_ENABLED",
+        "COGNEE_SERVICE_URL",
+        "COGNEE_API_KEY",
+        "COGNEE_DATASET",
+        "COGNEE_SESSION_ID",
+    )
+    out: dict[str, str] = {}
+    for k in keys:
+        v = os.environ.get(k, "").strip()
+        if v:
+            out[k] = v
+    return out
+
+
 def deploy_function() -> str:
     with open(FN_PATH) as f:
         code = f.read()
+    env_vars = cognee_env_vars()
     # Remove existing function with same name if present
     try:
         code_list, res = bb_req("GET", f"/v1/{APP_ID}/functions")
@@ -92,16 +110,17 @@ def deploy_function() -> str:
     except Exception:
         pass
 
-    _, res = bb_req(
-        "POST",
-        f"/v1/{APP_ID}/functions",
-        {
-            "name": FN_NAME,
-            "description": "Verigraph read API (graph, evidence, workspace)",
-            "code": code,
-            "trigger": {"type": "http", "config": {"auth": "none"}},
-        },
-    )
+    body: dict = {
+        "name": FN_NAME,
+        "description": "Verigraph read API (graph, evidence, workspace, Cognee sessions)",
+        "code": code,
+        "trigger": {"type": "http", "config": {"auth": "none"}},
+    }
+    if env_vars:
+        body["envVars"] = env_vars
+        print(f"  cognee env: {', '.join(k for k in env_vars if k != 'COGNEE_API_KEY')}")
+
+    _, res = bb_req("POST", f"/v1/{APP_ID}/functions", body)
     url = res["url"]
     print(f"  function deployed: {url}")
     return url
