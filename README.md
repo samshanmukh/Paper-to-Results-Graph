@@ -364,7 +364,7 @@ papers/
   impl/          One .py per method: the runnable experiment
                  (curated or LLM-generated-and-cached).
 pipelines/
-  paper2result.pipe   The RocketRide agent (diagram in §7).
+  paper2result.pipe   The RocketRide agent (diagram in §7); Cognee recall augments /api/ask when enabled (§8).
 scripts/
   check_neo4j.py      Connectivity smoke test.
   check_pipeline.py   Agent pipeline smoke test.
