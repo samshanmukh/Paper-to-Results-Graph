@@ -241,6 +241,7 @@ Engineering detail worth knowing: the engine refuses to start the same pipeline 
 | **Neo4j Aura** | The product's memory: every paper, claim, conflict, run, and verdict is a node or edge | `app/db.py`, `app/graph.py`, `app/queries.py`, `app/curator.py` |
 | **Butterbase** | Two jobs: the **AI gateway** serves all LLM calls (no OpenAI key in the project), and a dedicated app (`paper2result`) archives papers + run history in Postgres tables | `app/llm.py`, `app/butterbase.py` |
 | **Daytona** | Safe hands: every generated experiment executes in a fresh, isolated sandbox — visible in the dashboard, auto-cleaned | `app/runner.py` |
+| **Bright Data** *(optional)* | Web Unlocker fallback when direct arXiv PDF/HTML downloads fail (timeouts, bot blocks) | `app/brightdata.py`, `app/arxiv.py` |
 
 ---
 
@@ -271,6 +272,9 @@ app/
                  VALIDATES / REFUTES edges into Neo4j.
   butterbase.py  Mirrors papers and run history into the paper2result
                  Butterbase app (insert-or-skip; ids are immutable).
+  arxiv.py       Fetches paper text from arXiv URLs (PDF + HTML fallbacks).
+                 Optional Bright Data Web Unlocker when BRIGHTDATA_API_TOKEN is set.
+  brightdata.py  Thin wrapper around brightdata-sdk scrape_url for paper ingestion.
   server.py      FastAPI. Endpoints: GET /api/graph, GET /api/evidence,
                  POST /api/run/{method_id}, POST /api/ask,
                  POST /api/upload | /upload-file | /upload-arxiv.
@@ -311,12 +315,13 @@ BUILD_LOOP.md    The autonomous build log — this project was built by a
 - A Butterbase account (API key + an app for the AI gateway)
 - A Daytona API key (free tier works; org must have a default region set in the dashboard)
 - RocketRide engine running locally on `:5565` (VS Code extension)
+- *(Optional)* Bright Data API token for resilient arXiv fetch (`BRIGHTDATA_API_TOKEN`)
 
 ### Setup
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-cp .env.example .env    # fill in: NEO4J_*, BUTTERBASE_*, ROCKETRIDE_*, DAYTONA_API_KEY
+cp .env.example .env    # fill in: NEO4J_*, BUTTERBASE_*, ROCKETRIDE_*, DAYTONA_API_KEY, BRIGHTDATA_API_TOKEN (optional)
 
 .venv/bin/python scripts/check_neo4j.py       # 1. can we reach the graph?
 .venv/bin/python app/graph.py --reset         # 2. load the seed papers

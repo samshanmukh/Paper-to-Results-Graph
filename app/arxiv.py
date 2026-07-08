@@ -5,6 +5,7 @@ Large PDFs can fail mid-download in some environments (IncompleteRead around
   1. Use the HTML page when the user pasted an /html/ link.
   2. Try the PDF export for abs/pdf links (chunked read + retries).
   3. Fall back to the arXiv HTML page when PDF fetch/parse fails.
+  4. Retry HTML via Bright Data Web Unlocker when BRIGHTDATA_API_TOKEN is set.
 """
 
 from __future__ import annotations
@@ -135,7 +136,27 @@ def _fetch_html_text(urls: list[str]) -> str:
             last = ValueError(f"HTML too short from {url}")
         except Exception as e:
             last = e
+        if _brightdata_ready():
+            try:
+                from app.brightdata import fetch_url_text
+
+                html = fetch_url_text(url)
+                text = html_to_text(html)
+                if len(text.strip()) >= 200:
+                    return text
+                last = ValueError(f"Bright Data HTML too short from {url}")
+            except Exception as e:
+                last = e
     raise RuntimeError(f"HTML fetch failed: {last}")
+
+
+def _brightdata_ready() -> bool:
+    try:
+        from app.brightdata import is_configured
+
+        return is_configured()
+    except Exception:
+        return False
 
 
 def _fetch_pdf_text(urls: list[str]) -> str:
