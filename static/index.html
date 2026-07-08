@@ -1247,7 +1247,13 @@ async function ask(q){
       addBubble("agent", mdLite(answer));
     }
     catch{ addBubble("agent", `agent error (HTTP ${res.status}): ${raw.slice(0,200)}`); }
-  }catch(e){ thinking.remove(); addBubble("agent", "agent error: "+e); }
+  }catch(e){ thinking.remove();
+    const msg = String(e.message||e);
+    const hint = msg.includes("Failed to fetch")
+      ? `${msg} — is the backend running? (local: uvicorn :8787; deploy: config.js → Butterbase edge function)`
+      : msg;
+    addBubble("agent", "agent error: "+hint);
+  }
   chatArea.scrollTop = chatArea.scrollHeight;
 }
 document.getElementById("ask-btn").addEventListener("click", ()=>ask());
@@ -1269,16 +1275,19 @@ document.querySelectorAll(".sug.act").forEach(s=>s.addEventListener("click", asy
     const opts = act==="conduct"
       ? {method:"POST", headers:{"Content-Type":"application/json"},
          body:JSON.stringify({message:"Full evidence workflow: investigate, run the recommended method, brief."})}
-      : {method:"POST"};
+      : {method:"POST", headers:{"Content-Type":"application/json"}, body:"{}"};
     if(act==="conduct"){
       setTab("console");
       log("$ conductor: playbook A (investigate → execute → brief)", "t-warn");
     }
     const res = await fetch(`/api/${act}`, opts);
-    const r = await res.json();
+    const raw = await res.text();
+    let r;
+    try{ r = JSON.parse(raw); }
+    catch{ throw new Error(res.ok ? "invalid JSON from server" : `HTTP ${res.status}: ${raw.slice(0,160)}`); }
     thinking.remove();
-    if(!res.ok) throw new Error(r.detail || "failed");
-    const badge = r.header_present ? `[${r.agent||AGENT_LABEL[act]}] checks parsed ✓\n\n` : "";
+    if(!res.ok) throw new Error(r.detail || r.error || `HTTP ${res.status}`);
+    const badge = r.header_present ? `[${r.agent||AGENT_LABEL[act]}] checks parsed ✓\n\n` : (r.grounded ? `[graph-grounded] ` : "");
     let answer = badge + (r.answer||"");
     if(r.payload?.recommended_method_id)
       answer += `\n\n→ recommended next run: **${r.payload.recommended_method_id}**`;
@@ -1287,7 +1296,11 @@ document.querySelectorAll(".sug.act").forEach(s=>s.addEventListener("click", asy
     if(act==="conduct"){ await loadGraph(true); await loadEvidence(); }
   }catch(e){
     thinking.remove();
-    addBubble("agent", `${AGENT_LABEL[act]} error: ${e.message}`);
+    const msg = String(e.message||e);
+    const hint = msg.includes("Failed to fetch")
+      ? `${msg} — check the API is reachable (local: uvicorn :8787 + RocketRide :5565; deploy: refresh after butterbase deploy).`
+      : msg;
+    addBubble("agent", `${AGENT_LABEL[act]} error: ${hint}`);
   }
   chatArea.scrollTop = chatArea.scrollHeight;
 }));

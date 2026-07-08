@@ -17,6 +17,8 @@ Endpoints:
 Run: .venv/bin/uvicorn app.server:app --port 8787
 """
 
+import asyncio
+import asyncio
 import os
 import sys
 
@@ -275,14 +277,21 @@ def _method_exists(method_id: str) -> bool:
 
 @app.post("/api/conduct")
 async def conduct(body: Conduct):
-    """Conductor as a VERIFIED WORKFLOW ENGINE (plan §12): deterministic
-    playbook over the specialist sub-agent pipes, with acceptance checks in
-    real code between steps, one corrective retry, and canonical-spine
-    fallbacks. Sub-agents think; Python verifies."""
+    """Conductor workflow: investigator → execute → reporter.
+
+    Uses RocketRide specialist pipes when the engine is up; falls back to
+    graph-grounded Python audit + canonical execute spine otherwise."""
+    from app.grounded_qa import agent_unavailable, answer_brief, answer_conduct
+
+    if os.environ.get("GROUNDED_AGENTS", "").lower() in ("1", "true", "yes"):
+        return answer_conduct()
+
     steps = []
 
     # STEP 1 — Investigator (checks V1/V3/V4, retry once)
     parsed = _parse_p2r_block(await _agent_chat(INVESTIGATE_PIPE, INVESTIGATE_PROMPT))
+    if agent_unavailable(parsed.get("prose") or ""):
+        return await asyncio.to_thread(answer_conduct)
     payload = parsed.get("payload") or {}
     method_id = payload.get("recommended_method_id")
     if not (parsed["header_present"] and method_id and _method_exists(method_id)):
@@ -311,8 +320,8 @@ async def conduct(body: Conduct):
                      f"recommended {method_id}")
 
     # STEP 2 — Executor: canonical spine (codegen -> sandbox -> curate)
-    record = execute(method_id, "auto")
-    curate(record)
+    record = await asyncio.to_thread(execute, method_id, "auto")
+    await asyncio.to_thread(curate, record)
     try:
         from app.butterbase import sync_run
         sync_run(record)
@@ -329,6 +338,9 @@ async def conduct(body: Conduct):
 
     # STEP 3 — Reporter (checks R1 + real ids, retry once)
     rparsed = _parse_p2r_block(await _agent_chat(BRIEF_PIPE, BRIEF_PROMPT))
+    if agent_unavailable(rparsed.get("prose") or ""):
+        rparsed = answer_brief()
+        rparsed["prose"] = rparsed["answer"]
     rpayload = rparsed.get("payload") or {}
     covered = rpayload.get("run_ids_covered") or []
     if not (rparsed["header_present"] and covered):
@@ -471,6 +483,7 @@ def _parse_p2r_block(answer: str) -> dict:
 @app.post("/api/ask")
 async def ask(body: Ask):
     from app.cognee_memory import is_enabled, recall_context
+    from app.grounded_qa import agent_unavailable, answer_ask
 
     question = body.question.strip()
     memory = ""
@@ -484,7 +497,12 @@ async def ask(body: Ask):
             f"Semantic memory:\n{memory}\n\nQuestion: {question}"
         )
     answer = await _agent_chat(_pipe_path(), prompt)
-    return {"answer": answer, "memory_used": bool(memory)}
+    grounded = agent_unavailable(answer)
+    if grounded:
+        answer = answer_ask(question)
+    if memory and not answer.startswith("[semantic") and not answer.startswith("**Cognee"):
+        answer = f"[semantic memory ✓]\n\n{answer}"
+    return {"answer": answer, "memory_used": bool(memory), "grounded": grounded}
 
 
 class MemoryRecall(BaseModel):
@@ -536,14 +554,20 @@ BRIEF_PROMPT = ("Generate the evidence brief covering all experiment runs: valid
 
 @app.post("/api/investigate")
 async def investigate():
+    from app.grounded_qa import agent_unavailable, answer_investigate
+
     answer = await _agent_chat(INVESTIGATE_PIPE, INVESTIGATE_PROMPT)
     parsed = _parse_p2r_block(answer)
+    if agent_unavailable(parsed.get("prose") or answer):
+        return answer_investigate()
     return {"answer": parsed["prose"] or answer, **{k: parsed[k] for k in
             ("agent", "status", "payload", "header_present")}}
 
 
 @app.post("/api/brief")
 async def brief():
+    from app.grounded_qa import agent_unavailable, answer_brief
+
     with get_driver() as driver:
         recs, _, _ = driver.execute_query(
             "MATCH (r:Run) RETURN count(r) AS c", database_=DATABASE)
@@ -551,5 +575,7 @@ async def brief():
             raise HTTPException(409, "no runs in the graph yet — run a method first")
     answer = await _agent_chat(BRIEF_PIPE, BRIEF_PROMPT)
     parsed = _parse_p2r_block(answer)
+    if agent_unavailable(parsed.get("prose") or answer):
+        return answer_brief()
     return {"answer": parsed["prose"] or answer, **{k: parsed[k] for k in
             ("agent", "status", "payload", "header_present")}}
