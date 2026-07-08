@@ -148,8 +148,28 @@ footer .note{font-size:13px;color:var(--muted)}
 .pad-section{padding:72px 0 24px}
 .pad-section-sm{padding:48px 0 16px}
 
+/* cognee highlight */
+.cognee-section{background:linear-gradient(165deg,#F6F3FE 0%,#FBFBF9 55%,#fff 100%);
+  border-top:1px solid var(--purple-bd);border-bottom:1px solid var(--purple-bd)}
+.cognee-grid{display:grid;grid-template-columns:1.05fr 0.95fr;gap:28px;align-items:start}
+.cognee-panel{background:#fff;border:1px solid var(--purple-bd);border-radius:16px;padding:24px;
+  box-shadow:0 18px 48px -28px rgba(108,76,241,0.45)}
+.cognee-panel h3{font-size:18px;font-weight:600;margin-bottom:12px}
+.cognee-flow{font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.75;color:var(--dim);
+  background:var(--bg2);padding:14px 16px;border-radius:10px;margin-top:14px}
+.cognee-flow .hi{color:var(--purple);font-weight:600}
+.cognee-benefits{display:grid;gap:12px;margin-top:20px}
+.cognee-benefit{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;background:#fff;
+  border:1px solid var(--border);border-radius:12px}
+.cognee-benefit strong{display:block;font-size:14px;margin-bottom:2px}
+.cognee-benefit span{font-size:13.5px;color:var(--dim);line-height:1.5}
+.cognee-benefit .ico{font-size:18px;line-height:1.2;flex:none}
+.cognee-quote{margin-top:18px;padding:16px 18px;border-left:3px solid var(--purple);
+  background:rgba(108,76,241,0.06);border-radius:0 10px 10px 0;font-size:14.5px;color:var(--dim);line-height:1.55}
+.cognee-quote strong{color:var(--ink)}
+
 @media(max-width:960px){
-  .grid-4,.grid-3,.steps{grid-template-columns:repeat(2,1fr)}
+  .grid-4,.grid-3,.steps,.cognee-grid{grid-template-columns:repeat(2,1fr)}
   .grid-4>div:nth-child(odd){border-right:1px solid var(--border)}
 }
 @media(max-width:640px){
@@ -158,6 +178,8 @@ footer .note{font-size:13px;color:var(--muted)}
   .grid-2,.grid-3,.grid-4,.steps,.compare,.status-grid{grid-template-columns:1fr}
   .hero{padding:48px 0 40px}
   .cta-box{padding:40px 24px}
+  .cognee-grid{grid-template-columns:1fr}
+  .cognee-section{padding:48px 0 20px}
   .spec-table th{display:block;width:100%;padding-bottom:4px;border:none}
   .spec-table td{display:block;padding-top:0}
 }
@@ -174,6 +196,7 @@ footer .note{font-size:13px;color:var(--muted)}
     <div class="nav-links">
       <a href="#demo">Demo</a>
       <a href="#features">Features</a>
+      <a href="#cognee">Cognee</a>
       <a href="#loop">Pipeline</a>
       <a href="#tech">Tech spec</a>
       <a href="/demo" class="btn btn-dark">Try the demo <span class="mono">→</span></a>
@@ -243,7 +266,7 @@ footer .note{font-size:13px;color:var(--muted)}
       <div class="step"><h4>Select a method</h4><p>Click the violet ◆ method node. Console tab loads the runnable spec with optional parameter overrides.</p></div>
       <div class="step"><h4>▶ RUN</h4><p>Codegen produces a single-file experiment. Daytona sandbox executes it (local subprocess fallback if unavailable).</p></div>
       <div class="step"><h4>Watch evidence flip</h4><p>A ⚡ Run node appears. Claims update to VALIDATES or REFUTES with run ids and exact metrics in the evidence cards.</p></div>
-      <div class="step"><h4>Ask the agent</h4><p>RocketRide queries Neo4j via NL→Cypher: "Which claims now have executable evidence?" Answers with run ids and numbers.</p></div>
+      <div class="step"><h4>Ask the agent</h4><p>RocketRide queries Neo4j via NL→Cypher. With Cognee enabled, semantic recall over paper text and run logs augments answers — e.g. Wilson's GD 0.000 vs Adam 0.425.</p></div>
     </div>
   </div>
 </section>
@@ -263,11 +286,64 @@ footer .note{font-size:13px;color:var(--muted)}
       <div class="card"><div class="icon" style="color:var(--green)">✓</div><div class="tag">curator.py</div><h3>Evidence curation</h3><p>Writes Run + Artifact nodes back to Neo4j with IMPLEMENTS, VALIDATES, and REFUTES edges. Failed runs are evidence too; the graph remembers what broke.</p></div>
       <div class="card"><div class="icon">📊</div><div class="tag">queries.py</div><h3>Evidence table</h3><p>Live view of which claims carry executable evidence vs. paper-only assertions. Flips in real time as runs complete, the core demo moment.</p></div>
       <div class="card"><div class="icon">🕸</div><div class="tag">static/index.html</div><h3>Interactive graph UI</h3><p>vis-network visualization with color-coded node types, edge legends (CONTRADICTS / VALIDATES), zoom controls, and tabbed side panel (Evidence · Console · Ask).</p></div>
-      <div class="card"><div class="icon" style="color:var(--purple)">◈</div><div class="tag">verigraph.pipe</div><h3>Ask the research agent</h3><p>RocketRide wave agent with internal memory, db_neo4j (natural language → Cypher), and tool_python. Answers cite claim ids, run ids, and exact metrics.</p></div>
+      <div class="card"><div class="icon" style="color:var(--purple)">◈</div><div class="tag">verigraph.pipe · cognee_memory.py</div><h3>Ask the research agent</h3><p>RocketRide wave agent with db_neo4j (NL→Cypher). Optional <strong>Cognee</strong> recall indexes paper prose and run stdout so questions like "what did Wilson show about Adam?" land with metrics even before the agent writes Cypher.</p></div>
       <div class="card"><div class="icon">↺</div><div class="tag">demo_reset.py</div><h3>Reset demo</h3><p>One-click pristine state: clears Run/Artifact nodes, reloads papers, wipes local run dirs. Evidence returns to "no runs yet" for a clean stage demo.</p></div>
       <div class="card"><div class="icon">☁</div><div class="tag">butterbase.py</div><h3>Run history mirror</h3><p>Every extraction and run auto-synced to the dedicated Butterbase <code>paper2result</code> app, papers and run history persisted outside Neo4j.</p></div>
       <div class="card"><div class="icon" style="color:var(--amber)">⇄</div><div class="tag">graph.py</div><h3>Cross-paper conflicts</h3><p>CONTRADICTS edges between claims from different papers. The graph doesn't hide disagreement; a run can adjudicate which side reproduces.</p></div>
       <div class="card"><div class="icon">🧪</div><div class="tag">demo_loop.py</div><h3>CLI closed loop</h3><p>Headless one-command loop: <code>python scripts/demo_loop.py wilson2017-m1</code> (codegen → run → curate → evidence diff, no UI required).</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="cognee" class="pad-section cognee-section">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="pill" style="margin-bottom:16px"><span style="width:6px;height:6px;border-radius:50%;background:var(--purple)"></span> HackWithBay sponsor · Cognee</div>
+      <h2>Structured graph + semantic memory</h2>
+      <p>Neo4j holds the <em>evidence graph</em> — claims, conflicts, runs, verdicts. <strong>Cognee</strong> adds a second layer: AI memory over the full text of papers and experiment logs, so the agent can reason in prose, not only in Cypher.</p>
+    </div>
+
+    <div class="cognee-grid">
+      <div>
+        <div class="cognee-benefits">
+          <div class="cognee-benefit">
+            <span class="ico">🧠</span>
+            <div><strong>Remember on ingest</strong><span>Every paper upload and every sandbox run is indexed with <code class="mono" style="font-size:11px;background:var(--bg2);padding:1px 5px;border-radius:4px">cognee.remember()</code> — claims, metrics, stdout excerpts, and verdicts tagged by paper and run id.</span></div>
+          </div>
+          <div class="cognee-benefit">
+            <span class="ico">🔍</span>
+            <div><strong>Recall before the agent answers</strong><span><code class="mono" style="font-size:11px;background:var(--bg2);padding:1px 5px;border-radius:4px">POST /api/ask</code> prepends Cognee hits to the RocketRide prompt. Ask <em>"what did Wilson show about Adam generalization?"</em> and get GD 0.000 vs Adam 0.425 without hand-writing graph queries.</span></div>
+          </div>
+          <div class="cognee-benefit">
+            <span class="ico">⚡</span>
+            <div><strong>Local embeddings, gateway LLM</strong><span>Fastembed runs on-device for vector search; graph extraction uses the same Butterbase AI gateway as extraction and codegen. Storage stays in <code class="mono" style="font-size:11px;background:var(--bg2);padding:1px 5px;border-radius:4px">.cognee/</code> — separate from Neo4j, no schema collisions.</span></div>
+          </div>
+          <div class="cognee-benefit">
+            <span class="ico">📎</span>
+            <div><strong>Backfill the corpus</strong><span><code class="mono" style="font-size:11px;background:var(--bg2);padding:1px 5px;border-radius:4px">scripts/sync_cognee.py</code> indexes existing <code class="mono" style="font-size:11px">papers/</code> and <code class="mono" style="font-size:11px">runs/</code> in one batch — demo papers and persisted Wilson runs become searchable immediately.</span></div>
+          </div>
+        </div>
+        <div class="cognee-quote">
+          <strong>How it helped us at HackWithBay:</strong> Judges could ask natural-language questions across three disagreeing optimizer papers. Cognee surfaced Wilson's counterexample metrics and AdamW generalization notes while Neo4j still owned the authoritative VALIDATES / REFUTES edges. Two memories, one product — graph for proof, Cognee for context.
+        </div>
+      </div>
+
+      <div class="cognee-panel">
+        <h3>Dual-memory architecture</h3>
+        <p style="font-size:14px;color:var(--dim);line-height:1.55;margin-bottom:4px">Neo4j answers <em>"which claim does run X validate?"</em> Cognee answers <em>"what did the paper say about test error?"</em> Together they make the Ask tab feel like talking to a lab notebook, not a database console.</p>
+        <div class="cognee-flow">
+<span class="hi">Upload / RUN</span> → app/cognee_memory.py<br>
+&nbsp;&nbsp;remember(paper text + claims)<br>
+&nbsp;&nbsp;remember(run metrics + stdout + verdicts)<br>
+<span class="hi">Ask</span> → recall(query) → RocketRide agent + db_neo4j<br>
+<span class="hi">Direct API</span> → POST /api/memory/recall
+        </div>
+        <table class="spec-table" style="margin-top:18px">
+          <tr><th>Neo4j Aura</th><td>Structured evidence: Paper, Claim, Method, Run, VALIDATES, REFUTES, CONTRADICTS</td></tr>
+          <tr><th>Cognee</th><td>Semantic index: full paper text, experiment logs, natural-language recall</td></tr>
+          <tr><th>Enable</th><td><code>COGNEE_ENABLED=true</code> + <code>ROCKETRIDE_GATEWAY_*</code> in <code>.env</code></td></tr>
+        </table>
+      </div>
     </div>
   </div>
 </section>
@@ -305,7 +381,7 @@ footer .note{font-size:13px;color:var(--muted)}
     <div class="sec-head">
       <div class="sec-label">Architecture</div>
       <h2>The closed-loop pipeline</h2>
-      <p>Eight Python modules, one RocketRide agent pipeline, four sponsor integrations, each step verified independently.</p>
+      <p>Eight Python modules, one RocketRide agent pipeline, five sponsor integrations (plus optional Cognee semantic memory), each step verified independently.</p>
     </div>
     <div class="grid-4">
       <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">01 · extract.py</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Extract</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Paper text → claims, methods, datasets, citations, claim_relations as JSON. Schema-validated; fallback method if LLM returns none.</p></div>
@@ -314,7 +390,7 @@ footer .note{font-size:13px;color:var(--muted)}
       <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">04 · runner.py</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Run</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Execute in Daytona sandbox (<code>auto</code> | <code>daytona</code> | <code>local</code>). Persist run record to <code>runs/</code> with full capture.</p></div>
       <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">05 · curator.py</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Curate</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Write Run + Artifact nodes. IMPLEMENTS → Method, VALIDATES/REFUTES → Claim, PRODUCED → Artifact (stdout capped 4k).</p></div>
       <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">06 · queries.py</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Evidence</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Canned Cypher: claims, conflicts, methods, evidence. Powers the evidence table and CLI inspection.</p></div>
-      <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">07 · db_neo4j</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Ask</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">RocketRide agent: NL → Cypher over the live graph. Wave memory + accuracy rule for exact metric quoting.</p></div>
+      <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">07 · db_neo4j + cognee</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Ask</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">RocketRide agent: NL → Cypher over the live graph. Optional Cognee recall prepends semantic hits from paper text and run logs.</p></div>
       <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">08 · butterbase.py</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Mirror</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Sync papers and runs to Butterbase <code>paper2result</code> app. Archive outside the graph; gateway also powers all LLM calls.</p></div>
     </div>
   </div>
@@ -335,6 +411,7 @@ footer .note{font-size:13px;color:var(--muted)}
         <tr><th>Neo4j Aura</th><td>Cloud graph database (<code>neo4j+s://</code>). Product <em>is</em> the graph, 8 node labels, 10+ relationship types. Label-scoped ops on shared Aura instance.</td></tr>
         <tr><th>Butterbase</th><td>AI gateway (OpenAI-compatible) for <strong>all</strong> LLM calls: extraction, codegen, agent. Dedicated <code>paper2result</code> app for papers + run history persistence.</td></tr>
         <tr><th>Daytona</th><td>Isolated sandbox execution via <code>daytona-sdk</code>. <code>--backend auto</code> selects Daytona when API key present; local subprocess fallback otherwise.</td></tr>
+        <tr><th>Cognee</th><td>Semantic memory layer — <code>remember()</code> on paper ingest and run curation; <code>recall()</code> augments <code>POST /api/ask</code>. Local fastembed vectors + gateway LLM; storage in <code>.cognee/</code>. Opt-in via <code>COGNEE_ENABLED=true</code>.</td></tr>
       </table>
     </div>
 
@@ -374,7 +451,8 @@ footer .note{font-size:13px;color:var(--muted)}
         <tr><th>GET /api/graph</th><td>Full node/edge payload for graph visualization</td></tr>
         <tr><th>GET /api/evidence</th><td>Evidence table rows (claim → verdict or "no runs yet")</td></tr>
         <tr><th>POST /api/run/{method_id}</th><td>Closed loop: codegen → execute → curate. Body: <code>{"params":{}}</code>. Query: <code>backend=auto|local|daytona</code></td></tr>
-        <tr><th>POST /api/ask</th><td>Question → RocketRide agent pipeline → graph-grounded answer</td></tr>
+        <tr><th>POST /api/ask</th><td>Question → Cognee recall (when enabled) + RocketRide agent pipeline → graph-grounded answer</td></tr>
+        <tr><th>POST /api/memory/recall</th><td>Direct semantic memory search over indexed papers and run logs</td></tr>
         <tr><th>POST /api/upload-arxiv</th><td>Fetch arXiv (HTML/PDF) → extract → load graph</td></tr>
         <tr><th>POST /api/upload-file</th><td>PDF or text file → extract → load graph</td></tr>
         <tr><th>POST /api/reset</th><td>Clear runs, reload papers, pristine evidence state</td></tr>
@@ -387,6 +465,7 @@ footer .note{font-size:13px;color:var(--muted)}
         <div class="schema" style="margin:0">
 neo4j ≥ 5.20 · fastapi ≥ 0.110 · uvicorn ≥ 0.29<br>
 rocketride ≥ 1.3 · daytona-sdk ≥ 0.10<br>
+cognee · fastembed (optional semantic memory)<br>
 openai ≥ 1.30 · anthropic ≥ 0.30 · numpy ≥ 1.26<br>
 pypdf ≥ 4.0 · python-multipart · certifi · python-dotenv
         </div>
@@ -399,7 +478,8 @@ ROCKETRIDE_URI · ROCKETRIDE_APIKEY · PIPELINE_URL<br>
 ROCKETRIDE_GATEWAY_BASE_URL · _KEY · _MODEL<br>
 ROCKETRIDE_NEO4J_URI · _USER · _PASSWORD<br>
 BUTTERBASE_API_KEY · BUTTERBASE_APP_ID · _SERVICE_KEY<br>
-P2R_BUTTERBASE_APP_ID · DAYTONA_API_KEY · XAI_API_KEY
+P2R_BUTTERBASE_APP_ID · DAYTONA_API_KEY · XAI_API_KEY<br>
+COGNEE_ENABLED (true|false) · COGNEE_DATASET_NAME
         </div>
       </div>
     </div>
@@ -413,6 +493,7 @@ P2R_BUTTERBASE_APP_ID · DAYTONA_API_KEY · XAI_API_KEY
         <tr><th>Start UI</th><td><code>.venv/bin/uvicorn app.server:app --port 8787</code> → <code>http://localhost:8787</code></td></tr>
         <tr><th>CLI loop</th><td><code>.venv/bin/python scripts/demo_loop.py wilson2017-m1</code></td></tr>
         <tr><th>Reset demo</th><td><code>.venv/bin/python scripts/reset_demo.py</code> or UI reset button</td></tr>
+        <tr><th>Sync Cognee</th><td><code>COGNEE_ENABLED=true .venv/bin/python scripts/sync_cognee.py</code> — backfill papers + runs</td></tr>
       </table>
     </div>
 
@@ -427,6 +508,7 @@ P2R_BUTTERBASE_APP_ID · DAYTONA_API_KEY · XAI_API_KEY
         <div class="status-item"><span class="status-dot ok"></span>RocketRide agent (graph Q&A)</div>
         <div class="status-item"><span class="status-dot ok"></span>Demo UI (graph + tabs + ask)</div>
         <div class="status-item"><span class="status-dot ok"></span>Butterbase gateway + mirror</div>
+        <div class="status-item"><span class="status-dot ok"></span>Cognee semantic memory (opt-in)</div>
         <div class="status-item"><span class="status-dot pending"></span>Deployed public URL</div>
       </div>
     </div>
