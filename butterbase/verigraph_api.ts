@@ -212,8 +212,17 @@ function runRowToRecord(row: any) {
 function latestRunForMethod(runs: any[], methodId: string) {
   const hits = runs.filter((r) => r.method_id === methodId);
   if (!hits.length) return null;
-  hits.sort((a, b) => String(b.id).localeCompare(String(a.id)));
-  return hits[0];
+  const successful = hits.filter(
+    (r) => !r.error && r.exit_code === 0 && (!r.status || r.status === "success"),
+  );
+  const candidates = successful.length ? successful : hits;
+  candidates.sort((a, b) => String(b.id).localeCompare(String(a.id)));
+  return candidates[0];
+}
+
+function isInfrastructureFailure(run: any) {
+  const error = String(run?.error || "");
+  return /DaytonaValidationError/i.test(error) && /disk limit exceeded|concurrency limits/i.test(error);
 }
 
 function buildEvidence(papers: any[], runs: any[]) {
@@ -740,7 +749,9 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
     const papersRes = await ctx.db.query("SELECT * FROM papers ORDER BY year, id");
     const runsRes = await ctx.db.query("SELECT * FROM runs ORDER BY id");
     const papers = papersRes.rows || [];
-    const runs = runsRes.rows || [];
+    // Quota failures are operational audit records, not scientific evidence.
+    // Keep them in Butterbase but do not render or replay them as graph runs.
+    const runs = (runsRes.rows || []).filter((run: any) => !isInfrastructureFailure(run));
     const ws = buildWorkspaceCtx(papers, runs);
 
     if (route === "health") return json({ ok: true, papers: papers.length, runs: runs.length });
