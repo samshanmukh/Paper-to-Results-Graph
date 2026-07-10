@@ -558,7 +558,7 @@ def _parse_p2r_block(answer: str) -> dict:
 
 
 @app.post("/api/ask")
-async def ask(body: Ask):
+async def ask(body: Ask, request: Request):
     from app.cognee_memory import is_enabled, recall_context
     from app.grounded_qa import agent_unavailable, answer_ask
 
@@ -582,7 +582,13 @@ async def ask(body: Ask):
     try:
         from app.cognee_memory import log_session_qa_sync
 
-        log_session_qa_sync(question, answer)
+        visitor_id = request.query_params.get("visitor", "")
+        session_id = (
+            f"verigraph-{visitor_id}"
+            if re.fullmatch(r"[0-9a-f-]{36}", visitor_id, re.IGNORECASE)
+            else None
+        )
+        log_session_qa_sync(question, answer, session_id=session_id)
     except Exception:
         pass
     return {"answer": answer, "memory_used": bool(memory), "grounded": grounded}

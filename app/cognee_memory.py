@@ -316,7 +316,7 @@ def recall_context_sync(query: str, *, paper_id: str | None = None, top_k: int =
         return ""
 
 
-async def log_session_qa(question: str, answer: str) -> None:
+async def log_session_qa(question: str, answer: str, *, session_id: str | None = None) -> None:
     """Write a qa entry so the session appears on platform.cognee.ai Sessions tab."""
     if not is_enabled() or not is_cloud_mode():
         return
@@ -327,7 +327,7 @@ async def log_session_qa(question: str, answer: str) -> None:
     payload = {
         "entry": {"type": "qa", "question": question, "answer": answer[:8000]},
         "dataset_name": dataset_name(),
-        "session_id": os.environ.get("COGNEE_SESSION_ID") or "verigraph-cloud-demo",
+        "session_id": session_id or os.environ.get("COGNEE_SESSION_ID") or "verigraph-cloud-demo",
     }
     req = urllib.request.Request(
         url,
