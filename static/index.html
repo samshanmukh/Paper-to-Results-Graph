@@ -9,12 +9,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/motion@12.42.2/dist/motion.js"></script>
 <style>
 :root{
-  --bg:#F4F4F1;--ink:#16161A;--dim:#8A8A92;--faint:#A0A0A8;
+  --bg:#080B10;--ink:#E9EDF5;--dim:#8B94A5;--faint:#667083;
   --purple:#6C4CF1;--purple-dim:#5636d6;--green:#1F9D5B;--red:#D9483B;
   --claim-bg:#FDF6E3;--claim-bd:#EAD59A;--claim-ink:#8A6410;
-  --panel:#fff;--graph-bg:#FBFBF9;
+  --panel:#10141B;--graph-bg:#090D12;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
@@ -35,20 +36,20 @@ a:hover{color:var(--purple-dim)}
 
 /* top bar */
 .topbar{height:56px;flex:none;display:flex;align-items:center;justify-content:space-between;
-  padding:0 20px;background:#fff;border-bottom:1px solid rgba(20,20,26,0.10)}
+  padding:0 20px;background:#0D1118;border-bottom:1px solid rgba(148,163,184,.14)}
 .brand{display:flex;align-items:center;gap:11px}
 .brand a{display:flex;align-items:center;gap:8px;color:var(--ink)}
 .brand-dot{width:10px;height:10px;border-radius:50%;background:var(--purple);display:inline-block}
 .brand-name{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:15px}
 .badge{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--dim);
-  background:#F1F1EE;padding:3px 8px;border-radius:6px}
+  background:#171C24;padding:3px 8px;border:1px solid rgba(148,163,184,.12);border-radius:6px}
 .topbar-right{display:flex;align-items:center;gap:10px}
 .db-status{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#8A8A92;
   display:flex;align-items:center;gap:6px}
 .db-dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
-.btn-ghost{font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:#4A4A52;
-  background:#fff;border:1px solid rgba(20,20,26,0.16);padding:7px 13px;border-radius:8px;cursor:pointer}
-.btn-ghost:hover{background:#F4F4F1}
+.btn-ghost{font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:#B1B9C7;
+  background:#121720;border:1px solid rgba(148,163,184,.18);padding:7px 13px;border-radius:8px;cursor:pointer}
+.btn-ghost:hover{background:#1A202B;color:#fff}
 .btn-dark{font-size:13px;color:#fff;background:var(--ink);border:none;
   padding:7px 13px;border-radius:8px;cursor:pointer;font-weight:500}
 .btn-ghost:disabled{opacity:0.45;cursor:not-allowed}
@@ -70,19 +71,19 @@ a:hover{color:var(--purple-dim)}
 /* graph column */
 .graph-col{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--graph-bg)}
 .legend-strip{flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:16px;
-  padding:9px 16px;background:#fff;border-bottom:1px solid rgba(20,20,26,0.08);
-  font-size:12px;color:#4A4A52}
+  padding:9px 16px;background:#0F141B;border-bottom:1px solid rgba(148,163,184,.12);
+  font-size:12px;color:#AAB2C0}
 .legend-strip .title{font-weight:600;font-size:11px;letter-spacing:0.04em;
   color:var(--dim);text-transform:uppercase}
 .legend-item{display:flex;align-items:center;gap:7px}
-.legend-paper{width:12px;height:12px;border-radius:4px;background:#fff;border:1px solid rgba(20,20,26,0.3)}
-.legend-claim{width:12px;height:12px;border-radius:999px;background:var(--claim-bg);border:1px solid var(--claim-bd)}
+.legend-paper{width:12px;height:12px;border-radius:4px;background:#171D26;border:1px solid #647086}
+.legend-claim{width:12px;height:12px;border-radius:999px;background:#2A2416;border:1px solid #D8A21C}
 .legend-method{width:12px;height:12px;border-radius:3px;transform:rotate(45deg);background:var(--purple)}
 .legend-contradicts{width:20px;height:0;border-top:2px dashed #D8A21C}
 .legend-validates{width:20px;height:0;border-top:2px solid var(--green)}
 .legend-hint{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--faint)}
 .evidence-strip{display:flex;align-items:center;gap:8px;margin-left:12px;padding:5px 11px;
-  background:#F6F3FE;border:1px solid #E1D8FB;border-radius:8px;font-size:12px}
+  background:#17142A;border:1px solid rgba(108,76,241,.45);border-radius:8px;font-size:12px}
 .evidence-strip .strip-label{color:var(--dim);font-weight:500}
 .evidence-counter{font-family:'IBM Plex Mono',monospace;font-weight:600;color:var(--green);display:inline-flex;gap:1px}
 .evidence-counter.flip .count-digit{animation:countFlip .45s ease}
@@ -97,23 +98,45 @@ a:hover{color:var(--purple-dim)}
   pointer-events:none;transition:opacity .3s}
 #demo-toast.hidden{opacity:0}
 .graph-area{flex:1;min-height:0;position:relative;overflow:hidden;
-  background-image:radial-gradient(circle at 1px 1px,rgba(20,20,26,0.055) 1px,transparent 0);
+  background-color:#090D12;
+  background-image:radial-gradient(circle at 1px 1px,rgba(148,163,184,.14) 1px,transparent 0);
   background-size:24px 24px}
 #net{position:absolute;inset:0}
 #zoom-ctl{position:absolute;right:14px;top:14px;z-index:5;display:flex;flex-direction:column;gap:6px}
 #zoom-ctl button{width:32px;height:32px;border:1px solid rgba(20,20,26,0.16);border-radius:8px;
-  background:#fff;color:var(--ink);font-size:15px;font-weight:600;cursor:pointer;line-height:1}
-#zoom-ctl button:hover{background:var(--ink);color:#fff}
+  background:#111720;color:#C6CEDA;font-size:15px;font-weight:600;cursor:pointer;line-height:1}
+#zoom-ctl button:hover{background:#202838;color:#fff}
 #zoom-ctl button.fit{font-size:11px}
 
+/* Studio playback controls */
+#studio-playback{position:absolute;left:14px;top:14px;z-index:7;display:flex;align-items:center;
+  gap:8px;padding:6px;background:rgba(12,16,23,.92);border:1px solid rgba(148,163,184,.16);
+  border-radius:11px;box-shadow:0 12px 32px rgba(0,0,0,.3);backdrop-filter:blur(12px)}
+#graph-play{width:30px;height:30px;border:0;border-radius:7px;background:#EEF4FF;color:#172033;
+  display:grid;place-items:center;font-size:12px;cursor:pointer;transition:transform .15s,background .15s}
+#graph-play:hover{transform:scale(1.05);background:#fff}
+#graph-play:disabled{opacity:.55;cursor:wait;transform:none}
+.play-count{min-width:31px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8F99AA}
+#formation-inspector{position:absolute;right:60px;bottom:18px;z-index:7;width:min(330px,calc(100% - 32px));
+  padding:16px 17px;background:rgba(15,20,27,.94);border:1px solid rgba(148,163,184,.18);
+  border-left:2px solid #6C4CF1;border-radius:11px;box-shadow:0 18px 44px rgba(0,0,0,.4);
+  backdrop-filter:blur(14px);opacity:0;transform:translateY(10px);pointer-events:none}
+.inspector-kicker{display:flex;justify-content:space-between;font-family:'IBM Plex Mono',monospace;
+  font-size:9px;color:#788396;letter-spacing:.05em;text-transform:uppercase}
+#formation-title{font-size:14px;font-weight:600;color:#F0F4FA;margin:9px 0 6px}
+#formation-detail{font-size:11px;color:#8F99AA;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.inspector-state{display:flex;justify-content:space-between;margin-top:13px;padding-top:10px;
+  border-top:1px solid rgba(148,163,184,.12);font-family:'IBM Plex Mono',monospace;font-size:9px}
+#formation-type{color:#7E899B}#formation-state{color:#75D59B}
+
 /* side panel */
-.side-panel{width:440px;flex:none;background:#fff;border-left:1px solid rgba(20,20,26,0.10);
+.side-panel{width:440px;flex:none;background:#10141B;border-left:1px solid rgba(148,163,184,.12);
   display:flex;flex-direction:column}
-.tabs{height:48px;flex:none;display:flex;border-bottom:1px solid rgba(20,20,26,0.10)}
+.tabs{height:48px;flex:none;display:flex;border-bottom:1px solid rgba(148,163,184,.12)}
 .tab-btn{flex:1;font-family:'IBM Plex Sans',sans-serif;font-size:13.5px;font-weight:500;
-  color:var(--dim);background:#FBFBF9;border:none;border-bottom:2px solid transparent;
+  color:var(--dim);background:#0D1118;border:none;border-bottom:2px solid transparent;
   cursor:pointer;height:100%;transition:all .12s}
-.tab-btn.active{font-weight:600;color:var(--ink);background:#fff;border-bottom-color:var(--purple)}
+.tab-btn.active{font-weight:600;color:var(--ink);background:#121720;border-bottom-color:var(--purple)}
 .tab-body{flex:1;min-height:0;overflow-y:auto}
 .tab-pane{display:none;padding:18px 20px}
 .tab-pane.active{display:block}
@@ -250,12 +273,31 @@ div.vis-tooltip{font-size:11px!important;color:var(--ink)!important;background:#
   padding:8px 11px!important;max-width:340px;white-space:normal!important;
   box-shadow:0 4px 12px rgba(0,0,0,0.08)!important;line-height:1.55}
 
+/* dark studio surfaces */
+.tab-body,.tab-pane{background:#10141B}
+.evidence-sub,.papers-sub,.method-desc,.paper-row-meta{color:#7F899A}
+.papers-panel{border-bottom-color:rgba(148,163,184,.12)}
+.paper-row,.ev-card{background:#131922;border-color:rgba(148,163,184,.12)}
+.paper-row:hover{background:#18202B}.paper-row.selected{background:#1D1931;border-color:#6C4CF1}
+.paper-row-title,.ev-text{color:#D7DDE8}.btn-remove{background:#171D26;color:#8B94A5;border-color:rgba(148,163,184,.16)}
+.ev-card.validated{background:#102019;border-color:#286B48}
+.ev-badge.none{background:#1B212B;color:#8B94A5;border-color:rgba(148,163,184,.16)}
+.method-card{background:#18142A;border-color:rgba(108,76,241,.45)}
+#m-params input,#ask-input,#arxiv-url{background:#0D1219;color:#E9EDF5;border-color:rgba(148,163,184,.18)}
+.chat-bubble.agent{background:#171D26;color:#DCE2EC}.suggest-area{border-top-color:rgba(148,163,184,.12)}
+.sug{color:#AAB3C1;background:#141A23;border-color:rgba(148,163,184,.14)}.sug:hover{background:#1B2230}
+.sug.act{background:#1C1731;border-color:#5540B7;color:#A995FF}
+#modal{background:#111720;border-color:rgba(148,163,184,.18)}#modal .m-head,#modal .m-foot{border-color:rgba(148,163,184,.12)}
+#drop-zone{background:#0D1219;border-color:rgba(148,163,184,.22)}#drop-zone:hover,#drop-zone.over{background:#18142A}
+#empty-workspace{background:rgba(9,13,18,.93)}
+div.vis-tooltip{color:#E9EDF5!important;background:#151B24!important;border-color:#394457!important}
+
 /* email access gate */
 #access-gate{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;
   padding:24px;background:rgba(22,22,26,.58);backdrop-filter:blur(12px)}
 #access-gate.hidden{display:none}
 .gate-card{width:min(460px,100%);background:#fff;border:1px solid rgba(20,20,26,.12);
-  border-radius:18px;padding:30px;box-shadow:0 30px 80px -25px rgba(20,20,26,.55)}
+  color:#16161A;border-radius:18px;padding:30px;box-shadow:0 30px 80px -25px rgba(20,20,26,.55)}
 .gate-mark{width:42px;height:42px;display:grid;place-items:center;border-radius:12px;
   color:#fff;background:var(--purple);font-family:'IBM Plex Mono',monospace;font-weight:600;margin-bottom:20px}
 .gate-card h1{font-size:25px;letter-spacing:-.025em;margin-bottom:8px}
@@ -331,6 +373,16 @@ div.vis-tooltip{font-size:11px!important;color:var(--ink)!important;background:#
         <button class="btn-ghost" id="panel-toggle" title="Hide side panel for more graph space">◀ Hide panel</button>
       </div>
       <div class="graph-area">
+        <div id="studio-playback" aria-label="Graph playback controls">
+          <button id="graph-play" type="button" title="Replay graph formation" aria-label="Replay graph formation">▶</button>
+          <span class="play-count"><span id="play-step">0</span>/<span id="play-total">0</span></span>
+        </div>
+        <div id="formation-inspector" aria-live="polite">
+          <div class="inspector-kicker"><span id="formation-step">Graph ready</span><span>Studio play</span></div>
+          <div id="formation-title">Build the evidence graph</div>
+          <div id="formation-detail">Press play to watch nodes and connections form from top to bottom.</div>
+          <div class="inspector-state"><span id="formation-type">GRAPH</span><span id="formation-state">READY</span></div>
+        </div>
         <div id="demo-toast" class="hidden"></div>
         <div id="empty-workspace">
           <h3>Your workspace is empty</h3>
@@ -449,6 +501,7 @@ const DEMO_METHOD_ID = "wilson2017-m1";
 let network, nodesDS, edgesDS, selectedMethod=null, running=false, activeTab='evidence';
 let methodParams = [], lastEvidence = {}, guidedDemoRunning = false, panelCollapsed = false;
 let prevEvidenceValid = 0, graphAnimating = false, selectedPaper = null, workspacePapers = [];
+let formationPlaying = false;
 const BB_VIEW_KEY = "vg_bb_view";
 const VISITOR_ID_KEY = "vg_visitor_id";
 const VISITOR_EMAIL_KEY = "vg_visitor_email";
@@ -535,6 +588,30 @@ function filterEvidenceByView(rows){
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function animateValue(from, to, options={}){
+  if(window.Motion?.animate){
+    return new Promise(resolve=>{
+      Motion.animate(from, to, {
+        duration:options.duration ?? .35,
+        ease:options.ease || [0.22, 1, 0.36, 1],
+        onUpdate:options.onUpdate,
+        onComplete:resolve,
+      });
+    });
+  }
+  return new Promise(resolve=>{
+    const started = performance.now();
+    const duration = (options.duration ?? .35) * 1000;
+    function tick(now){
+      const t = Math.min(1, (now-started)/duration);
+      const eased = 1-Math.pow(1-t,3);
+      options.onUpdate?.(from+(to-from)*eased);
+      if(t<1) requestAnimationFrame(tick); else resolve();
+    }
+    requestAnimationFrame(tick);
+  });
+}
 
 function claimShortLabel(text){
   if(!text) return "Claim";
@@ -633,22 +710,60 @@ async function animateEdgeIn(edgeId, ms=600){
   const fullW = e._fullWidth ?? e.width ?? 1;
   const fullLabel = e._fullLabel ?? e.label ?? "";
   edgesDS.update({id:edgeId, color:{color, opacity:0.04}, width:0.4, label:""});
-  const t0 = performance.now();
-  await new Promise(resolve=>{
-    function frame(now){
-      const t = Math.min(1, (now - t0) / ms);
-      const ease = 1 - Math.pow(1 - t, 3);
-      edgesDS.update({
-        id:edgeId,
-        color:{color, opacity:0.04 + (fullOp - 0.04) * ease},
-        width:0.4 + (fullW - 0.4) * ease,
-        label:t > 0.7 ? fullLabel : "",
-      });
-      if(t < 1) requestAnimationFrame(frame);
-      else resolve();
-    }
-    requestAnimationFrame(frame);
-  });
+  await animateValue(0, 1, {duration:ms/1000, onUpdate:t=>{
+    edgesDS.update({
+      id:edgeId,
+      color:{color, opacity:0.04 + (fullOp - 0.04) * t},
+      width:0.4 + (fullW - 0.4) * t,
+      label:t > 0.7 ? fullLabel : "",
+    });
+  }});
+}
+
+function edgeDepth(edge){
+  const from = nodesDS?.get(edge.from);
+  const to = nodesDS?.get(edge.to);
+  return Math.max(from?.y ?? 0, to?.y ?? 0);
+}
+
+function edgeCaption(edge){
+  const from = nodesDS?.get(edge.from)?._raw?.caption || nodesDS?.get(edge.from)?._raw?.key || "node";
+  const to = nodesDS?.get(edge.to)?._raw?.caption || nodesDS?.get(edge.to)?._raw?.key || "node";
+  return `${String(from).slice(0,32)} → ${String(to).slice(0,32)}`;
+}
+
+function showFormationStep(step, total, title, detail, type, state="FORMING"){
+  document.getElementById("play-step").textContent = step;
+  document.getElementById("play-total").textContent = total;
+  document.getElementById("formation-step").textContent = step ? `Step ${step} of ${total}` : "Graph ready";
+  document.getElementById("formation-title").textContent = title;
+  document.getElementById("formation-detail").textContent = detail;
+  document.getElementById("formation-type").textContent = type;
+  document.getElementById("formation-state").textContent = state;
+  const panel = document.getElementById("formation-inspector");
+  if(window.Motion?.animate){
+    Motion.animate(panel, {opacity:[0.55,1], y:[8,0]}, {duration:.28, ease:[0.22,1,0.36,1]});
+  }else{
+    panel.style.opacity = 1;
+    panel.style.transform = "translateY(0)";
+  }
+}
+
+async function revealNodeIn(node, ms=360){
+  const fullColor = node._fullColor || node.color;
+  const fullSize = node._fullSize ?? node.size ?? 12;
+  const targetY = node.y;
+  nodesDS.update({id:node.id, color:hiddenColor(fullColor), size:Math.max(4,fullSize*.3), y:targetY+22, opacity:.04});
+  await animateValue(0,1,{duration:ms/1000,onUpdate:t=>{
+    nodesDS.update({
+      id:node.id,
+      color:{...fullColor,opacity:.08+.92*t},
+      size:Math.max(4,fullSize*.3)+(fullSize-Math.max(4,fullSize*.3))*t,
+      y:targetY+22*(1-t),
+      opacity:.08+.92*t,
+    });
+  }});
+  nodesDS.update({id:node.id,color:fullColor,size:fullSize,y:targetY,opacity:1});
 }
 
 async function revealEdgesCinematic(edges, ms=520){
@@ -663,11 +778,89 @@ async function revealEdgesCinematic(edges, ms=520){
     label:"",
   }));
   edgesDS.add(prepared);
-  const sorted = [...prepared].sort((a,b)=>(order[a._rel]??9)-(order[b._rel]??9));
+  const sorted = [...prepared].sort((a,b)=>
+    edgeDepth(a)-edgeDepth(b) || (order[a._rel]??9)-(order[b._rel]??9));
   for(const e of sorted){
     await animateEdgeIn(e.id, ms);
     await sleep(30);
   }
+}
+
+function syncFormationControls(){
+  const total = (nodesDS?.length || 0) + (edgesDS?.length || 0);
+  document.getElementById("play-total").textContent = total;
+  document.getElementById("play-step").textContent = total;
+  if(total && !formationPlaying){
+    showFormationStep(total,total,"Evidence graph ready","Press replay to watch the graph assemble from top to bottom.","GRAPH","READY");
+  }
+  return total;
+}
+
+async function playGraphFormation(){
+  if(formationPlaying || !nodesDS || !edgesDS || !network) return;
+  formationPlaying = true;
+  const play = document.getElementById("graph-play");
+  play.disabled = true;
+  play.textContent = "■";
+
+  const nodes = nodesDS.get().sort((a,b)=>(a.y||0)-(b.y||0)||(a.x||0)-(b.x||0));
+  const edges = edgesDS.get().sort((a,b)=>edgeDepth(a)-edgeDepth(b));
+  const total = nodes.length + edges.length;
+  let step = 0;
+  document.getElementById("play-total").textContent = total;
+  network.unselectAll();
+
+  for(const node of nodes){
+    const color = node._fullColor || node.color;
+    const size = node._fullSize ?? node.size ?? 12;
+    nodesDS.update({
+      id:node.id,
+      _fullColor:color,
+      _fullSize:size,
+      color:hiddenColor(color),
+      size:Math.max(4,size*.25),
+      opacity:.04,
+    });
+  }
+  edgesDS.clear();
+  showFormationStep(0,total,"Building evidence graph","Nodes are ordered by graph depth, then connected in sequence.","STUDIO PLAY","PLAYING");
+  await smoothFit({duration:500});
+
+  for(const node of nodes){
+    step++;
+    const raw = node._raw || {};
+    showFormationStep(
+      step,total,
+      raw.caption || raw.props?.name || raw.key || raw.label || "Graph node",
+      raw.props?.text || raw.props?.description || raw.props?.title || "Adding node to the evidence graph.",
+      raw.label || "NODE",
+    );
+    await revealNodeIn(node,260);
+    await sleep(35);
+  }
+
+  for(const edge of edges){
+    step++;
+    const prepared = {
+      ...edge,
+      _fullLabel:edge._fullLabel ?? edge.label,
+      _fullOpacity:edge._fullOpacity ?? edge.color?.opacity ?? 1,
+      _fullWidth:edge._fullWidth ?? edge.width ?? 1,
+      color:{color:edge.color?.color || "#64748B",opacity:.03},
+      width:.35,
+      label:"",
+    };
+    edgesDS.add(prepared);
+    showFormationStep(step,total,`${edge._rel || "Connection"} edge`,edgeCaption(edge),edge._rel || "EDGE");
+    await animateEdgeIn(edge.id,230);
+    await sleep(28);
+  }
+
+  showFormationStep(total,total,"Evidence graph connected","Every paper, claim, method, run, and verdict is now interactive.","GRAPH","CONNECTED");
+  await smoothFit({duration:650});
+  play.disabled = false;
+  play.textContent = "↻";
+  formationPlaying = false;
 }
 
 async function cinematicTourToMethod(methodId){
@@ -811,16 +1004,10 @@ function hiddenColor(c){
 }
 
 async function revealNodes(nodeList, stagger=42){
-  const sorted = [...nodeList].sort((a,b)=>{
-    const ta = animTier(a._raw), tb = animTier(b._raw);
-    return ta !== tb ? ta - tb : (a.x||0) - (b.x||0);
-  });
+  const sorted = [...nodeList].sort((a,b)=>(a.y||0)-(b.y||0) || (a.x||0)-(b.x||0));
   for(const n of sorted){
     if(!nodesDS.get(n.id)) continue;
-    const full = n._fullColor || n.color;
-    const size = n._fullSize ?? n.size ?? 12;
-    nodesDS.update({id:n.id, color:full, size, opacity:1});
-    await sleep(stagger);
+    await revealNodeIn(n, Math.max(180,stagger*5));
   }
 }
 
@@ -829,16 +1016,8 @@ async function tweenPositions(targets, ms=420){
     const cur = nodesDS.get(n.id);
     if(!cur || cur.x === n.x && cur.y === n.y) return null;
     const sx = cur.x, sy = cur.y;
-    return new Promise(resolve=>{
-      const t0 = performance.now();
-      function frame(now){
-        const t = Math.min(1, (now - t0) / ms);
-        const e = 1 - Math.pow(1 - t, 3);
-        nodesDS.update({id:n.id, x:sx + (n.x - sx) * e, y:sy + (n.y - sy) * e});
-        if(t < 1) requestAnimationFrame(frame);
-        else resolve();
-      }
-      requestAnimationFrame(frame);
+    return animateValue(0,1,{duration:ms/1000,onUpdate:t=>
+      nodesDS.update({id:n.id,x:sx+(n.x-sx)*t,y:sy+(n.y-sy)*t})
     });
   }).filter(Boolean);
   await Promise.all(jobs);
@@ -876,7 +1055,7 @@ async function animateGraph(nodes, edges, {initial=false, focusNew=false, existi
     await revealNodes(staged, cinematic ? 55 : 38);
     const styledEdges = edges.map(e=>({...e, _rel: edgeRel(e) || e._rel}));
     if(cinematic) await revealEdgesCinematic(styledEdges, 500);
-    else edgesDS.add(styledEdges);
+    else await revealEdgesCinematic(styledEdges, 110);
     if(!skipFit) await smoothFit({duration: cinematic ? 1800 : 700});
   } else {
     const fresh = new Set(nodes.map(n=>n.id));
@@ -927,6 +1106,7 @@ async function animateGraph(nodes, edges, {initial=false, focusNew=false, existi
       }
     }
   }
+  syncFormationControls();
   graphAnimating = false;
 }
 
@@ -956,8 +1136,8 @@ function buildLayout(g){
     nodes.push({
       id:p.eid, x, y:ROW_Y.paper, fixed:true, shape:"box",
       label:wrap(p.caption, 20) + "\n" + (p.props.year||""),
-      color:{background:"#fff", border:"rgba(20,20,26,0.22)", highlight:{background:"#F6F3FE", border:"#6C4CF1"}},
-      font:{color:"#16161A", size:13, face:"IBM Plex Mono"},
+      color:{background:"#151B24", border:"#465166", highlight:{background:"#211B3D", border:"#8B6CF8"}},
+      font:{color:"#E9EDF5", size:13, face:"IBM Plex Mono"},
       margin:10, borderWidth:1.5, widthConstraint:{maximum:185},
       title:(p.props.title||"") + " (" + (p.props.arxiv||"") + ")",
       _raw:p,
@@ -974,8 +1154,8 @@ function buildLayout(g){
       nodes.push({
         id:c.eid, x:cx, y:cy, fixed:true, shape:"dot", size:CLAIM_DOT,
         label,
-        color:{background:"#FDF6E3", border:"#EAD59A", highlight:{background:"#E7F6EC", border:"#6C4CF1"}},
-        font:{color:"#8A6410", size:10, face:"IBM Plex Sans", vadjust:6},
+        color:{background:"#292315", border:"#B68A25", highlight:{background:"#312719", border:"#F0BC45"}},
+        font:{color:"#E7C979", size:10, face:"IBM Plex Sans", vadjust:6},
         title: (c.key ? c.key + " — " : "") + (c.props.text || ""), _raw:c,
       });
       y += slot;
@@ -1023,8 +1203,8 @@ function buildLayout(g){
       label: runShortLabel(r, verdict),
       color:{background:ok?"#1F9D5B":"#D9483B", border:ok?"#17784a":"#a83228",
         highlight:{background:ok?"#17784a":"#a83228", border:ok?"#1F9D5B":"#D9483B"}},
-      font:{color:ok?"#17784a":"#a83228", size:10, face:"IBM Plex Mono", bold:true, vadjust:8,
-        strokeWidth:4, strokeColor:"#FBFBF9"},
+      font:{color:ok?"#73D59A":"#F08A80", size:10, face:"IBM Plex Mono", bold:true, vadjust:8,
+        strokeWidth:4, strokeColor:"#090D12"},
       borderWidth:2, shadow:{enabled:true, color:ok?"rgba(31,157,91,.35)":"rgba(217,72,59,.35)", size:16, x:0, y:0},
       title:`${r.key} · ${verdict||"run"} · ${r.props.backend} · ${r.props.status} · ${r.props.duration_s}s`,
       _raw:r,
@@ -1034,9 +1214,9 @@ function buildLayout(g){
 }
 
 const EDGE_STYLE = {
-  FROM:        {color:"#E0E0E4", opacity:.9,  width:1,   arrows:false, smooth:{type:"cubicBezier", roundness:.3}},
-  DESCRIBED_IN:{color:"#DADAD0", opacity:.8,  width:1,   arrows:false, dashes:[2,4], smooth:{type:"cubicBezier", roundness:.25}},
-  CITES:       {color:"#C9C9D0", opacity:.8,  width:1,   arrows:true,  dashes:[2,4], smooth:{type:"curvedCW", roundness:.7}},
+  FROM:        {color:"#566174", opacity:.9,  width:1,   arrows:false, smooth:{type:"cubicBezier", roundness:.3}},
+  DESCRIBED_IN:{color:"#4C5668", opacity:.8,  width:1,   arrows:false, dashes:[2,4], smooth:{type:"cubicBezier", roundness:.25}},
+  CITES:       {color:"#657086", opacity:.8,  width:1,   arrows:true,  dashes:[2,4], smooth:{type:"curvedCW", roundness:.7}},
   CONTRADICTS: {color:"#D8A21C", opacity:1,   width:2,   arrows:true,  dashes:[6,5], label:true, smooth:{type:"curvedCW", roundness:.82}},
   IMPLEMENTS:  {color:"#6C4CF1", opacity:.95, width:2,   arrows:true,  smooth:{type:"cubicBezier", roundness:.3}},
   VALIDATES:   {color:"#1F9D5B", opacity:1,   width:2.6, arrows:true,  label:true, smooth:{type:"cubicBezier", roundness:.35}},
@@ -1052,7 +1232,7 @@ function edgeStyle(e){
     _fullWidth: s.width,
     label:s.label ? e.rel : "",
     _fullLabel: s.label ? e.rel : "",
-    font:{size:8.5, color:s.color, face:"IBM Plex Sans", strokeWidth:5, strokeColor:"#FBFBF9"},
+    font:{size:8.5, color:s.color, face:"IBM Plex Sans", strokeWidth:5, strokeColor:"#090D12"},
     color:{color:s.color, opacity:s.opacity},
     width:s.width, dashes:s.dashes||false, smooth:s.smooth,
     arrows:{to:{enabled:!!s.arrows, scaleFactor:.45}},
@@ -1625,6 +1805,7 @@ function togglePanel(collapsed){
 document.getElementById("new-workspace-btn").addEventListener("click", doNewWorkspace);
 document.getElementById("load-demo-btn").addEventListener("click", ()=>doLoadDemo(false));
 document.getElementById("guided-demo-btn").addEventListener("click", runGuidedDemo);
+document.getElementById("graph-play").addEventListener("click", playGraphFormation);
 document.getElementById("panel-toggle").addEventListener("click", ()=>togglePanel());
 document.getElementById("empty-add-btn").addEventListener("click", ()=>{
   document.getElementById("modal-title").textContent = "Add a paper";
