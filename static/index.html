@@ -503,6 +503,7 @@ let methodParams = [], lastEvidence = {}, guidedDemoRunning = false, panelCollap
 let prevEvidenceValid = 0, graphAnimating = false, selectedPaper = null, workspacePapers = [];
 let formationPlaying = false;
 const BB_VIEW_KEY = "vg_bb_view";
+const BB_REMOVED_PAPERS_KEY = "vg_bb_removed_papers";
 const VISITOR_ID_KEY = "vg_visitor_id";
 const VISITOR_EMAIL_KEY = "vg_visitor_email";
 
@@ -568,6 +569,13 @@ function setBbView(mode){
 function getBbView(){
   return sessionStorage.getItem(BB_VIEW_KEY) || "full";
 }
+function getRemovedPapers(){
+  try{return new Set(JSON.parse(sessionStorage.getItem(BB_REMOVED_PAPERS_KEY)||"[]"))}
+  catch{return new Set()}
+}
+function setRemovedPapers(ids){
+  sessionStorage.setItem(BB_REMOVED_PAPERS_KEY,JSON.stringify([...ids]));
+}
 function filterGraphByView(g){
   const view = getBbView();
   if(view === "empty") return {nodes: [], edges: []};
@@ -576,15 +584,29 @@ function filterGraphByView(g){
     const ids = new Set(nodes.map(n => n.eid));
     const edges = g.edges.filter(e =>
       ids.has(e.src) && ids.has(e.dst) && e.rel !== "VALIDATES" && e.rel !== "REFUTES");
-    return {nodes, edges};
+    g = {nodes, edges};
   }
-  return g;
+  const removed = getRemovedPapers();
+  if(!removed.size) return g;
+  const hidden = new Set([...removed].map(id=>`p-${id}`));
+  g.edges.forEach(edge=>{
+    if(hidden.has(edge.dst) && (edge.rel==="FROM" || edge.rel==="DESCRIBED_IN")) hidden.add(edge.src);
+  });
+  g.edges.forEach(edge=>{
+    if(hidden.has(edge.dst) && edge.rel==="IMPLEMENTS") hidden.add(edge.src);
+  });
+  return {
+    nodes:g.nodes.filter(node=>!hidden.has(node.eid)),
+    edges:g.edges.filter(edge=>!hidden.has(edge.src)&&!hidden.has(edge.dst)),
+  };
 }
 function filterEvidenceByView(rows){
   const view = getBbView();
   if(view === "empty") return [];
-  if(view === "no-runs") return rows.map(r => ({...r, evidence: "no runs yet"}));
-  return rows;
+  const removed = getRemovedPapers();
+  const visible = rows.filter(row=>!removed.has(row.paper));
+  if(view === "no-runs") return visible.map(r => ({...r, evidence: "no runs yet"}));
+  return visible;
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -1395,8 +1417,9 @@ async function refreshWorkspaceMeta(){
       renderPapersList();
       return {empty: true, papers: 0, papers_detail: []};
     }
-    workspacePapers = ws.papers_detail || [];
-    updateWorkspaceBadge(ws.papers, ws.empty);
+    const removed = getRemovedPapers();
+    workspacePapers = (ws.papers_detail || []).filter(p=>!removed.has(p.id));
+    updateWorkspaceBadge(workspacePapers.length, workspacePapers.length===0);
     renderPapersList();
     return ws;
   }catch{
@@ -1407,9 +1430,28 @@ async function refreshWorkspaceMeta(){
 async function removePaper(paperId){
   const paper = workspacePapers.find(p=>p.id === paperId);
   const label = paper ? `${paper.title} (${paperId})` : paperId;
-  if(!confirm(`Remove "${label}" from the workspace?\n\nThis deletes its claims, methods, and any runs for those methods. Other papers stay untouched.`))
+  const message = window.VERIGRAPH_FN_URL
+    ? `Remove "${label}" from this browser session?\n\nThe shared Butterbase demo data will not be changed. Load demo restores it.`
+    : `Remove "${label}" from the workspace?\n\nThis deletes its claims, methods, and any runs for those methods. Other papers stay untouched.`;
+  if(!confirm(message))
     return;
   try{
+    if(window.VERIGRAPH_FN_URL){
+      const removed = getRemovedPapers();
+      removed.add(paperId);
+      setRemovedPapers(removed);
+      if(selectedPaper === paperId) selectedPaper = null;
+      if(selectedMethod?.startsWith(paperId+"-")){
+        selectedMethod = null;
+        methodCard.style.display = "none";
+        consoleEmpty.style.display = "block";
+      }
+      await refreshWorkspaceMeta();
+      await loadGraph();
+      await loadEvidence();
+      chatArea.innerHTML = `<div class="chat-bubble agent">Removed <b>${paperId}</b> from this browser session. Shared demo data was not changed.</div>`;
+      return;
+    }
     const res = await fetch(`/api/workspace/papers/${encodeURIComponent(paperId)}`, {method:"DELETE"});
     const r = await res.json();
     if(!res.ok) throw new Error(r.detail || "remove failed");
@@ -1689,6 +1731,7 @@ async function doLoadDemo(silent=false){
     const res = await fetch("/api/workspace/load-demo", {method:"POST"});
     const r = await res.json();
     if(!res.ok) throw new Error(r.detail || "failed");
+    setRemovedPapers(new Set());
     if(r.view) setBbView(r.view);
     resetUIState(r.message || `Demo loaded — ${r.papers} papers (Adam · Wilson · AdamW), no runs yet. Click a violet method node and press RUN.`);
     setTab("evidence");
