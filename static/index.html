@@ -1427,6 +1427,21 @@ async function refreshWorkspaceMeta(){
   }
 }
 
+function removePaperFromRenderedGraph(paperId){
+  if(!nodesDS||!edgesDS) return;
+  const hidden = new Set([`p-${paperId}`]);
+  const edges = edgesDS.get();
+  edges.forEach(edge=>{
+    if(hidden.has(edge.to)&&["FROM","DESCRIBED_IN"].includes(edgeRel(edge))) hidden.add(edge.from);
+  });
+  edges.forEach(edge=>{
+    if(hidden.has(edge.to)&&edgeRel(edge)==="IMPLEMENTS") hidden.add(edge.from);
+  });
+  edgesDS.remove(edges.filter(edge=>hidden.has(edge.from)||hidden.has(edge.to)).map(edge=>edge.id));
+  nodesDS.remove([...hidden]);
+  if(network) network.fit({animation:{duration:420,easingFunction:"easeInOutCubic"}});
+}
+
 async function removePaper(paperId){
   const paper = workspacePapers.find(p=>p.id === paperId);
   const label = paper ? `${paper.title} (${paperId})` : paperId;
@@ -1446,6 +1461,7 @@ async function removePaper(paperId){
         methodCard.style.display = "none";
         consoleEmpty.style.display = "block";
       }
+      removePaperFromRenderedGraph(paperId);
       await refreshWorkspaceMeta();
       await loadGraph();
       await loadEvidence();
