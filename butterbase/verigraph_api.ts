@@ -570,8 +570,52 @@ async function readJsonBody(req: Request) {
   }
 }
 
-function visitorLocation(req: Request, ctx: any) {
-  const forwarded = req.headers.get("x-forwarded-for") || "";
+function isPublicIp(value: string) {
+  const ip = value.trim().replace(/^\[|\]$/g, "");
+  const parts = ip.split(".");
+  if (parts.length === 4 && parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)) {
+    const [a, b] = parts.map(Number);
+    return !(
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      a >= 224
+    );
+  }
+  if (ip.includes(":") && /^[0-9a-f:]+$/i.test(ip)) {
+    const lower = ip.toLowerCase();
+    return !(
+      lower === "::1" ||
+      lower === "::" ||
+      lower.startsWith("fc") ||
+      lower.startsWith("fd") ||
+      lower.startsWith("fe8") ||
+      lower.startsWith("fe9") ||
+      lower.startsWith("fea") ||
+      lower.startsWith("feb")
+    );
+  }
+  return false;
+}
+
+function publicClientIp(req: Request, ctx: any) {
+  const forwarded = (req.headers.get("x-forwarded-for") || "").split(",");
+  const candidates = [
+    req.headers.get("fly-client-ip"),
+    req.headers.get("cf-connecting-ip"),
+    req.headers.get("true-client-ip"),
+    ...forwarded,
+    req.headers.get("x-real-ip"),
+    ctx?.request?.ip,
+  ];
+  return candidates.map((value) => String(value || "").trim()).find(isPublicIp) || "";
+}
+
+async function visitorLocation(req: Request, ctx: any) {
   const decodeHeader = (name: string) => {
     const value = req.headers.get(name) || "";
     try {
@@ -580,19 +624,16 @@ function visitorLocation(req: Request, ctx: any) {
       return value;
     }
   };
-  return {
-    ip:
-      ctx?.request?.ip ||
-      req.headers.get("cf-connecting-ip") ||
-      forwarded.split(",")[0].trim() ||
-      req.headers.get("x-real-ip") ||
-      "",
-    country:
-      ctx?.request?.country ||
+  const ip = publicClientIp(req, ctx);
+  const headerCountry = [
       req.headers.get("cf-ipcountry") ||
       req.headers.get("x-vercel-ip-country") ||
-      req.headers.get("cloudfront-viewer-country") ||
-      "",
+      req.headers.get("cloudfront-viewer-country"),
+      ctx?.request?.country,
+    ].map((value) => String(value || "").toUpperCase()).find((value) => /^[A-Z]{2}$/.test(value)) || "";
+  const location = {
+    ip,
+    country: headerCountry,
     region:
       decodeHeader("x-vercel-ip-country-region") ||
       decodeHeader("cloudfront-viewer-country-region") ||
@@ -602,6 +643,29 @@ function visitorLocation(req: Request, ctx: any) {
       decodeHeader("cloudfront-viewer-city") ||
       "",
   };
+  if (!ip) return location;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2500);
+  try {
+    const response = await fetch(
+      `https://ipwho.is/${encodeURIComponent(ip)}?fields=success,country_code,region,city`,
+      { signal: controller.signal },
+    );
+    if (response.ok) {
+      const geo = await response.json();
+      if (geo?.success) {
+        location.country = String(geo.country_code || location.country).slice(0, 2).toUpperCase();
+        location.region = String(geo.region || location.region).slice(0, 120);
+        location.city = String(geo.city || location.city).slice(0, 120);
+      }
+    }
+  } catch (_) {
+    // Header-derived location is still useful when geolocation is unavailable.
+  } finally {
+    clearTimeout(timer);
+  }
+  return location;
 }
 
 function validEmail(value: string) {
@@ -614,7 +678,7 @@ async function registerVisitor(req: Request, ctx: any) {
   const timezone = String(body.timezone || "").slice(0, 100);
   if (!validEmail(email)) return json({ detail: "Enter a valid email address." }, 400);
 
-  const geo = visitorLocation(req, ctx);
+  const geo = await visitorLocation(req, ctx);
   const result = await ctx.db.query(
     `INSERT INTO demo_visitors (email, ip_address, region, country, city, timezone)
      VALUES ($1, $2, $3, $4, $5, $6)
