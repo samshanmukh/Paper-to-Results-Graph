@@ -18,10 +18,11 @@ Run: .venv/bin/uvicorn app.server:app --port 8787
 """
 
 import asyncio
-import asyncio
 import os
 import re
+import secrets
 import sys
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -62,6 +63,7 @@ def demo():
 
 
 @app.get("/admin")
+@app.get("/admin/")
 def visitor_admin():
     return FileResponse(os.path.join(STATIC, "admin.html"))
 
@@ -104,12 +106,12 @@ def admin_demo_users(request: Request):
     supplied = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
     if not expected:
         raise HTTPException(503, "ADMIN_TRACKING_KEY is not configured.")
-    if len(expected) < 16 or supplied != expected:
+    if len(expected) < 16 or not secrets.compare_digest(supplied, expected):
         raise HTTPException(401, "Unauthorized")
     try:
         from app.butterbase import list_visitors
 
-        return {"users": list_visitors()}
+        return {"users": list_visitors(), "generated_at": datetime.now(timezone.utc).isoformat()}
     except Exception as e:
         raise HTTPException(503, f"visitor tracking unavailable: {e}")
 

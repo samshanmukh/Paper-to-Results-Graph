@@ -570,7 +570,7 @@ async function readJsonBody(req: Request) {
   }
 }
 
-function visitorLocation(req: Request) {
+function visitorLocation(req: Request, ctx: any) {
   const forwarded = req.headers.get("x-forwarded-for") || "";
   const decodeHeader = (name: string) => {
     const value = req.headers.get(name) || "";
@@ -582,11 +582,13 @@ function visitorLocation(req: Request) {
   };
   return {
     ip:
+      ctx?.request?.ip ||
       req.headers.get("cf-connecting-ip") ||
       forwarded.split(",")[0].trim() ||
       req.headers.get("x-real-ip") ||
       "",
     country:
+      ctx?.request?.country ||
       req.headers.get("cf-ipcountry") ||
       req.headers.get("x-vercel-ip-country") ||
       req.headers.get("cloudfront-viewer-country") ||
@@ -612,7 +614,7 @@ async function registerVisitor(req: Request, ctx: any) {
   const timezone = String(body.timezone || "").slice(0, 100);
   if (!validEmail(email)) return json({ detail: "Enter a valid email address." }, 400);
 
-  const geo = visitorLocation(req);
+  const geo = visitorLocation(req, ctx);
   const result = await ctx.db.query(
     `INSERT INTO demo_visitors (email, ip_address, region, country, city, timezone)
      VALUES ($1, $2, $3, $4, $5, $6)
