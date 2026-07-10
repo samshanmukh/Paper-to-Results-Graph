@@ -9,7 +9,7 @@
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Verigraph-Visitor",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
 function json(data: unknown, status = 200) {
@@ -634,7 +634,7 @@ async function registerVisitor(req: Request, ctx: any) {
 }
 
 async function recordToolUse(req: Request, route: string, ctx: any) {
-  const visitorId = req.headers.get("x-verigraph-visitor") || "";
+  const visitorId = new URL(req.url).searchParams.get("visitor") || "";
   if (!/^[0-9a-f-]{36}$/i.test(visitorId)) return;
   const tool = route.startsWith("run/") ? "run" : route.slice(0, 80);
   await ctx.db.query(

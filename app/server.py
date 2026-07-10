@@ -119,7 +119,7 @@ def admin_demo_users(request: Request):
 @app.middleware("http")
 async def track_demo_tools(request: Request, call_next):
     response = await call_next(request)
-    visitor_id = request.headers.get("x-verigraph-visitor", "")
+    visitor_id = request.query_params.get("visitor", "")
     if (
         response.status_code < 400
         and request.method == "POST"

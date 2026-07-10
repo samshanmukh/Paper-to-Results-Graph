@@ -11,14 +11,16 @@
     const method = (opts && opts.method) || "GET";
     let route = path;
     if (method === "POST" && path.startsWith("run/")) route = path;
-    const target = FN ? `${FN}?route=${encodeURIComponent(route)}` : url;
+    const visitorId = localStorage.getItem("vg_visitor_id") || "";
+    const visitorParam = visitorId && path !== "register"
+      ? `&visitor=${encodeURIComponent(visitorId)}`
+      : "";
+    const target = FN
+      ? `${FN}?route=${encodeURIComponent(route)}${visitorParam}`
+      : visitorId
+        ? `${url}${url.includes("?") ? "&" : "?"}visitor=${encodeURIComponent(visitorId)}`
+        : url;
     const requestOpts = { ...(opts || {}) };
-    const headers = new Headers(requestOpts.headers || {});
-    const visitorId = localStorage.getItem("vg_visitor_id");
-    if (visitorId && path !== "register") {
-      headers.set("X-Verigraph-Visitor", visitorId);
-    }
-    requestOpts.headers = headers;
     return native(target, requestOpts);
   };
 })();
