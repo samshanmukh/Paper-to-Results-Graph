@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/config.js"></script>
+<script>document.documentElement.dataset.theme=localStorage.getItem("vg_theme")||"light";</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Verigraph: executable evidence from research papers</title>
@@ -49,6 +50,10 @@ nav{display:flex;align-items:center;justify-content:space-between;height:76px;fl
 .github-btn svg{width:15px;height:15px;fill:currentColor}
 .github-stars{display:inline-flex;align-items:center;gap:4px;padding-left:8px;margin-left:2px;
   border-left:1px solid rgba(148,163,184,.2);color:#F0C45A}
+.theme-toggle{width:36px;height:36px;padding:0!important;display:grid!important;place-items:center;
+  background:#111720!important;border:1px solid rgba(148,163,184,.22)!important;color:#DCE2EC!important;
+  font-size:15px!important;border-radius:9px!important}
+.theme-toggle:hover{border-color:var(--purple)!important;color:#fff!important}
 
 /* hero */
 .hero{padding:72px 0 56px;text-align:center;border-bottom:1px solid var(--border);
@@ -222,6 +227,38 @@ footer .note{font-size:13px;color:var(--muted)}
 .preview-caption span{color:#E2AD35!important}
 code{color:#B7A5FF}
 
+/* light is the default; dark remains available from the theme toggle */
+html[data-theme="light"]{
+  --bg:#F7F7F4;--bg2:#EEEFEA;--ink:#171A20;--dim:#555D69;--muted:#7A8492;
+  --purple:#6C4CF1;--purple-bg:#F1EDFD;--purple-bd:#D8CDFB;
+  --green:#1F9D5B;--green-bg:#E7F6EC;--red:#D9483B;--amber:#B88616;
+  --border:rgba(20,24,32,.11);
+}
+html[data-theme="light"] .hero{background:radial-gradient(circle at 50% 0,rgba(108,76,241,.12),transparent 44%)}
+html[data-theme="light"] .nav-links,html[data-theme="light"] .nav-links a{color:#4F5865}
+html[data-theme="light"] .btn-dark,html[data-theme="light"] .btn-outline,
+html[data-theme="light"] .github-btn,html[data-theme="light"] .theme-toggle,
+html[data-theme="light"] .preview-play{background:#fff!important;color:#20242B!important;border-color:rgba(20,24,32,.14)!important}
+html[data-theme="light"] .github-btn:hover,html[data-theme="light"] .theme-toggle:hover{border-color:#6C4CF1!important;color:#6C4CF1!important}
+html[data-theme="light"] .preview-wrap{background:#fff;box-shadow:0 28px 70px -34px rgba(30,35,45,.35)}
+html[data-theme="light"] .preview-bar{background:#F1F2EE}
+html[data-theme="light"] .preview-canvas{background-color:#FAFAF8;
+  background-image:radial-gradient(circle at 1px 1px,rgba(40,48,60,.12) 1px,transparent 0)}
+html[data-theme="light"] .preview-canvas::before{background:radial-gradient(circle at 50% 58%,rgba(108,76,241,.08),transparent 36%)}
+html[data-theme="light"] .paper-node{background:#fff;border-color:#C6CBD3;box-shadow:0 8px 20px rgba(30,35,45,.09)}
+html[data-theme="light"] .paper-node .node-title{color:#20242B}
+html[data-theme="light"] .paper-node .node-kind,html[data-theme="light"] .paper-node .node-meta{color:#6D7683}
+html[data-theme="light"] .claim-node{background:#FFF8E7;border-color:#D7B65F;color:#7D5C0C}
+html[data-theme="light"] .edge-structural{stroke:#9AA3B0}
+html[data-theme="light"] .edge-claim{stroke:#AAB1BC}
+html[data-theme="light"] .edge-label{fill:#737D8B}
+html[data-theme="light"] .grid-4>div,html[data-theme="light"] .card,html[data-theme="light"] .step,
+html[data-theme="light"] .compare-col.bad,html[data-theme="light"] .spec-block,
+html[data-theme="light"] .status-item,html[data-theme="light"] .cognee-panel,
+html[data-theme="light"] .cognee-benefit{background:#fff}
+html[data-theme="light"] .card:hover,html[data-theme="light"] .step:hover{background:#FCFBFF}
+html[data-theme="light"] .cognee-section{background:linear-gradient(165deg,#F4F0FF 0%,#F8F8F5 58%,#F7F7F4 100%)}
+
 @media(max-width:960px){
   .grid-4,.grid-3,.steps,.cognee-grid{grid-template-columns:repeat(2,1fr)}
   .grid-4>div:nth-child(odd){border-right:1px solid var(--border)}
@@ -262,6 +299,7 @@ code{color:#B7A5FF}
         <span class="github-stars">★ <span id="github-stars">0</span></span>
       </a>
       <a href="/demo" class="btn btn-dark">Try the demo <span class="mono">→</span></a>
+      <button class="btn theme-toggle" id="theme-toggle" type="button" title="Switch color theme" aria-label="Switch color theme">☾</button>
     </div>
   </nav>
 </div>
@@ -626,6 +664,19 @@ COGNEE_ENABLED (true|false) · COGNEE_DATASET_NAME
 <script>
 const previewPlay = document.getElementById("preview-play");
 const previewGraph = document.getElementById("preview-graph");
+const themeToggle = document.getElementById("theme-toggle");
+function renderThemeToggle(){
+  const dark=document.documentElement.dataset.theme==="dark";
+  themeToggle.textContent=dark?"☀":"☾";
+  themeToggle.title=dark?"Use light theme":"Use dark theme";
+}
+themeToggle.addEventListener("click",()=>{
+  const next=document.documentElement.dataset.theme==="dark"?"light":"dark";
+  document.documentElement.dataset.theme=next;
+  localStorage.setItem("vg_theme",next);
+  renderThemeToggle();
+});
+renderThemeToggle();
 previewPlay.addEventListener("click",()=>{
   previewGraph.classList.remove("replaying");
   void previewGraph.offsetWidth;
