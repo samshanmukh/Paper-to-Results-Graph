@@ -1769,9 +1769,13 @@ async function runMethodAndWait(){
   clearLog();
   const params = collectParams();
   const pstr = Object.entries(params).map(([k,v])=>`${k}=${v}`).join(" ");
-  log(`[codegen] method ${selectedMethod} → experiment.py`, "t-stage");
-  if(pstr) log(`[params ] overriding: ${pstr}`, "t-warn");
-  log("[runner ] dispatching to sandbox (daytona)…", "t-stage");
+  if(window.VERIGRAPH_FN_URL){
+    log(`[history] requesting persisted run for ${selectedMethod} from Butterbase…`, "t-stage");
+  }else{
+    log(`[codegen] method ${selectedMethod} → experiment.py`, "t-stage");
+    if(pstr) log(`[params ] overriding: ${pstr}`, "t-warn");
+    log("[runner ] dispatching to sandbox (daytona)…", "t-stage");
+  }
   const started = Date.now();
   try{
     const res = await fetch(`/api/run/${selectedMethod}`, {method:"POST",
