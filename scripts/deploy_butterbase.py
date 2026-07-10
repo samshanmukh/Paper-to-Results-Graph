@@ -13,6 +13,7 @@ Requires .env:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
 import json
 import os
@@ -134,6 +135,7 @@ def build_frontend_zip(fn_url: str) -> bytes:
         config_js = f.read()
     if "VERIGRAPH_FN_URL" not in config_js.split("\n", 1)[0]:
         config_js = f'window.VERIGRAPH_FN_URL = "{fn_url}";\n' + config_js
+    config_version = hashlib.sha256(config_js.encode()).hexdigest()[:12]
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -147,6 +149,7 @@ def build_frontend_zip(fn_url: str) -> bytes:
             html = open(os.path.join(STATIC_DIR, src_name)).read()
             if 'src="/config.js"' not in html:
                 html = html.replace("<head>", '<head>\n<script src="/config.js"></script>\n', 1)
+            html = html.replace('src="/config.js"', f'src="/config.js?v={config_version}"')
             zf.writestr(dest_name, html)
 
     return buf.getvalue()
