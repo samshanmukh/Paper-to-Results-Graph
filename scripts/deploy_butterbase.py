@@ -79,8 +79,9 @@ def sync_data() -> None:
 
 
 def cognee_env_vars() -> dict[str, str]:
-    """Pass Cognee Cloud credentials to the Butterbase edge function (from .env)."""
+    """Pass private edge-function configuration from .env."""
     keys = (
+        "ADMIN_TRACKING_KEY",
         "COGNEE_ENABLED",
         "COGNEE_SERVICE_URL",
         "COGNEE_API_KEY",
@@ -118,7 +119,9 @@ def deploy_function() -> str:
     }
     if env_vars:
         body["envVars"] = env_vars
-        print(f"  cognee env: {', '.join(k for k in env_vars if k != 'COGNEE_API_KEY')}")
+        safe_keys = [k for k in env_vars if k not in ("COGNEE_API_KEY", "ADMIN_TRACKING_KEY")]
+        if safe_keys:
+            print(f"  function env: {', '.join(safe_keys)}")
 
     _, res = bb_req("POST", f"/v1/{APP_ID}/functions", body)
     url = res["url"]
@@ -136,7 +139,11 @@ def build_frontend_zip(fn_url: str) -> bytes:
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("config.js", config_js)
 
-        for src_name, dest_name in (("landing.html", "index.html"), ("index.html", "demo/index.html")):
+        for src_name, dest_name in (
+            ("landing.html", "index.html"),
+            ("index.html", "demo/index.html"),
+            ("admin.html", "admin/index.html"),
+        ):
             html = open(os.path.join(STATIC_DIR, src_name)).read()
             if 'src="/config.js"' not in html:
                 html = html.replace("<head>", '<head>\n<script src="/config.js"></script>\n', 1)

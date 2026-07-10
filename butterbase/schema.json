@@ -23,6 +23,25 @@
         "stdout": { "type": "text" },
         "error": { "type": "text" }
       }
+    },
+    "demo_visitors": {
+      "columns": {
+        "id": { "type": "uuid", "primaryKey": true, "default": "gen_random_uuid()" },
+        "email": { "type": "text", "nullable": false, "unique": true },
+        "ip_address": { "type": "text" },
+        "region": { "type": "text" },
+        "country": { "type": "text" },
+        "city": { "type": "text" },
+        "timezone": { "type": "text" },
+        "first_seen": { "type": "timestamptz", "default": "now()" },
+        "last_seen": { "type": "timestamptz", "default": "now()" },
+        "last_tool": { "type": "text", "default": "'demo_opened'" },
+        "tool_uses": { "type": "integer", "default": "0" }
+      },
+      "indexes": {
+        "idx_demo_visitors_last_seen": { "columns": ["last_seen"] },
+        "idx_demo_visitors_country": { "columns": ["country"] }
+      }
     }
   }
 }

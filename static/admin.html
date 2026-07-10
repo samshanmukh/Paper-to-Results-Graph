@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="/config.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verigraph — visitor admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#F4F4F1;--panel:#fff;--ink:#16161A;--dim:#73737C;--purple:#6C4CF1;--green:#1F9D5B;--red:#D9483B;--border:rgba(20,20,26,.1)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1240px;margin:auto;padding:0 28px 60px}
+header{height:72px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
+.brand{display:flex;align-items:center;gap:9px;font-family:'IBM Plex Mono',monospace;font-weight:600}.dot{width:10px;height:10px;border-radius:50%;background:var(--purple)}
+.header-actions{display:flex;gap:8px}button,input{font:inherit}
+button{border:1px solid var(--border);border-radius:8px;padding:8px 13px;background:#fff;cursor:pointer}button:hover{border-color:var(--purple);color:var(--purple)}
+main{padding-top:38px}.eyebrow{font-family:'IBM Plex Mono',monospace;color:var(--purple);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+h1{font-size:32px;letter-spacing:-.03em;margin:7px 0 6px}.sub{color:var(--dim);margin:0 0 28px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}.stat{background:#fff;border:1px solid var(--border);border-radius:12px;padding:18px}
+.stat-label{font-size:12px;color:var(--dim)}.stat-value{font-family:'IBM Plex Mono',monospace;font-size:27px;font-weight:600;margin-top:5px}
+.panel{background:#fff;border:1px solid var(--border);border-radius:14px;overflow:hidden}.panel-head{padding:16px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
+.panel-head h2{font-size:15px;margin:0}.search{width:260px;padding:8px 11px;border:1px solid var(--border);border-radius:8px;outline:none}.search:focus{border-color:var(--purple)}
+.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:12px 16px;border-bottom:1px solid var(--border);white-space:nowrap}
+th{font-family:'IBM Plex Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);background:#FBFBF9}tbody tr:hover{background:#FAF9FE}
+.email{font-weight:600}.region{display:inline-block;background:#F1EDFD;color:#5636D6;border-radius:6px;padding:3px 7px}.mono{font-family:'IBM Plex Mono',monospace;font-size:11px}.muted{color:var(--dim)}
+.empty{text-align:center;padding:55px;color:var(--dim)}#auth{position:fixed;inset:0;z-index:10;background:rgba(22,22,26,.58);backdrop-filter:blur(10px);display:grid;place-items:center;padding:20px}
+#auth.hidden{display:none}.auth-card{width:min(410px,100%);background:#fff;border-radius:16px;padding:26px;box-shadow:0 24px 70px rgba(0,0,0,.25)}.auth-card h2{margin:0 0 7px}.auth-card p{color:var(--dim);font-size:13px;line-height:1.5}
+.auth-row{display:flex;gap:8px}.auth-row input{flex:1;min-width:0;padding:10px 11px;border:1px solid var(--border);border-radius:8px}.auth-row button{background:var(--purple);color:#fff;border:0;font-weight:600}
+#auth-error{min-height:18px;color:var(--red);font-size:12px;margin-top:8px}
+@media(max-width:800px){.stats{grid-template-columns:repeat(2,1fr)}.panel-head{align-items:flex-start;gap:12px;flex-direction:column}.search{width:100%}}
+</style>
+</head>
+<body>
+<div id="auth">
+  <form class="auth-card" id="auth-form">
+    <h2>Admin access</h2>
+    <p>Enter the tracking key configured for the Verigraph edge function.</p>
+    <div class="auth-row">
+      <input id="admin-key" type="password" autocomplete="current-password" placeholder="Admin tracking key" required>
+      <button type="submit">View users</button>
+    </div>
+    <div id="auth-error" role="alert"></div>
+  </form>
+</div>
+<div class="wrap">
+  <header>
+    <div class="brand"><span class="dot"></span>Verigraph <span class="muted">/ visitors</span></div>
+    <div class="header-actions"><button id="refresh">↻ Refresh</button><button id="lock">Lock</button></div>
+  </header>
+  <main>
+    <div class="eyebrow">Demo analytics</div>
+    <h1>Who explored Verigraph?</h1>
+    <p class="sub" id="updated">Email-gated demo visits and tool activity.</p>
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Registered users</div><div class="stat-value" id="s-users">—</div></div>
+      <div class="stat"><div class="stat-label">Active in 24 hours</div><div class="stat-value" id="s-active">—</div></div>
+      <div class="stat"><div class="stat-label">Tool uses</div><div class="stat-value" id="s-tools">—</div></div>
+      <div class="stat"><div class="stat-label">Regions reached</div><div class="stat-value" id="s-regions">—</div></div>
+    </div>
+    <section class="panel">
+      <div class="panel-head"><h2>Visitor list</h2><input class="search" id="search" type="search" placeholder="Search email, region, country…"></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Email</th><th>Region</th><th>IP address</th><th>First visit</th><th>Last activity</th><th>Last tool</th><th>Uses</th></tr></thead>
+          <tbody id="rows"><tr><td colspan="7" class="empty">Unlock the dashboard to load visitors.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+<script>
+const KEY_STORAGE = "vg_admin_key";
+let users = [];
+const esc = value => String(value ?? "").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = value => value ? new Intl.DateTimeFormat(undefined,{dateStyle:"medium",timeStyle:"short"}).format(new Date(value)) : "—";
+function render(){
+  const q = document.getElementById("search").value.trim().toLowerCase();
+  const shown = users.filter(u=>[u.email,u.region,u.country,u.city,u.ip_address,u.last_tool].some(v=>String(v||"").toLowerCase().includes(q)));
+  document.getElementById("rows").innerHTML = shown.length ? shown.map(u=>{
+    const place = [u.city,u.region,u.country].filter(Boolean).join(", ") || "Unknown";
+    return `<tr><td class="email">${esc(u.email)}</td><td><span class="region">${esc(place)}</span><div class="mono muted">${esc(u.timezone||"")}</div></td><td class="mono">${esc(u.ip_address||"—")}</td><td>${esc(fmt(u.first_seen))}</td><td>${esc(fmt(u.last_seen))}</td><td>${esc((u.last_tool||"—").replaceAll("-"," "))}</td><td class="mono">${Number(u.tool_uses)||0}</td></tr>`;
+  }).join("") : '<tr><td colspan="7" class="empty">No matching users.</td></tr>';
+}
+function stats(){
+  const dayAgo = Date.now()-86400000;
+  document.getElementById("s-users").textContent = users.length;
+  document.getElementById("s-active").textContent = users.filter(u=>new Date(u.last_seen).getTime()>=dayAgo).length;
+  document.getElementById("s-tools").textContent = users.reduce((n,u)=>n+(Number(u.tool_uses)||0),0);
+  document.getElementById("s-regions").textContent = new Set(users.map(u=>u.region||u.country).filter(Boolean)).size;
+}
+async function load(key){
+  const res = await fetch("/api/admin/users",{headers:{Authorization:`Bearer ${key}`}});
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.detail||`Request failed (${res.status})`);
+  users = data.users||[];
+  sessionStorage.setItem(KEY_STORAGE,key);
+  document.getElementById("auth").classList.add("hidden");
+  document.getElementById("updated").textContent = `Updated ${fmt(data.generated_at)} · showing up to 500 most recent visitors`;
+  stats();render();
+}
+document.getElementById("auth-form").addEventListener("submit",async e=>{
+  e.preventDefault();const key=document.getElementById("admin-key").value;
+  const error=document.getElementById("auth-error");error.textContent="";
+  try{await load(key)}catch(err){error.textContent=err.message}
+});
+document.getElementById("refresh").addEventListener("click",()=>{const key=sessionStorage.getItem(KEY_STORAGE);if(key)load(key)});
+document.getElementById("lock").addEventListener("click",()=>{sessionStorage.removeItem(KEY_STORAGE);document.getElementById("admin-key").value="";document.getElementById("auth").classList.remove("hidden")});
+document.getElementById("search").addEventListener("input",render);
+const saved=sessionStorage.getItem(KEY_STORAGE);if(saved){document.getElementById("admin-key").value=saved;load(saved).catch(()=>sessionStorage.removeItem(KEY_STORAGE))}
+</script>
+</body>
+</html>

@@ -9,7 +9,7 @@
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Verigraph-Visitor",
 };
 
 function json(data: unknown, status = 200) {
@@ -570,6 +570,100 @@ async function readJsonBody(req: Request) {
   }
 }
 
+function visitorLocation(req: Request) {
+  const forwarded = req.headers.get("x-forwarded-for") || "";
+  const decodeHeader = (name: string) => {
+    const value = req.headers.get(name) || "";
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  };
+  return {
+    ip:
+      req.headers.get("cf-connecting-ip") ||
+      forwarded.split(",")[0].trim() ||
+      req.headers.get("x-real-ip") ||
+      "",
+    country:
+      req.headers.get("cf-ipcountry") ||
+      req.headers.get("x-vercel-ip-country") ||
+      req.headers.get("cloudfront-viewer-country") ||
+      "",
+    region:
+      decodeHeader("x-vercel-ip-country-region") ||
+      decodeHeader("cloudfront-viewer-country-region") ||
+      "",
+    city:
+      decodeHeader("x-vercel-ip-city") ||
+      decodeHeader("cloudfront-viewer-city") ||
+      "",
+  };
+}
+
+function validEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254;
+}
+
+async function registerVisitor(req: Request, ctx: any) {
+  const body = await readJsonBody(req);
+  const email = String(body.email || "").trim().toLowerCase();
+  const timezone = String(body.timezone || "").slice(0, 100);
+  if (!validEmail(email)) return json({ detail: "Enter a valid email address." }, 400);
+
+  const geo = visitorLocation(req);
+  const result = await ctx.db.query(
+    `INSERT INTO demo_visitors (email, ip_address, region, country, city, timezone)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (email) DO UPDATE SET
+       ip_address = EXCLUDED.ip_address,
+       region = EXCLUDED.region,
+       country = EXCLUDED.country,
+       city = EXCLUDED.city,
+       timezone = EXCLUDED.timezone,
+       last_seen = now(),
+       last_tool = 'demo_opened'
+     RETURNING id, email`,
+    [email, geo.ip, geo.region, geo.country, geo.city, timezone],
+  );
+  const visitor = result.rows?.[0];
+  return json({ ok: true, visitor_id: visitor?.id, email: visitor?.email || email });
+}
+
+async function recordToolUse(req: Request, route: string, ctx: any) {
+  const visitorId = req.headers.get("x-verigraph-visitor") || "";
+  if (!/^[0-9a-f-]{36}$/i.test(visitorId)) return;
+  const tool = route.startsWith("run/") ? "run" : route.slice(0, 80);
+  await ctx.db.query(
+    `UPDATE demo_visitors
+     SET last_seen = now(), last_tool = $2, tool_uses = tool_uses + 1
+     WHERE id = $1`,
+    [visitorId, tool],
+  );
+}
+
+function adminAuthorized(req: Request, ctx: any) {
+  const expected = String(ctx?.env?.ADMIN_TRACKING_KEY || "");
+  const supplied = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+  return expected.length >= 16 && supplied === expected;
+}
+
+async function adminUsers(req: Request, ctx: any) {
+  if (!ctx?.env?.ADMIN_TRACKING_KEY) {
+    return json({ detail: "ADMIN_TRACKING_KEY is not configured." }, 503);
+  }
+  if (!adminAuthorized(req, ctx)) return json({ detail: "Unauthorized" }, 401);
+  const result = await ctx.db.query(
+    `SELECT id, email, ip_address, region, country, city, timezone,
+            first_seen, last_seen, last_tool, tool_uses
+     FROM demo_visitors
+     ORDER BY last_seen DESC
+     LIMIT 500`,
+  );
+  return json({ users: result.rows || [], generated_at: new Date().toISOString() });
+}
+
 export default async function handler(req: Request, ctx: any): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
 
@@ -577,6 +671,9 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
   const route = url.searchParams.get("route") || "health";
 
   try {
+    if (req.method === "POST" && route === "register") return await registerVisitor(req, ctx);
+    if (req.method === "GET" && route === "admin/users") return await adminUsers(req, ctx);
+
     const papersRes = await ctx.db.query("SELECT * FROM papers ORDER BY year, id");
     const runsRes = await ctx.db.query("SELECT * FROM runs ORDER BY id");
     const papers = papersRes.rows || [];
@@ -613,6 +710,7 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
     }
 
     if (req.method === "POST") {
+      await recordToolUse(req, route, ctx);
       if (route === "workspace/load-demo") {
         return json({
           papers: papers.length,

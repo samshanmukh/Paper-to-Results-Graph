@@ -20,11 +20,12 @@ Run: .venv/bin/uvicorn app.server:app --port 8787
 import asyncio
 import asyncio
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -58,6 +59,80 @@ def landing():
 @app.get("/demo")
 def demo():
     return FileResponse(os.path.join(STATIC, "index.html"))
+
+
+@app.get("/admin")
+def visitor_admin():
+    return FileResponse(os.path.join(STATIC, "admin.html"))
+
+
+class DemoRegistration(BaseModel):
+    email: str
+    timezone: str = ""
+
+
+def _request_location(request: Request) -> dict:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    return {
+        "ip": request.headers.get("cf-connecting-ip")
+        or forwarded.split(",")[0].strip()
+        or (request.client.host if request.client else ""),
+        "country": request.headers.get("cf-ipcountry")
+        or request.headers.get("x-vercel-ip-country", ""),
+        "region": request.headers.get("x-vercel-ip-country-region", ""),
+        "city": request.headers.get("x-vercel-ip-city", ""),
+    }
+
+
+@app.post("/api/register")
+def register_demo_visitor(body: DemoRegistration, request: Request):
+    email = body.email.strip().lower()
+    if len(email) > 254 or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
+        raise HTTPException(400, "Enter a valid email address.")
+    try:
+        from app.butterbase import register_visitor
+
+        visitor = register_visitor(email, _request_location(request), body.timezone)
+        return {"ok": True, "visitor_id": visitor["id"], "email": visitor["email"]}
+    except Exception as e:
+        raise HTTPException(503, f"visitor tracking unavailable: {e}")
+
+
+@app.get("/api/admin/users")
+def admin_demo_users(request: Request):
+    expected = os.environ.get("ADMIN_TRACKING_KEY", "")
+    supplied = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+    if not expected:
+        raise HTTPException(503, "ADMIN_TRACKING_KEY is not configured.")
+    if len(expected) < 16 or supplied != expected:
+        raise HTTPException(401, "Unauthorized")
+    try:
+        from app.butterbase import list_visitors
+
+        return {"users": list_visitors()}
+    except Exception as e:
+        raise HTTPException(503, f"visitor tracking unavailable: {e}")
+
+
+@app.middleware("http")
+async def track_demo_tools(request: Request, call_next):
+    response = await call_next(request)
+    visitor_id = request.headers.get("x-verigraph-visitor", "")
+    if (
+        response.status_code < 400
+        and request.method == "POST"
+        and request.url.path.startswith("/api/")
+        and request.url.path != "/api/register"
+        and re.fullmatch(r"[0-9a-f-]{36}", visitor_id, re.IGNORECASE)
+    ):
+        try:
+            from app.butterbase import record_visitor_tool
+
+            tool = request.url.path.removeprefix("/api/").replace("/", ":")[:80]
+            await asyncio.to_thread(record_visitor_tool, visitor_id, tool)
+        except Exception:
+            pass
+    return response
 
 
 @app.post("/api/reset")

@@ -13,7 +13,10 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
+import uuid
+from datetime import datetime, timezone
 
 import certifi
 
@@ -108,6 +111,55 @@ def sync_runs() -> int:
         print(f"  {action}: run {record['run_id']}")
         n += 1
     return n
+
+
+def register_visitor(email: str, location: dict, visitor_timezone: str = "") -> dict:
+    """Create or refresh an email-gated demo visitor."""
+    now = datetime.now(timezone.utc).isoformat()
+    query = urllib.parse.urlencode({"email": f"eq.{email}", "limit": 1})
+    existing = _req("GET", f"/demo_visitors?{query}")
+    rows = existing if isinstance(existing, list) else existing.get("data", existing.get("rows", []))
+    fields = {
+        "ip_address": location.get("ip", ""),
+        "region": location.get("region", ""),
+        "country": location.get("country", ""),
+        "city": location.get("city", ""),
+        "timezone": visitor_timezone[:100],
+        "last_seen": now,
+        "last_tool": "demo_opened",
+    }
+    if rows:
+        visitor = rows[0]
+        _req("PATCH", f"/demo_visitors/{visitor['id']}", fields)
+        return {"id": visitor["id"], "email": visitor["email"]}
+
+    visitor = {"id": str(uuid.uuid4()), "email": email, "first_seen": now, **fields, "tool_uses": 0}
+    _req("POST", "/demo_visitors", visitor)
+    return {"id": visitor["id"], "email": email}
+
+
+def record_visitor_tool(visitor_id: str, tool: str) -> None:
+    """Update the latest action for a known local-demo visitor."""
+    query = urllib.parse.urlencode({"id": f"eq.{visitor_id}", "limit": 1})
+    existing = _req("GET", f"/demo_visitors?{query}")
+    rows = existing if isinstance(existing, list) else existing.get("data", existing.get("rows", []))
+    if not rows:
+        return
+    visitor = rows[0]
+    _req(
+        "PATCH",
+        f"/demo_visitors/{visitor_id}",
+        {
+            "last_seen": datetime.now(timezone.utc).isoformat(),
+            "last_tool": tool[:80],
+            "tool_uses": int(visitor.get("tool_uses") or 0) + 1,
+        },
+    )
+
+
+def list_visitors() -> list[dict]:
+    rows = _req("GET", "/demo_visitors?order=last_seen.desc&limit=500")
+    return rows if isinstance(rows, list) else rows.get("data", rows.get("rows", []))
 
 
 def counts():

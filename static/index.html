@@ -249,9 +249,46 @@ div.vis-tooltip{font-size:11px!important;color:var(--ink)!important;background:#
   border:1px solid rgba(20,20,26,0.14)!important;border-radius:8px!important;
   padding:8px 11px!important;max-width:340px;white-space:normal!important;
   box-shadow:0 4px 12px rgba(0,0,0,0.08)!important;line-height:1.55}
+
+/* email access gate */
+#access-gate{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;
+  padding:24px;background:rgba(22,22,26,.58);backdrop-filter:blur(12px)}
+#access-gate.hidden{display:none}
+.gate-card{width:min(460px,100%);background:#fff;border:1px solid rgba(20,20,26,.12);
+  border-radius:18px;padding:30px;box-shadow:0 30px 80px -25px rgba(20,20,26,.55)}
+.gate-mark{width:42px;height:42px;display:grid;place-items:center;border-radius:12px;
+  color:#fff;background:var(--purple);font-family:'IBM Plex Mono',monospace;font-weight:600;margin-bottom:20px}
+.gate-card h1{font-size:25px;letter-spacing:-.025em;margin-bottom:8px}
+.gate-card>p{color:#5F5F68;font-size:14px;line-height:1.55;margin-bottom:20px}
+.gate-card label{display:block;font-size:12px;font-weight:600;margin-bottom:7px}
+.gate-row{display:flex;gap:8px}
+#gate-email{flex:1;min-width:0;padding:12px 13px;border:1px solid rgba(20,20,26,.16);
+  border-radius:9px;outline:none;font-size:14px}
+#gate-email:focus{border-color:var(--purple);box-shadow:0 0 0 3px rgba(108,76,241,.12)}
+#gate-submit{border:0;border-radius:9px;padding:0 17px;background:var(--purple);color:#fff;
+  font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+#gate-submit:disabled{opacity:.55;cursor:wait}
+#gate-error{min-height:18px;margin-top:9px;color:var(--red);font-size:12px}
+.gate-privacy{margin-top:14px!important;margin-bottom:0!important;font-size:11.5px!important;color:#85858D!important}
+@media(max-width:520px){.gate-row{flex-direction:column}#gate-submit{padding:12px}.gate-card{padding:24px}}
 </style>
 </head>
 <body>
+<div id="access-gate" role="dialog" aria-modal="true" aria-labelledby="gate-title">
+  <form class="gate-card" id="gate-form">
+    <div class="gate-mark">V</div>
+    <h1 id="gate-title">Explore the live research graph</h1>
+    <p>Enter your email to open the Verigraph demo and try its evidence tools.</p>
+    <label for="gate-email">Work email</label>
+    <div class="gate-row">
+      <input id="gate-email" type="email" autocomplete="email" required maxlength="254"
+        placeholder="you@company.com">
+      <button id="gate-submit" type="submit">Open demo →</button>
+    </div>
+    <div id="gate-error" role="alert"></div>
+    <p class="gate-privacy">By continuing, you agree that we may record your email, IP-derived approximate region, and demo activity to understand usage. We do not ask for a password.</p>
+  </form>
+</div>
 <div class="app">
   <header class="topbar">
     <div class="brand">
@@ -413,6 +450,63 @@ let network, nodesDS, edgesDS, selectedMethod=null, running=false, activeTab='ev
 let methodParams = [], lastEvidence = {}, guidedDemoRunning = false, panelCollapsed = false;
 let prevEvidenceValid = 0, graphAnimating = false, selectedPaper = null, workspacePapers = [];
 const BB_VIEW_KEY = "vg_bb_view";
+const VISITOR_ID_KEY = "vg_visitor_id";
+const VISITOR_EMAIL_KEY = "vg_visitor_email";
+
+async function registerDemoVisitor(email){
+  const res = await fetch("/api/register", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      email,
+      timezone:Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+    }),
+  });
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.detail || "Could not open the demo. Please try again.");
+  if(!data.visitor_id) throw new Error("Tracking service is not ready. Please try again.");
+  localStorage.setItem(VISITOR_ID_KEY, data.visitor_id);
+  localStorage.setItem(VISITOR_EMAIL_KEY, data.email || email);
+}
+
+async function ensureDemoAccess(){
+  const gate = document.getElementById("access-gate");
+  const form = document.getElementById("gate-form");
+  const input = document.getElementById("gate-email");
+  const button = document.getElementById("gate-submit");
+  const error = document.getElementById("gate-error");
+  const rememberedEmail = localStorage.getItem(VISITOR_EMAIL_KEY);
+
+  if(rememberedEmail){
+    input.value = rememberedEmail;
+    try{
+      await registerDemoVisitor(rememberedEmail);
+      gate.classList.add("hidden");
+      return;
+    }catch{
+      localStorage.removeItem(VISITOR_ID_KEY);
+    }
+  }
+
+  input.focus();
+  await new Promise(resolve=>{
+    form.addEventListener("submit", async event=>{
+      event.preventDefault();
+      error.textContent = "";
+      button.disabled = true;
+      button.textContent = "Opening…";
+      try{
+        await registerDemoVisitor(input.value.trim());
+        gate.classList.add("hidden");
+        resolve();
+      }catch(e){
+        error.textContent = e.message || "Could not open the demo.";
+        button.disabled = false;
+        button.textContent = "Open demo →";
+      }
+    });
+  });
+}
 
 function setBbView(mode){
   if(mode && mode !== "full") sessionStorage.setItem(BB_VIEW_KEY, mode);
@@ -1539,6 +1633,7 @@ document.getElementById("empty-add-btn").addEventListener("click", ()=>{
 document.getElementById("empty-load-demo").addEventListener("click", e=>{ e.preventDefault(); doLoadDemo(false); });
 
 (async ()=>{
+  await ensureDemoAccess();
   await refreshWorkspaceMeta();
   await loadGraph(); await loadEvidence();
 })();
