@@ -61,6 +61,23 @@ def bb_req(method: str, path: str, body: dict | None = None, timeout: int = 120,
 def ensure_schema() -> None:
     with open(SCHEMA_PATH) as f:
         schema = json.load(f)
+    # Older Verigraph apps used `real` for duration while newer apps use
+    # `numeric`. Both satisfy the runtime contract, so preserve an existing
+    # compatible numeric type rather than requesting a destructive conversion.
+    try:
+        _, current = bb_req("GET", f"/v1/{APP_ID}/schema")
+        current_tables = current.get("schema", {}).get("tables", {})
+        numeric_types = {"smallint", "integer", "bigint", "real", "float4", "float8", "decimal", "numeric"}
+        for table_name, table in schema.get("tables", {}).items():
+            existing_columns = current_tables.get(table_name, {}).get("columns", {})
+            for column_name, column in table.get("columns", {}).items():
+                existing_type = existing_columns.get(column_name, {}).get("type")
+                desired_type = column.get("type")
+                if existing_type != desired_type and existing_type in numeric_types and desired_type in numeric_types:
+                    column["type"] = existing_type
+                    print(f"  preserving {table_name}.{column_name} type {existing_type}")
+    except Exception:
+        pass
     code, res = bb_req("POST", f"/v1/{APP_ID}/schema/apply", {"schema": schema, "dry_run": True})
     if code != 200:
         raise RuntimeError(f"schema dry_run failed: {res}")
