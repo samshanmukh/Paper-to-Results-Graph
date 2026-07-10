@@ -69,7 +69,7 @@ async function cogneeAugmentAsk(ctx: any, question: string, answer: string): Pro
   if (!cogneeReady(ctx)) return answer;
   const base = String(ctx.env.COGNEE_SERVICE_URL).replace(/\/$/, "");
   try {
-    const res = await fetch(`${base}/api/v1/search`, {
+    const res = await fetch(`${base}/api/v1/recall`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -77,7 +77,6 @@ async function cogneeAugmentAsk(ctx: any, question: string, answer: string): Pro
       },
       body: JSON.stringify({
         query: question,
-        search_type: "CHUNKS",
         datasets: [ctx.env.COGNEE_DATASET || "default_dataset"],
       }),
     });

@@ -203,6 +203,23 @@ def remember_many_sync(docs: list[tuple[str, list[str]]]) -> None:
         pass
 
 
+async def disconnect() -> None:
+    """Close a Cognee Cloud SDK connection after one-shot sync jobs."""
+    global _CLOUD_CONNECTED
+    if not is_cloud_mode() or not _CLOUD_CONNECTED:
+        return
+    cognee = _import_cognee()
+    await cognee.disconnect()
+    _CLOUD_CONNECTED = False
+
+
+def disconnect_sync() -> None:
+    try:
+        _run_async(disconnect(), timeout=90)
+    except Exception:
+        pass
+
+
 
 def _format_paper_document(paper_id: str, title: str, text: str, extraction: dict | None = None) -> str:
     lines = [f"[paper {paper_id}] {title}", "", text.strip()]

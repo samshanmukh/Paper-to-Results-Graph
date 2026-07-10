@@ -14,6 +14,7 @@ sys.path.insert(0, ROOT)
 from app.cognee_memory import (
     _format_paper_document,
     _format_run_document,
+    disconnect_sync,
     is_enabled,
     remember_many_sync,
 )
@@ -113,7 +114,10 @@ def main() -> int:
     if not docs:
         print("nothing to sync")
         return 0
-    remember_many_sync(docs)
+    try:
+        remember_many_sync(docs)
+    finally:
+        disconnect_sync()
     print(f"synced {len(docs)} documents into Cognee dataset")
     return 0
 
