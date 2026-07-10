@@ -348,7 +348,6 @@ div.vis-tooltip{color:#E9EDF5!important;background:#151B24!important;border-colo
       <button class="btn-guided" id="guided-demo-btn" title="Automated click-through for presentations">▶ Guided demo</button>
       <button class="btn-ghost" id="new-workspace-btn" title="Start fresh with your own papers">⊕ New workspace</button>
       <button class="btn-ghost" id="load-demo-btn" title="Load 3-paper demo (Adam, Wilson, AdamW)">Load demo</button>
-      <button class="btn-ghost" id="graph-scope-btn" title="Toggle between the focused evidence story and full archive">Full graph</button>
       <button class="btn-ghost" id="reset-btn" title="Clear runs on current papers">↺ Reset runs</button>
       <button class="btn-dark" id="upload-btn">+ Add paper</button>
     </div>
@@ -505,11 +504,8 @@ let prevEvidenceValid = 0, graphAnimating = false, selectedPaper = null, workspa
 let formationPlaying = false;
 const BB_VIEW_KEY = "vg_bb_view";
 const BB_REMOVED_PAPERS_KEY = "vg_bb_removed_papers";
-const BB_GRAPH_SCOPE_KEY = "vg_bb_graph_scope";
 const VISITOR_ID_KEY = "vg_visitor_id";
 const VISITOR_EMAIL_KEY = "vg_visitor_email";
-const DEMO_PAPER_IDS = new Set(["adam2014","wilson2017","adamw2017"]);
-const DEMO_CLAIM_IDS = new Set(["adam2014-c1","wilson2017-c1","adamw2017-c2"]);
 
 async function registerDemoVisitor(email){
   const res = await fetch("/api/register", {
@@ -580,30 +576,6 @@ function getRemovedPapers(){
 function setRemovedPapers(ids){
   sessionStorage.setItem(BB_REMOVED_PAPERS_KEY,JSON.stringify([...ids]));
 }
-function getGraphScope(){
-  return sessionStorage.getItem(BB_GRAPH_SCOPE_KEY)||"demo";
-}
-function setGraphScope(scope){
-  sessionStorage.setItem(BB_GRAPH_SCOPE_KEY,scope);
-  document.getElementById("graph-scope-btn").textContent = scope==="demo" ? "Full graph" : "Focus demo";
-}
-function focusDemoGraph(g){
-  if(getGraphScope()!=="demo") return g;
-  const allowed = new Set([
-    ...[...DEMO_PAPER_IDS].map(id=>`p-${id}`),
-    ...[...DEMO_CLAIM_IDS].map(id=>`c-${id}`),
-    `m-${DEMO_METHOD_ID}`,
-  ]);
-  const runIds = g.edges
-    .filter(edge=>edge.rel==="IMPLEMENTS"&&edge.dst===`m-${DEMO_METHOD_ID}`)
-    .map(edge=>edge.src)
-    .sort();
-  if(runIds.length) allowed.add(runIds[runIds.length-1]);
-  return {
-    nodes:g.nodes.filter(node=>allowed.has(node.eid)),
-    edges:g.edges.filter(edge=>allowed.has(edge.src)&&allowed.has(edge.dst)),
-  };
-}
 function filterGraphByView(g){
   const view = getBbView();
   if(view === "empty") return {nodes: [], edges: []};
@@ -614,7 +586,6 @@ function filterGraphByView(g){
       ids.has(e.src) && ids.has(e.dst) && e.rel !== "VALIDATES" && e.rel !== "REFUTES");
     g = {nodes, edges};
   }
-  g = focusDemoGraph(g);
   const removed = getRemovedPapers();
   if(!removed.size) return g;
   const hidden = new Set([...removed].map(id=>`p-${id}`));
@@ -633,9 +604,7 @@ function filterEvidenceByView(rows){
   const view = getBbView();
   if(view === "empty") return [];
   const removed = getRemovedPapers();
-  const visible = rows.filter(row=>
-    !removed.has(row.paper) &&
-    (getGraphScope()!=="demo" || DEMO_CLAIM_IDS.has(row.claim)));
+  const visible = rows.filter(row=>!removed.has(row.paper));
   if(view === "no-runs") return visible.map(r => ({...r, evidence: "no runs yet"}));
   return visible;
 }
@@ -669,8 +638,6 @@ function animateValue(from, to, options={}){
 function claimShortLabel(text){
   if(!text) return "Claim";
   const s = text.toLowerCase();
-  if(s.includes("adam converges faster")) return "Adam converges faster";
-  if(s.includes("adaptive gradient methods") && s.includes("generalize worse")) return "Adam generalizes worse";
   if(s.includes("linearly separable") && (s.includes("sgd") || s.includes("adam")))
     return "GD 0% · Adam ~50%";
   if(s.includes("adamw") && s.includes("generalization")) return "AdamW < Adam (gen.)";
@@ -1187,12 +1154,10 @@ function buildLayout(g){
     const claims = (claimsOf[p.eid]||[]).sort((a,b)=>a.key<b.key?-1:1);
     const methods = methodsOf[p.eid]||[];
 
-    const demoPaperNames = {adam2014:"Adam",wilson2017:"Wilson et al.",adamw2017:"AdamW"};
-    const paperName = getGraphScope()==="demo" ? (demoPaperNames[p.key]||p.caption) : p.caption;
     pos[p.eid] = {x, y: ROW_Y.paper};
     nodes.push({
       id:p.eid, x, y:ROW_Y.paper, fixed:true, shape:"box",
-      label:wrap(paperName, 20) + "\n" + (p.props.year||""),
+      label:wrap(p.caption, 20) + "\n" + (p.props.year||""),
       color:{background:"#151B24", border:"#465166", highlight:{background:"#211B3D", border:"#8B6CF8"}},
       font:{color:"#E9EDF5", size:13, face:"IBM Plex Mono"},
       margin:10, borderWidth:1.5, widthConstraint:{maximum:185},
@@ -1453,9 +1418,7 @@ async function refreshWorkspaceMeta(){
       return {empty: true, papers: 0, papers_detail: []};
     }
     const removed = getRemovedPapers();
-    workspacePapers = (ws.papers_detail || []).filter(p=>
-      !removed.has(p.id) &&
-      (getGraphScope()!=="demo" || DEMO_PAPER_IDS.has(p.id)));
+    workspacePapers = (ws.papers_detail || []).filter(p=>!removed.has(p.id));
     updateWorkspaceBadge(workspacePapers.length, workspacePapers.length===0);
     renderPapersList();
     return ws;
@@ -1769,7 +1732,6 @@ async function doLoadDemo(silent=false){
     const r = await res.json();
     if(!res.ok) throw new Error(r.detail || "failed");
     setRemovedPapers(new Set());
-    setGraphScope("demo");
     if(r.view) setBbView(r.view);
     resetUIState(r.message || `Demo loaded — ${r.papers} papers (Adam · Wilson · AdamW), no runs yet. Click a violet method node and press RUN.`);
     setTab("evidence");
@@ -1779,18 +1741,6 @@ async function doLoadDemo(silent=false){
     if(!silent) alert("Load demo failed: "+e.message);
     return false;
   }finally{ btn.disabled = false; }
-}
-
-async function toggleGraphScope(){
-  const scope = getGraphScope()==="demo" ? "full" : "demo";
-  setGraphScope(scope);
-  setRemovedPapers(new Set());
-  await refreshWorkspaceMeta();
-  await loadGraph();
-  await loadEvidence();
-  showDemoToast(scope==="demo"
-    ? "Focused view — Adam · Wilson · AdamW with latest executable evidence"
-    : "Full archive — all papers, claims, and persisted runs");
 }
 
 async function runMethodAndWait(){
@@ -1897,7 +1847,6 @@ function togglePanel(collapsed){
 
 document.getElementById("new-workspace-btn").addEventListener("click", doNewWorkspace);
 document.getElementById("load-demo-btn").addEventListener("click", ()=>doLoadDemo(false));
-document.getElementById("graph-scope-btn").addEventListener("click", toggleGraphScope);
 document.getElementById("guided-demo-btn").addEventListener("click", runGuidedDemo);
 document.getElementById("graph-play").addEventListener("click", playGraphFormation);
 document.getElementById("panel-toggle").addEventListener("click", ()=>togglePanel());
@@ -1908,7 +1857,6 @@ document.getElementById("empty-add-btn").addEventListener("click", ()=>{
 document.getElementById("empty-load-demo").addEventListener("click", e=>{ e.preventDefault(); doLoadDemo(false); });
 
 (async ()=>{
-  setGraphScope(getGraphScope());
   await ensureDemoAccess();
   await refreshWorkspaceMeta();
   await loadGraph(); await loadEvidence();
