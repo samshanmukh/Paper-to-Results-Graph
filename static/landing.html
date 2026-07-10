@@ -386,7 +386,7 @@ html[data-theme="light"] .cta-box p{color:#626C79}
     <div class="sec-head">
       <div class="sec-label">2-minute walkthrough</div>
       <h2>How the live demo works</h2>
-      <p>The shared archive currently contains seven papers, 22 claims, and 19 persisted runs. The guided path follows the Adam, Wilson, and AdamW disagreement.</p>
+      <p>The shared archive currently contains six papers, 19 claims, and 25 persisted runs. The guided path follows the Adam, Wilson, and AdamW disagreement.</p>
     </div>
     <div class="steps">
       <div class="step"><h4>Open the graph</h4><p>vis-network shows papers, claims, methods, citations, and CONTRADICTS edges. Evidence tab: all claims say "no runs yet".</p></div>
@@ -415,7 +415,7 @@ html[data-theme="light"] .cta-box p{color:#626C79}
       <div class="card"><div class="icon">🕸</div><div class="tag">static/index.html</div><h3>Interactive graph UI</h3><p>vis-network visualization with color-coded node types, edge legends (CONTRADICTS / VALIDATES), zoom controls, and tabbed side panel (Evidence · Console · Ask).</p></div>
       <div class="card"><div class="icon" style="color:var(--purple)">◈</div><div class="tag">verigraph.pipe · cognee_memory.py</div><h3>Ask the research agent</h3><p>Every Ask now recalls relevant Cognee Brain context before the graph-grounded answer. Visitor sessions remain isolated by anonymous id—no email or IP is sent to Cognee.</p></div>
       <div class="card"><div class="icon">↺</div><div class="tag">demo_reset.py</div><h3>Reset demo</h3><p>One-click pristine state: clears Run/Artifact nodes, reloads papers, wipes local run dirs. Evidence returns to "no runs yet" for a clean stage demo.</p></div>
-      <div class="card"><div class="icon">☁</div><div class="tag">butterbase.py</div><h3>Run history mirror</h3><p>Papers and 19 measured runs are persisted in Butterbase outside Neo4j, powering reliable cloud replay without rerunning a sandbox for every visitor.</p></div>
+      <div class="card"><div class="icon">☁</div><div class="tag">butterbase.py</div><h3>Run history mirror</h3><p>Papers and 25 measured runs are persisted in Butterbase outside Neo4j, powering reliable cloud replay without rerunning a sandbox for every visitor.</p></div>
       <div class="card"><div class="icon" style="color:var(--amber)">⇄</div><div class="tag">graph.py</div><h3>Cross-paper conflicts</h3><p>CONTRADICTS edges between claims from different papers. The graph doesn't hide disagreement; a run can adjudicate which side reproduces.</p></div>
       <div class="card"><div class="icon">🧪</div><div class="tag">demo_loop.py</div><h3>CLI closed loop</h3><p>Headless one-command loop: <code>python scripts/demo_loop.py wilson2017-m1</code> (codegen → run → curate → evidence diff, no UI required).</p></div>
     </div>
@@ -627,7 +627,7 @@ COGNEE_ENABLED (true|false) · COGNEE_DATASET_NAME
     <div class="spec-block">
       <h4>Verified status</h4>
       <div class="status-grid">
-        <div class="status-item"><span class="status-dot ok"></span>Archive (7 papers · 22 claims · 19 runs)</div>
+        <div class="status-item"><span class="status-dot ok"></span>Archive (6 papers · 19 claims · 25 runs)</div>
         <div class="status-item"><span class="status-dot ok"></span>Neo4j graph (conflicts + evidence)</div>
         <div class="status-item"><span class="status-dot ok"></span>Codegen (Wilson counterexample)</div>
         <div class="status-item"><span class="status-dot ok"></span>Runner: local + Daytona (4.9s)</div>
