@@ -706,10 +706,8 @@ html[data-theme="light"] .ws-name,.diff-row{color:#171A20}
     </div>
     <div class="m-body">
       <div id="cloud-upload-note" class="cloud-upload-note" hidden>
-        <strong>Cloud demo limitation</strong>
-        <p>Paper upload and arXiv extraction need the full FastAPI backend (LLM extraction + Neo4j writes). This Butterbase deploy serves the shared graph and run history only.</p>
-        <p>Use <b>Load demo</b> for the Adam · Wilson · AdamW corpus, or run Verigraph locally to add new papers.</p>
-        <button type="button" class="btn-dark" id="cloud-load-demo-btn">Load demo papers</button>
+        <strong>Saved in this browser</strong>
+        <p>On the cloud demo, new papers are extracted and stored in <b>localStorage</b> on your device — not in the shared Butterbase corpus. PDFs are parsed in-browser so large files never hit the edge body limit.</p>
       </div>
       <div id="upload-controls">
         <label class="m-label" for="arxiv-url">arXiv link or id</label>
@@ -723,6 +721,7 @@ html[data-theme="light"] .ws-name,.diff-row{color:#171A20}
           <input id="file-input" type="file" accept=".pdf,.txt,.md" hidden>
         </div>
       </div>
+      <div id="local-papers-panel" class="papers-panel" hidden></div>
     </div>
     <div class="m-foot">
       <span id="upload-status">extraction runs through the Butterbase AI gateway (~20–30s)</span>
@@ -1534,6 +1533,7 @@ function edgeStyle(e){
 
 async function loadGraph(focusNew=false){
   let g = await (await fetch("/api/graph")).json();
+  if(window.verigraphLocalPapers) g = window.verigraphLocalPapers.mergeGraph(g);
   g = filterGraphByView(g);
   const keep = new Set(["Paper","Claim","Method","Run"]);
   g.nodes = g.nodes.filter(n=>keep.has(n.label));
@@ -1545,9 +1545,12 @@ async function loadGraph(focusNew=false){
   const nRuns = count("Run");
   const nNodes = g.nodes.length;
   const nPapers = count("Paper");
+  const localCount = window.verigraphLocalPapers?.loadVault()?.length || 0;
   const isEmpty = nPapers === 0;
 
-  document.getElementById("db-label").textContent = `Neo4j Aura · ${nNodes} nodes`;
+  document.getElementById("db-label").textContent = localCount
+    ? `Neo4j Aura · ${nNodes} nodes · ${localCount} local`
+    : `Neo4j Aura · ${nNodes} nodes`;
   document.getElementById("run-hint").textContent =
     `${nConf} CONTRADICTS · ${nRuns ? nRuns+" run"+(nRuns>1?"s":"") : "no runs yet"}`;
   updateWorkspaceBadge(nPapers, isEmpty);
@@ -1652,9 +1655,10 @@ function renderPapersList(){
   list.innerHTML = workspacePapers.map(p=>{
     const sel = selectedPaper === p.id ? " selected" : "";
     const year = p.year ? ` · ${p.year}` : "";
+    const localTag = p.local ? " · local" : "";
     return `<div class="paper-row${sel}" data-paper-id="${p.id}">
       <div class="paper-row-main">
-        <div class="paper-row-id">${p.id}${year}</div>
+        <div class="paper-row-id">${p.id}${year}${localTag}</div>
         <div class="paper-row-title">${(p.title||"").replace(/</g,"&lt;")}</div>
         <div class="paper-row-meta">${p.claims} claims · ${p.methods} methods</div>
       </div>
@@ -1682,9 +1686,10 @@ function renderPapersList(){
 
 async function refreshWorkspaceMeta(){
   try{
-    const ws = await (await fetch("/api/workspace")).json();
+    let ws = await (await fetch("/api/workspace")).json();
+    if(window.verigraphLocalPapers) ws = window.verigraphLocalPapers.mergeWorkspace(ws);
     const view = getBbView();
-    if(view === "empty"){
+    if(view === "empty" && !(window.verigraphLocalPapers?.loadVault()?.length)){
       workspacePapers = [];
       updateWorkspaceBadge(0, true);
       renderPapersList();
@@ -1718,6 +1723,27 @@ function removePaperFromRenderedGraph(paperId){
 async function removePaper(paperId){
   const paper = workspacePapers.find(p=>p.id === paperId);
   const label = paper ? `${paper.title} (${paperId})` : paperId;
+  const isLocal = !!(paper?.local || window.verigraphLocalPapers?.loadVault()?.some(p=>p.id===paperId));
+  if(isLocal && window.verigraphLocalPapers){
+    if(!confirm(`Remove "${label}" from this browser’s localStorage?\n\nShared Butterbase demo papers are unchanged.`))
+      return;
+    try{
+      window.verigraphLocalPapers.removeLocalPaper(paperId);
+      if(selectedPaper === paperId) selectedPaper = null;
+      if(selectedMethod?.startsWith(paperId+"-")){
+        selectedMethod = null;
+        methodCard.style.display = "none";
+        consoleEmpty.style.display = "block";
+      }
+      removePaperFromRenderedGraph(paperId);
+      window.verigraphLocalPapers.renderLocalPapersList(document.getElementById("local-papers-panel"));
+      await refreshWorkspaceMeta();
+      await loadGraph();
+      await loadEvidence();
+      chatArea.innerHTML = `<div class="chat-bubble agent">Removed local paper <b>${paperId}</b> from this browser.</div>`;
+    }catch(e){ alert("Remove failed: "+e.message); }
+    return;
+  }
   const message = window.VERIGRAPH_FN_URL
     ? `Remove "${label}" from this browser session?\n\nThe shared Butterbase demo data will not be changed. Load demo restores it.`
     : `Remove "${label}" from the workspace?\n\nThis deletes its claims, methods, and any runs for those methods. Other papers stay untouched.`;
@@ -1785,6 +1811,7 @@ function resetUIState(agentMsg){
 
 async function loadEvidence(){
   let rows = await (await fetch("/api/evidence")).json();
+  if(window.verigraphLocalPapers) rows = window.verigraphLocalPapers.mergeEvidence(rows);
   rows = filterEvidenceByView(rows);
   evidenceRowsCache = rows;
   if(!rows.length){
@@ -2160,25 +2187,19 @@ function openAddPaperModal(){
   const note = document.getElementById("cloud-upload-note");
   const controls = document.getElementById("upload-controls");
   const subtitle = document.getElementById("modal-subtitle");
-  if(IS_CLOUD_DEPLOY){
-    note.hidden = false;
-    controls.hidden = true;
-    subtitle.textContent = "available on the full local backend";
-    status.textContent = "This Butterbase deploy cannot ingest new papers (edge function body limits + no extraction spine).";
-  } else {
-    note.hidden = true;
-    controls.hidden = false;
-    subtitle.textContent = "extracts claims, methods & conflicts into the graph";
-    status.textContent = "extraction runs through the Butterbase AI gateway (~20–30s)";
-  }
+  note.hidden = !IS_CLOUD_DEPLOY;
+  controls.hidden = false;
+  subtitle.textContent = IS_CLOUD_DEPLOY
+    ? "extracts into this browser’s localStorage"
+    : "extracts claims, methods & conflicts into the graph";
+  status.textContent = IS_CLOUD_DEPLOY
+    ? "Cloud imports stay on this device. Shared demo papers are unchanged."
+    : "extraction runs through the Butterbase AI gateway (~20–30s)";
+  window.verigraphLocalPapers?.renderLocalPapersList(document.getElementById("local-papers-panel"));
   backdrop.classList.add("show");
 }
 
 document.getElementById("upload-btn").addEventListener("click", openAddPaperModal);
-document.getElementById("cloud-load-demo-btn")?.addEventListener("click", ()=>{
-  backdrop.classList.remove("show");
-  doLoadDemo(false);
-});
 document.getElementById("modal-close").addEventListener("click", ()=>backdrop.classList.remove("show"));
 backdrop.addEventListener("click", e=>{ if(e.target===backdrop) backdrop.classList.remove("show"); });
 
@@ -2189,21 +2210,26 @@ function formatUploadError(payload, fallback){
   if(err && typeof err === "object"){
     const msg = err.message || err.code || "";
     if(/too large/i.test(msg)){
-      return "Upload rejected: file/request is too large for the Butterbase edge function. " +
-        "Use Load demo on this cloud site, or run the full FastAPI backend locally to ingest PDFs.";
+      return "Upload rejected: request too large for the edge function. Use an arXiv link, or drop a PDF (parsed in-browser).";
     }
     return msg || fallback;
   }
   try{ return JSON.stringify(payload).slice(0,180); }catch{ return fallback; }
 }
 
+async function refreshAfterLocalImport(paper){
+  status.textContent = `✓ local ${paper.id}: ${(paper.extraction?.claims||[]).length} claims, ${(paper.extraction?.methods||[]).length} methods`;
+  log(`[upload ] ✓ local ${paper.id} — "${paper.title}" (browser storage)`, "t-ok");
+  window.verigraphLocalPapers?.renderLocalPapersList(document.getElementById("local-papers-panel"));
+  await loadGraph(true);
+  await loadEvidence();
+  await refreshWorkspaceMeta();
+  setTimeout(()=>backdrop.classList.remove("show"), 1200);
+  if(typeof showDemoToast === "function") showDemoToast(`Saved ${paper.id} in this browser`);
+}
+
 async function ingest(promise, label){
-  if(IS_CLOUD_DEPLOY){
-    status.textContent = "✗ Paper ingest is not available on the Butterbase cloud demo.";
-    log("[upload ] ✗ cloud deploy cannot extract new papers — use Load demo or run locally", "t-bad");
-    return false;
-  }
-  status.textContent = `reading ${label} & extracting claims via the AI gateway…`;
+  status.textContent = `reading ${label} & extracting claims…`;
   setTab("console");
   clearLog();
   log(`[upload ] verigraph add ${label}`, "t-warn");
@@ -2211,6 +2237,13 @@ async function ingest(promise, label){
     const res = await promise;
     const r = await res.json().catch(()=>({}));
     if(!res.ok) throw new Error(formatUploadError(r, `HTTP ${res.status}`));
+    // Cloud extract-local returns {extraction}; full backend returns {paper_id,...}
+    if(r.extraction?.paper || (r.paper && r.claims)){
+      const extraction = r.extraction || r;
+      const paper = window.verigraphLocalPapers.upsertLocalPaper(extraction, {source: r.source || "extract"});
+      await refreshAfterLocalImport(paper);
+      return true;
+    }
     status.textContent = `✓ ${r.paper_id}: ${r.claims} claims, ${r.methods} methods, ${r.relations} cross-paper links`;
     log(`[upload ] ✓ ${r.paper_id} — "${r.title}"`, "t-ok");
     log(`  ${r.claims} claims · ${r.methods} methods · ${r.relations} relations`, "t-dim");
@@ -2226,12 +2259,24 @@ async function ingest(promise, label){
 
 const arxivGo = document.getElementById("arxiv-go");
 arxivGo.addEventListener("click", async ()=>{
-  if(IS_CLOUD_DEPLOY){ openAddPaperModal(); return; }
   const url = document.getElementById("arxiv-url").value.trim();
   if(!url){ status.textContent = "paste an arXiv link or id first."; return; }
   arxivGo.disabled = true;
-  await ingest(fetch("/api/upload-arxiv", {method:"POST",
-    headers:{"Content-Type":"application/json"}, body:JSON.stringify({url})}), url);
+  try{
+    if(IS_CLOUD_DEPLOY && window.verigraphLocalPapers){
+      status.textContent = `fetching arXiv metadata for ${url}…`;
+      setTab("console"); clearLog();
+      log(`[upload ] local arXiv import ${url}`, "t-warn");
+      const paper = await window.verigraphLocalPapers.importArxiv(url);
+      await refreshAfterLocalImport(paper);
+    } else {
+      await ingest(fetch("/api/upload-arxiv", {method:"POST",
+        headers:{"Content-Type":"application/json"}, body:JSON.stringify({url})}), url);
+    }
+  }catch(e){
+    status.textContent = "✗ " + e.message;
+    log(`[upload ] ✗ ${e.message}`, "t-bad");
+  }
   arxivGo.disabled = false;
 });
 document.getElementById("arxiv-url").addEventListener("keydown", e=>{ if(e.key==="Enter") arxivGo.click(); });
@@ -2247,17 +2292,28 @@ dropZone.addEventListener("drop", e=>{
 });
 fileInput.addEventListener("change", ()=>{ if(fileInput.files.length) sendFile(fileInput.files[0]); });
 async function sendFile(file){
-  if(IS_CLOUD_DEPLOY){ openAddPaperModal(); return; }
-  // Butterbase edge functions reject large bodies; keep a soft local guard too
-  const maxBytes = 8 * 1024 * 1024;
-  if(file.size > maxBytes){
-    status.textContent = `✗ "${file.name}" is ${(file.size/1024/1024).toFixed(1)} MB — please use a smaller PDF/text excerpt (under 8 MB).`;
-    return;
-  }
   dropZone.classList.add("busy");
-  const form = new FormData();
-  form.append("file", file);
-  await ingest(fetch("/api/upload-file", {method:"POST", body:form}), file.name);
+  try{
+    if(IS_CLOUD_DEPLOY && window.verigraphLocalPapers){
+      status.textContent = `reading ${file.name} in-browser…`;
+      setTab("console"); clearLog();
+      log(`[upload ] local file import ${file.name}`, "t-warn");
+      const paper = await window.verigraphLocalPapers.importFile(file);
+      await refreshAfterLocalImport(paper);
+    } else {
+      const maxBytes = 8 * 1024 * 1024;
+      if(file.size > maxBytes){
+        status.textContent = `✗ "${file.name}" is ${(file.size/1024/1024).toFixed(1)} MB — please use a smaller PDF/text excerpt (under 8 MB).`;
+      } else {
+        const form = new FormData();
+        form.append("file", file);
+        await ingest(fetch("/api/upload-file", {method:"POST", body:form}), file.name);
+      }
+    }
+  }catch(e){
+    status.textContent = "✗ " + e.message;
+    log(`[upload ] ✗ ${e.message}`, "t-bad");
+  }
   dropZone.classList.remove("busy");
   fileInput.value = "";
 }
@@ -2486,6 +2542,7 @@ document.getElementById("empty-load-demo").addEventListener("click", e=>{ e.prev
   if(window.verigraphAdvanced?.refresh) window.verigraphAdvanced.refresh();
 })();
 </script>
+<script src="/local-papers.js"></script>
 <script src="/advanced-features.js"></script>
 </body>
 </html>
