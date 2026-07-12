@@ -161,6 +161,18 @@ def workspace_info():
         raise HTTPException(500, f"workspace status failed: {e}")
 
 
+@app.get("/api/health")
+def health():
+    import os as _os
+    from app.research_tools import load_impl_bundle
+
+    return {
+        "ok": True,
+        "live_run": bool(_os.environ.get("DAYTONA_API_KEY")),
+        "impl_methods": len(load_impl_bundle()),
+    }
+
+
 @app.post("/api/workspace/new")
 def workspace_new():
     from app.workspace import new_workspace
@@ -272,6 +284,148 @@ def export_workspace():
             "Content-Disposition": f'attachment; filename="verigraph-export-{stamp}.json"',
         },
     )
+
+
+class CompareBody(BaseModel):
+    run_a: str
+    run_b: str
+
+
+@app.post("/api/compare")
+def compare_endpoint(body: CompareBody):
+    from app.research_tools import compare_runs
+
+    try:
+        return compare_runs(body.run_a, body.run_b)
+    except KeyError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"compare failed: {e}")
+
+
+@app.get("/api/timeline")
+def timeline_endpoint():
+    from app.research_tools import claim_timeline
+
+    try:
+        return claim_timeline()
+    except Exception as e:
+        raise HTTPException(500, f"timeline failed: {e}")
+
+
+@app.get("/api/evidence-brief")
+def evidence_brief_endpoint():
+    from app.research_tools import evidence_brief_markdown
+    from fastapi.responses import PlainTextResponse
+
+    try:
+        md = evidence_brief_markdown()
+    except Exception as e:
+        raise HTTPException(500, f"brief failed: {e}")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return PlainTextResponse(
+        content=md,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="verigraph-brief-{stamp}.md"'},
+    )
+
+
+class BatchRunBody(BaseModel):
+    method_ids: list[str] = []
+    backend: str = "auto"
+    params: dict = {}
+
+
+@app.post("/api/batch-run")
+def batch_run(body: BatchRunBody | None = None):
+    """Run all never-run methods (or an explicit list) sequentially."""
+    from app.research_tools import methods_never_run
+
+    body = body or BatchRunBody()
+    backend = body.backend if body.backend in ("auto", "local", "daytona") else "auto"
+    targets = body.method_ids or methods_never_run()
+    if not targets:
+        return {"ok": True, "ran": [], "message": "No never-run methods left."}
+
+    results = []
+    for mid in targets:
+        try:
+            record = execute(mid, backend, params=body.params or None)
+            curate(record)
+            try:
+                from app.butterbase import sync_run
+                sync_run(record)
+            except Exception as e:
+                record["butterbase_sync_error"] = str(e)
+            results.append({
+                "method_id": mid,
+                "run_id": record.get("run_id"),
+                "error": record.get("error"),
+                "backend": record.get("backend"),
+                "metrics": (record.get("result") or {}).get("metrics"),
+            })
+        except Exception as e:
+            results.append({"method_id": mid, "error": str(e)})
+    return {"ok": True, "ran": results, "count": len(results)}
+
+
+@app.get("/api/batch-plan")
+def batch_plan():
+    from app.research_tools import methods_never_run
+
+    pending = methods_never_run()
+    return {"pending": pending, "count": len(pending)}
+
+
+class WorkspaceSaveBody(BaseModel):
+    name: str
+    snapshot: dict = {}
+    visitor_id: str = ""
+    email: str = ""
+    display_name: str = ""
+
+
+@app.get("/api/saved-workspaces")
+def list_saved_workspaces(visitor: str = "", email: str = ""):
+    try:
+        from app.butterbase import list_workspaces
+        return {"workspaces": list_workspaces(visitor_id=visitor, email=email)}
+    except Exception as e:
+        raise HTTPException(503, f"workspaces unavailable: {e}")
+
+
+@app.post("/api/saved-workspaces")
+def save_workspace(body: WorkspaceSaveBody):
+    name = body.name.strip()
+    if not name or len(name) > 80:
+        raise HTTPException(400, "Workspace name required (max 80 chars).")
+    try:
+        from app.butterbase import save_workspace as bb_save
+        if body.display_name.strip() and body.visitor_id:
+            try:
+                from app.butterbase import update_visitor_profile
+                update_visitor_profile(body.visitor_id, body.display_name.strip())
+            except Exception:
+                pass
+        row = bb_save(
+            name=name,
+            snapshot=body.snapshot or {},
+            visitor_id=body.visitor_id or None,
+            email=body.email or None,
+        )
+        return {"ok": True, "workspace": row}
+    except Exception as e:
+        raise HTTPException(503, f"save workspace failed: {e}")
+
+
+@app.delete("/api/saved-workspaces/{workspace_id}")
+def delete_saved_workspace(workspace_id: str, visitor: str = ""):
+    try:
+        from app.butterbase import delete_workspace
+        delete_workspace(workspace_id, visitor_id=visitor or None)
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(503, f"delete workspace failed: {e}")
 
 
 class RunBody(BaseModel):

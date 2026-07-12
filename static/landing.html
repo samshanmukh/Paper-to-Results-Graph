@@ -417,7 +417,9 @@ html[data-theme="light"] .cta-box p{color:#626C79}
       <div class="card"><div class="icon">↺</div><div class="tag">demo_reset.py</div><h3>Reset demo</h3><p>One-click pristine state: clears Run/Artifact nodes, reloads papers, wipes local run dirs. Evidence returns to "no runs yet" for a clean stage demo.</p></div>
       <div class="card"><div class="icon">☁</div><div class="tag">butterbase.py</div><h3>Run history mirror</h3><p>Papers and 25 measured runs are persisted in Butterbase outside Neo4j, powering reliable cloud replay without rerunning a sandbox for every visitor.</p></div>
       <div class="card"><div class="icon" style="color:var(--amber)">⇄</div><div class="tag">insights.py</div><h3>Conflict adjudication</h3><p>CONTRADICTS edges between claims from different papers. Insights ranks each conflict as untested, leading, resolved, or both-supported once runs exist.</p></div>
-      <div class="card"><div class="icon">↓</div><div class="tag">/api/export</div><h3>Workspace export</h3><p>Download a JSON snapshot of the graph, evidence table, conflict status, and run history — useful for sharing demos or offline analysis.</p></div>
+      <div class="card"><div class="icon">↓</div><div class="tag">/api/export · /api/evidence-brief</div><h3>Workspace export</h3><p>Download JSON snapshots or a shareable markdown evidence brief (print to PDF). Compare two runs side-by-side and batch-run never-executed methods.</p></div>
+      <div class="card"><div class="icon">⏱</div><div class="tag">/api/timeline</div><h3>Claim timeline</h3><p>Track how claim verdicts flip as new runs land. Citation layout mode highlights CITES edges across papers.</p></div>
+      <div class="card"><div class="icon">☁</div><div class="tag">Daytona · workspaces</div><h3>Live cloud runs + saves</h3><p>When <code>DAYTONA_API_KEY</code> is set on Butterbase, RUN executes live sandboxes. Named workspace snapshots persist per demo email beyond the access gate.</p></div>
     </div>
   </div>
 </section>
