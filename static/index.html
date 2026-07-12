@@ -833,10 +833,20 @@ function getRemovedPapers(){
 function setRemovedPapers(ids){
   sessionStorage.setItem(BB_REMOVED_PAPERS_KEY,JSON.stringify([...ids]));
 }
+function isLocalGraphNode(n){
+  return !!(n?.props?.local || n?.local);
+}
 function filterGraphByView(g){
   const view = getBbView();
-  if(view === "empty") return {nodes: [], edges: []};
-  if(view === "no-runs"){
+  // "empty" hides shared Butterbase corpus but must keep browser-local papers.
+  if(view === "empty"){
+    const nodes = (g.nodes || []).filter(isLocalGraphNode);
+    const ids = new Set(nodes.map(n => n.eid));
+    g = {
+      nodes,
+      edges: (g.edges || []).filter(e => ids.has(e.src) && ids.has(e.dst)),
+    };
+  } else if(view === "no-runs"){
     const nodes = g.nodes.filter(n => n.label !== "Run");
     const ids = new Set(nodes.map(n => n.eid));
     const edges = g.edges.filter(e =>
@@ -859,9 +869,10 @@ function filterGraphByView(g){
 }
 function filterEvidenceByView(rows){
   const view = getBbView();
-  if(view === "empty") return [];
   const removed = getRemovedPapers();
-  const visible = rows.filter(row=>!removed.has(row.paper));
+  let visible = rows.filter(row=>!removed.has(row.paper));
+  // Keep localStorage papers visible even in the cloud "empty workspace" view.
+  if(view === "empty") visible = visible.filter(row => row.local);
   if(view === "no-runs") return visible.map(r => ({...r, evidence: "no runs yet"}));
   return visible;
 }
@@ -1313,9 +1324,12 @@ async function tweenPositions(targets, ms=420){
   await Promise.all(jobs);
 }
 
-async function animateGraph(nodes, edges, {initial=false, focusNew=false, existing=new Set(), cinematic=false, skipFit=false}={}){
-  if(graphAnimating) return;
+async function animateGraph(nodes, edges, {initial=false, focusNew=false, existing=new Set(), cinematic=false, skipFit=false, focusNodeId=null}={}){
+  // Don't drop reloads that arrive while the previous animation is still running
+  // (common right after a local paper import during the initial graph reveal).
+  while(graphAnimating) await sleep(40);
   graphAnimating = true;
+  try{
   const newRuns = nodes.filter(n=>!existing.has(n.id) && n._raw?.label==="Run").map(n=>n.id);
 
   if(initial || !network){
@@ -1385,7 +1399,11 @@ async function animateGraph(nodes, edges, {initial=false, focusNew=false, existi
     await revealNodes(newcomers, cinematic ? 60 : 55);
 
     if(!skipFit){
-      if(focusNew && newRuns.length){
+      if(focusNodeId && nodesDS.get(focusNodeId)){
+        network.selectNodes([focusNodeId]);
+        await smoothFocus(focusNodeId, {scale:1.05, duration:900});
+        setTimeout(()=>smoothFit({duration:900}), 1200);
+      } else if(focusNew && newRuns.length){
         network.selectNodes(newRuns);
         await smoothFocus(newRuns[0], {scale:1.1, duration:1200});
         setTimeout(()=>smoothFit({duration:1100}), 1800);
@@ -1397,7 +1415,9 @@ async function animateGraph(nodes, edges, {initial=false, focusNew=false, existi
     }
   }
   syncFormationControls();
-  graphAnimating = false;
+  } finally {
+    graphAnimating = false;
+  }
 }
 
 function buildLayout(g){
@@ -1531,7 +1551,7 @@ function edgeStyle(e){
   };
 }
 
-async function loadGraph(focusNew=false){
+async function loadGraph(focusNew=false, {focusPaperId=null}={}){
   let g = await (await fetch("/api/graph")).json();
   if(window.verigraphLocalPapers) g = window.verigraphLocalPapers.mergeGraph(g);
   g = filterGraphByView(g);
@@ -1560,15 +1580,21 @@ async function loadGraph(focusNew=false){
   const existing = nodesDS ? new Set(nodesDS.getIds()) : new Set();
   const nodes = buildLayout(g);
   const edges = g.edges.map(edgeStyle).filter(Boolean);
+  const focusNodeId = focusPaperId ? `p-${focusPaperId}` : null;
 
   await animateGraph(nodes, edges, {
     initial: !network,
     focusNew: focusNew && !guidedDemoRunning,
+    focusNodeId: focusNodeId && !guidedDemoRunning ? focusNodeId : null,
     existing,
     cinematic: guidedDemoRunning,
     skipFit: guidedDemoRunning,
   });
   if(searchQuery) applyGraphSearch(searchQuery);
+  if(focusPaperId){
+    const node = nodes.find(n => n.id === `p-${focusPaperId}`);
+    if(node?._raw) selectPaper(node._raw, node.id);
+  }
 }
 
 function renderParams(){
@@ -2221,11 +2247,13 @@ async function refreshAfterLocalImport(paper){
   status.textContent = `✓ local ${paper.id}: ${(paper.extraction?.claims||[]).length} claims, ${(paper.extraction?.methods||[]).length} methods`;
   log(`[upload ] ✓ local ${paper.id} — "${paper.title}" (browser storage)`, "t-ok");
   window.verigraphLocalPapers?.renderLocalPapersList(document.getElementById("local-papers-panel"));
-  await loadGraph(true);
+  // Local papers must remain visible in the cloud "empty" workspace view.
+  // Do not flip to "full" (that would re-show the shared demo corpus).
+  await loadGraph(true, {focusPaperId: paper.id});
   await loadEvidence();
   await refreshWorkspaceMeta();
   setTimeout(()=>backdrop.classList.remove("show"), 1200);
-  if(typeof showDemoToast === "function") showDemoToast(`Saved ${paper.id} in this browser`);
+  if(typeof showDemoToast === "function") showDemoToast(`Saved ${paper.id} on the graph (this browser)`);
 }
 
 async function ingest(promise, label){
@@ -2533,6 +2561,10 @@ document.getElementById("empty-add-btn").addEventListener("click", ()=>{
 });
 document.getElementById("empty-load-demo").addEventListener("click", e=>{ e.preventDefault(); doLoadDemo(false); });
 
+</script>
+<script src="/local-papers.js"></script>
+<script src="/advanced-features.js"></script>
+<script>
 (async ()=>{
   await ensureDemoAccess();
   await refreshWorkspaceMeta();
@@ -2542,7 +2574,5 @@ document.getElementById("empty-load-demo").addEventListener("click", e=>{ e.prev
   if(window.verigraphAdvanced?.refresh) window.verigraphAdvanced.refresh();
 })();
 </script>
-<script src="/local-papers.js"></script>
-<script src="/advanced-features.js"></script>
 </body>
 </html>
