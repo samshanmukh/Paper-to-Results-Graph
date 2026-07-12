@@ -21,12 +21,16 @@ QUERIES = {
         """,
     ),
     "conflicts": (
-        "Cross-paper claim conflicts",
+        "Cross-paper claim conflicts (with evidence status when runs exist)",
         """
         MATCH (a:Claim)-[:CONTRADICTS]->(b:Claim),
               (a)-[:FROM]->(pa:Paper), (b)-[:FROM]->(pb:Paper)
-        RETURN pa.id AS from_paper, a.text AS claim,
-               pb.id AS against_paper, b.text AS contradicts
+        OPTIONAL MATCH (ra:Run)-[va:VALIDATES|REFUTES]->(a)
+        OPTIONAL MATCH (rb:Run)-[vb:VALIDATES|REFUTES]->(b)
+        RETURN pa.id AS from_paper, a.id AS from_claim, a.text AS claim,
+               CASE WHEN ra IS NULL THEN 'no runs yet' ELSE type(va) + ' by ' + ra.id END AS from_evidence,
+               pb.id AS against_paper, b.id AS to_claim, b.text AS contradicts,
+               CASE WHEN rb IS NULL THEN 'no runs yet' ELSE type(vb) + ' by ' + rb.id END AS to_evidence
         """,
     ),
     "methods": (
