@@ -945,10 +945,18 @@ async function extractLocalArxiv(ctx: any, url: string) {
   });
   if (!res.ok) throw new Error(`arXiv API HTTP ${res.status}`);
   const xml = await res.text();
-  const title = (xml.match(/<title>([\s\S]*?)<\/title>/i) || [])[1]?.replace(/^arXiv.*?\n/, "").trim() || `arXiv:${id}`;
-  const summary = (xml.match(/<summary>([\s\S]*?)<\/summary>/i) || [])[1]?.replace(/\s+/g, " ").trim() || "";
-  const authors = [...xml.matchAll(/<name>([\s\S]*?)<\/name>/gi)].map((m) => m[1].trim()).filter(Boolean);
-  const yearMatch = xml.match(/<published>(\d{4})/i);
+  const entry = (xml.match(/<entry>([\s\S]*?)<\/entry>/i) || [])[1] || "";
+  if (!entry) throw new Error("arXiv returned no entry for that id");
+  const title =
+    (entry.match(/<title>([\s\S]*?)<\/title>/i) || [])[1]
+      ?.replace(/\s+/g, " ")
+      .trim() || `arXiv:${id}`;
+  const summary =
+    (entry.match(/<summary>([\s\S]*?)<\/summary>/i) || [])[1]?.replace(/\s+/g, " ").trim() || "";
+  const authors = [...entry.matchAll(/<name>([\s\S]*?)<\/name>/gi)]
+    .map((m) => m[1].trim())
+    .filter(Boolean);
+  const yearMatch = entry.match(/<published>(\d{4})/i);
   const year = yearMatch ? Number(yearMatch[1]) : new Date().getFullYear();
   const text = `${title}\n\n${summary}`;
   let extraction = null as any;
@@ -973,6 +981,7 @@ async function extractLocalArxiv(ctx: any, url: string) {
   } else {
     extraction.paper = extraction.paper || {};
     extraction.paper.arxiv = extraction.paper.arxiv || id;
+    extraction.paper.title = extraction.paper.title || title;
   }
   return { extraction, source, arxiv_id: id, local: true };
 }
