@@ -136,9 +136,9 @@ a:hover{color:var(--purple-dim)}
 .side-panel{width:440px;flex:none;background:#10141B;border-left:1px solid rgba(148,163,184,.12);
   display:flex;flex-direction:column}
 .tabs{height:48px;flex:none;display:flex;border-bottom:1px solid rgba(148,163,184,.12)}
-.tab-btn{flex:1;font-family:'IBM Plex Sans',sans-serif;font-size:13.5px;font-weight:500;
+.tab-btn{flex:1;font-family:'IBM Plex Sans',sans-serif;font-size:12.5px;font-weight:500;
   color:var(--dim);background:#0D1118;border:none;border-bottom:2px solid transparent;
-  cursor:pointer;height:100%;transition:all .12s}
+  cursor:pointer;height:100%;transition:all .12s;padding:0 4px}
 .tab-btn.active{font-weight:600;color:var(--ink);background:#121720;border-bottom-color:var(--purple)}
 .tab-body{flex:1;min-height:0;overflow-y:auto}
 .tab-pane{display:none;padding:18px 20px}
@@ -360,6 +360,81 @@ html[data-theme="light"] div.vis-tooltip{color:#20242B!important;background:#fff
 #gate-error{min-height:18px;margin-top:9px;color:var(--red);font-size:12px}
 .gate-privacy{margin-top:14px!important;margin-bottom:0!important;font-size:11.5px!important;color:#85858D!important}
 @media(max-width:520px){.gate-row{flex-direction:column}#gate-submit{padding:12px}.gate-card{padding:24px}}
+
+/* graph search */
+.graph-search{position:absolute;left:14px;bottom:18px;z-index:7;display:flex;align-items:center;gap:8px;
+  padding:7px 10px;background:rgba(12,16,23,.92);border:1px solid rgba(148,163,184,.16);
+  border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.28);backdrop-filter:blur(12px);min-width:240px}
+.graph-search input{flex:1;border:0;background:transparent;color:#E9EDF5;font-size:12.5px;outline:none;
+  font-family:'IBM Plex Sans',sans-serif;min-width:0}
+.graph-search input::placeholder{color:#788396}
+.graph-search kbd{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8F99AA;
+  background:#1A2230;border:1px solid rgba(148,163,184,.18);padding:2px 6px;border-radius:5px}
+#search-clear{border:0;background:transparent;color:#8B94A5;cursor:pointer;font-size:14px;padding:0 2px;display:none}
+#search-clear.show{display:block}
+.search-hit{outline:2px solid #6C4CF1!important}
+
+/* evidence filters */
+.ev-filters{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
+.ev-filter{font-family:'IBM Plex Mono',monospace;font-size:10.5px;padding:4px 9px;border-radius:999px;
+  border:1px solid rgba(148,163,184,.18);background:#141A23;color:#AAB3C1;cursor:pointer}
+.ev-filter.active{background:#1C1731;border-color:#6C4CF1;color:#C4B5FD;font-weight:600}
+.ev-actions{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+.ev-actions .btn-ghost{font-size:12px;padding:5px 10px}
+
+/* insights tab */
+.insight-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px}
+.insight-stat{background:#131922;border:1px solid rgba(148,163,184,.12);border-radius:10px;padding:12px 13px}
+.insight-stat .k{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8B94A5;letter-spacing:.04em;text-transform:uppercase}
+.insight-stat .v{font-size:22px;font-weight:600;margin-top:4px;font-family:'IBM Plex Mono',monospace;color:#E9EDF5}
+.insight-stat .s{font-size:11.5px;color:#7F899A;margin-top:3px;line-height:1.35}
+.conflict-card{border:1px solid rgba(148,163,184,.14);background:#131922;border-radius:11px;
+  padding:13px 14px;margin-bottom:10px;cursor:pointer;transition:border-color .15s,background .15s}
+.conflict-card:hover{border-color:#6C4CF1;background:#18142A}
+.conflict-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.conflict-status{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:3px 8px;border-radius:6px;
+  border:1px solid rgba(148,163,184,.16);color:#AAB3C1;background:#1B212B}
+.conflict-status.untested{color:#D8A21C;border-color:rgba(216,162,28,.35);background:#2A2416}
+.conflict-status.from_wins,.conflict-status.to_wins,.conflict-status.from_leading,.conflict-status.to_leading{
+  color:#73D59A;border-color:rgba(115,213,154,.35);background:#102019}
+.conflict-status.both_supported{color:#A995FF;border-color:rgba(108,76,241,.4);background:#1C1731}
+.conflict-pair{display:grid;gap:8px}
+.conflict-side{padding:8px 10px;border-radius:8px;background:#0F141B;border:1px solid rgba(148,163,184,.1)}
+.conflict-side .id{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8B94A5}
+.conflict-side .txt{font-size:12.5px;color:#D7DDE8;line-height:1.4;margin-top:3px}
+.conflict-side .ver{font-family:'IBM Plex Mono',monospace;font-size:10.5px;margin-top:5px}
+.conflict-side .ver.ok{color:#73D59A}.conflict-side .ver.bad{color:#F08A80}.conflict-side .ver.none{color:#8B94A5}
+.conflict-summary{font-size:12px;color:#8F99AA;margin-top:9px;line-height:1.4}
+.run-row{display:flex;flex-direction:column;gap:3px;padding:10px 11px;border:1px solid rgba(148,163,184,.12);
+  border-radius:9px;margin-bottom:7px;background:#131922;cursor:pointer}
+.run-row:hover{border-color:#6C4CF1}
+.run-row .rid{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#AAB3C1}
+.run-row .meta{font-size:12px;color:#D7DDE8}
+.run-row .metrics{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#73D59A}
+.insight-section{margin:18px 0 8px;font-size:13px;font-weight:600}
+.insight-sub{font-size:12.5px;color:#7F899A;margin:0 0 12px;line-height:1.45}
+.shortcut-overlay{position:fixed;inset:0;z-index:40;background:rgba(8,11,16,.55);backdrop-filter:blur(4px);
+  display:none;align-items:center;justify-content:center}
+.shortcut-overlay.show{display:flex}
+.shortcut-card{width:min(420px,92vw);background:#111720;border:1px solid rgba(148,163,184,.2);
+  border-radius:14px;padding:22px 24px;box-shadow:0 24px 60px rgba(0,0,0,.45)}
+.shortcut-card h3{font-size:16px;margin-bottom:12px}
+.shortcut-row{display:flex;justify-content:space-between;gap:16px;padding:7px 0;
+  border-bottom:1px solid rgba(148,163,184,.1);font-size:13px;color:#C6CEDA}
+.shortcut-row:last-child{border-bottom:0}
+.shortcut-row kbd{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#C4B5FD;
+  background:#1C1731;border:1px solid rgba(108,76,241,.4);padding:3px 8px;border-radius:6px}
+html[data-theme="light"] .graph-search{background:rgba(255,255,255,.95);border-color:rgba(20,24,32,.12)}
+html[data-theme="light"] .graph-search input{color:#171A20}
+html[data-theme="light"] .graph-search kbd,html[data-theme="light"] #search-clear{color:#68717E;background:#F1F2EE;border-color:rgba(20,24,32,.1)}
+html[data-theme="light"] .ev-filter{background:#fff;border-color:rgba(20,24,32,.12);color:#4F5865}
+html[data-theme="light"] .ev-filter.active{background:#F3F0FD;border-color:#6C4CF1;color:#5E43D5}
+html[data-theme="light"] .insight-stat,.conflict-card,.run-row{background:#fff;border-color:rgba(20,24,32,.1)}
+html[data-theme="light"] .insight-stat .v,.conflict-side .txt,.run-row .meta{color:#171A20}
+html[data-theme="light"] .conflict-side{background:#F7F7F4;border-color:rgba(20,24,32,.08)}
+html[data-theme="light"] .shortcut-card{background:#fff;border-color:rgba(20,24,32,.12)}
+html[data-theme="light"] .shortcut-row{color:#2A2A30;border-bottom-color:rgba(20,24,32,.08)}
+html[data-theme="light"] .conflict-card:hover,.run-row:hover{background:#F6F3FE}
 </style>
 </head>
 <body>
@@ -396,6 +471,7 @@ html[data-theme="light"] div.vis-tooltip{color:#20242B!important;background:#fff
       <button class="btn-ghost" id="new-workspace-btn" title="Start fresh with your own papers">⊕ New workspace</button>
       <button class="btn-ghost" id="load-demo-btn" title="Load 3-paper demo (Adam, Wilson, AdamW)">Load demo</button>
       <button class="btn-ghost" id="reset-btn" title="Clear runs on current papers">↺ Reset runs</button>
+      <button class="btn-ghost" id="export-btn" title="Download workspace snapshot as JSON">↓ Export</button>
       <button class="btn-dark" id="upload-btn">+ Add paper</button>
       <button class="btn-ghost theme-toggle" id="theme-toggle" type="button" title="Switch color theme" aria-label="Switch color theme">☾</button>
     </div>
@@ -444,12 +520,18 @@ html[data-theme="light"] div.vis-tooltip{color:#20242B!important;background:#fff
           <button id="zoom-out" title="zoom out">−</button>
           <button id="zoom-fit" class="fit" title="fit everything">⛶</button>
         </div>
+        <div class="graph-search" id="graph-search" title="Filter graph nodes">
+          <input id="search-input" type="search" placeholder="Search papers, claims, methods…" autocomplete="off" aria-label="Search graph">
+          <button type="button" id="search-clear" aria-label="Clear search">✕</button>
+          <kbd>/</kbd>
+        </div>
       </div>
     </div>
 
     <aside class="side-panel">
       <div class="tabs">
         <button class="tab-btn active" data-tab="evidence">Evidence</button>
+        <button class="tab-btn" data-tab="insights">Insights</button>
         <button class="tab-btn" data-tab="console">Console<span id="console-badge"></span></button>
         <button class="tab-btn" data-tab="ask">Ask agent</button>
       </div>
@@ -465,7 +547,28 @@ html[data-theme="light"] div.vis-tooltip{color:#20242B!important;background:#fff
             <span class="evidence-count" id="ev-count">0/0 with evidence</span>
           </div>
           <p class="evidence-sub">One row per claim. Runs attach a verdict; everything else is "no runs yet".</p>
+          <div class="ev-filters" id="ev-filters" role="tablist" aria-label="Filter evidence">
+            <button type="button" class="ev-filter active" data-filter="all">All</button>
+            <button type="button" class="ev-filter" data-filter="validated">Validated</button>
+            <button type="button" class="ev-filter" data-filter="refuted">Refuted</button>
+            <button type="button" class="ev-filter" data-filter="none">Untested</button>
+          </div>
           <div id="evidence"></div>
+        </div>
+
+        <div class="tab-pane" id="tab-insights">
+          <div class="evidence-header">
+            <h2>Research insights</h2>
+            <span class="evidence-count" id="insight-stamp">—</span>
+          </div>
+          <p class="insight-sub">Coverage, conflict adjudication, and recent runs — derived from executable evidence, not model opinion.</p>
+          <div class="insight-stats" id="insight-stats"></div>
+          <div class="insight-section">Cross-paper conflicts</div>
+          <p class="insight-sub">CONTRADICTS pairs with sandbox verdicts on each side. Click a card to focus the claims in the graph.</p>
+          <div id="conflict-list"></div>
+          <div class="insight-section">Recent runs</div>
+          <p class="insight-sub">Latest experiment executions. Click to open the method in Console.</p>
+          <div id="run-history"></div>
         </div>
 
         <div class="tab-pane" id="tab-console">
@@ -511,6 +614,22 @@ html[data-theme="light"] div.vis-tooltip{color:#20242B!important;background:#fff
         </div>
       </div>
     </aside>
+  </div>
+</div>
+
+<div id="shortcut-overlay" class="shortcut-overlay" role="dialog" aria-label="Keyboard shortcuts">
+  <div class="shortcut-card">
+    <h3>Keyboard shortcuts</h3>
+    <div class="shortcut-row"><span>Search graph</span><kbd>/</kbd></div>
+    <div class="shortcut-row"><span>Run selected method</span><kbd>R</kbd></div>
+    <div class="shortcut-row"><span>Evidence tab</span><kbd>1</kbd></div>
+    <div class="shortcut-row"><span>Insights tab</span><kbd>2</kbd></div>
+    <div class="shortcut-row"><span>Console tab</span><kbd>3</kbd></div>
+    <div class="shortcut-row"><span>Ask agent tab</span><kbd>4</kbd></div>
+    <div class="shortcut-row"><span>Export workspace</span><kbd>E</kbd></div>
+    <div class="shortcut-row"><span>Fit graph</span><kbd>F</kbd></div>
+    <div class="shortcut-row"><span>Toggle panel</span><kbd>[</kbd></div>
+    <div class="shortcut-row"><span>This help</span><kbd>?</kbd></div>
   </div>
 </div>
 
@@ -562,10 +681,17 @@ let network, nodesDS, edgesDS, selectedMethod=null, running=false, activeTab='ev
 let methodParams = [], lastEvidence = {}, guidedDemoRunning = false, panelCollapsed = false;
 let prevEvidenceValid = 0, graphAnimating = false, selectedPaper = null, workspacePapers = [];
 let formationPlaying = false;
+let evidenceFilter = "all", evidenceRowsCache = [], searchQuery = "";
 const BB_VIEW_KEY = "vg_bb_view";
 const BB_REMOVED_PAPERS_KEY = "vg_bb_removed_papers";
 const VISITOR_ID_KEY = "vg_visitor_id";
 const VISITOR_EMAIL_KEY = "vg_visitor_email";
+const STATUS_LABEL = {
+  untested:"untested", from_wins:"from wins", to_wins:"to wins",
+  from_leading:"from leading", to_leading:"to leading",
+  both_supported:"both supported", both_refuted:"both refuted",
+  from_refuted:"from refuted", to_refuted:"to refuted", mixed:"mixed",
+};
 
 async function registerDemoVisitor(email){
   const res = await fetch("/api/register", {
@@ -1045,10 +1171,20 @@ function setTab(tab){
   document.querySelectorAll(".tab-pane").forEach(p=>{
     p.classList.toggle("active", p.id==="tab-"+tab);
   });
+  if(tab === "insights") loadInsights();
+  syncDeepLink();
 }
 
 document.querySelectorAll(".tab-btn").forEach(b=>{
   b.addEventListener("click", ()=>setTab(b.dataset.tab));
+});
+
+document.querySelectorAll(".ev-filter").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    evidenceFilter = btn.dataset.filter;
+    document.querySelectorAll(".ev-filter").forEach(b=>b.classList.toggle("active", b===btn));
+    renderEvidenceCards();
+  });
 });
 
 function claimLabel(text){
@@ -1356,6 +1492,7 @@ async function loadGraph(focusNew=false){
     cinematic: guidedDemoRunning,
     skipFit: guidedDemoRunning,
   });
+  if(searchQuery) applyGraphSearch(searchQuery);
 }
 
 function renderParams(){
@@ -1402,6 +1539,7 @@ function selectMethod(raw){
   try{ methodParams = JSON.parse(raw.props.params || "[]"); }catch{ methodParams = []; }
   renderParams();
   document.getElementById("run-btn").disabled = running;
+  syncDeepLink();
 }
 
 function selectPaper(raw, eid=null){
@@ -1575,28 +1713,262 @@ function resetUIState(agentMsg){
 async function loadEvidence(){
   let rows = await (await fetch("/api/evidence")).json();
   rows = filterEvidenceByView(rows);
+  evidenceRowsCache = rows;
   if(!rows.length){
     document.getElementById("evidence").innerHTML =
       '<div class="evidence-empty">No claims yet. Add a paper to extract claims and methods, then run a method to attach evidence.</div>';
     updateEvidenceCounter(0, 0);
+    document.getElementById("ev-count").textContent = "0/0 with evidence";
     return;
   }
-  let validated = 0;
-  document.getElementById("evidence").innerHTML = rows.map(r=>{
-    const v = r.evidence.startsWith("VALIDATES") ? "validates"
-            : r.evidence.startsWith("REFUTES") ? "refutes" : "none";
-    if(v !== "none") validated++;
-    const badge = v==="none" ? `<span class="ev-badge none">no runs yet</span>`
-               : `<span class="ev-badge ${v}">${v.toUpperCase()}</span>`;
-    const metric = v==="none" ? "" :
-      `<div class="ev-metric">${r.evidence.replace(/^(VALIDATES|REFUTES) by /,"")}</div>`;
-    const changed = lastEvidence[r.claim] !== undefined && lastEvidence[r.claim] !== r.evidence;
-    lastEvidence[r.claim] = r.evidence;
-    return `<div class="ev-card ${v!=="none"?"validated":""} ${changed?"flash":""}">
-      <div class="ev-card-top"><span class="ev-id">${r.claim}</span>${badge}</div>
-      <div class="ev-text">${(r.text||"").replace(/</g,"&lt;")}</div>${metric}</div>`;
-  }).join("");
+  renderEvidenceCards();
+}
+
+function renderEvidenceCards(){
+  const rows = evidenceRowsCache;
+  if(!rows.length) return;
+  let validated = 0, withEvidence = 0;
+  const filtered = rows.filter(r=>{
+    const v = r.evidence.startsWith("VALIDATES") ? "validated"
+            : r.evidence.startsWith("REFUTES") ? "refuted" : "none";
+    if(v !== "none") withEvidence++;
+    if(v === "validated") validated++;
+    if(evidenceFilter === "all") return true;
+    if(evidenceFilter === "validated") return v === "validated";
+    if(evidenceFilter === "refuted") return v === "refuted";
+    return v === "none";
+  });
+  if(!filtered.length){
+    document.getElementById("evidence").innerHTML =
+      `<div class="evidence-empty">No claims match the “${evidenceFilter}” filter.</div>`;
+  } else {
+    document.getElementById("evidence").innerHTML = filtered.map(r=>{
+      const v = r.evidence.startsWith("VALIDATES") ? "validates"
+              : r.evidence.startsWith("REFUTES") ? "refutes" : "none";
+      const badge = v==="none" ? `<span class="ev-badge none">no runs yet</span>`
+                 : `<span class="ev-badge ${v}">${v.toUpperCase()}</span>`;
+      const metric = v==="none" ? "" :
+        `<div class="ev-metric">${r.evidence.replace(/^(VALIDATES|REFUTES) by /,"")}</div>`;
+      const changed = lastEvidence[r.claim] !== undefined && lastEvidence[r.claim] !== r.evidence;
+      lastEvidence[r.claim] = r.evidence;
+      return `<div class="ev-card ${v!=="none"?"validated":""} ${changed?"flash":""}" data-claim="${r.claim}">
+        <div class="ev-card-top"><span class="ev-id">${r.claim}</span>${badge}</div>
+        <div class="ev-text">${(r.text||"").replace(/</g,"&lt;")}</div>${metric}</div>`;
+    }).join("");
+  }
+  // recount validated across all rows (not just filtered) for the strip counter
+  validated = rows.filter(r=>r.evidence.startsWith("VALIDATES")).length;
+  withEvidence = rows.filter(r=>!r.evidence.startsWith("no runs")).length;
   updateEvidenceCounter(validated, rows.length);
+  document.getElementById("ev-count").textContent = `${withEvidence}/${rows.length} with evidence`;
+}
+
+function esc(s){
+  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function findNodeEidByKey(key, label=null){
+  if(!nodesDS || !key) return null;
+  for(const n of nodesDS.get()){
+    const raw = n._raw;
+    if(!raw) continue;
+    if(label && raw.label !== label) continue;
+    if(raw.key === key || raw.props?.id === key) return n.id;
+  }
+  return null;
+}
+
+function focusClaimPair(fromId, toId){
+  if(!network || !nodesDS) return;
+  const a = findNodeEidByKey(fromId, "Claim");
+  const b = findNodeEidByKey(toId, "Claim");
+  const ids = [a,b].filter(Boolean);
+  if(!ids.length) return;
+  network.selectNodes(ids);
+  network.fit({nodes:ids, animation:{duration:700, easingFunction:"easeInOutCubic"}});
+}
+
+async function loadInsights(){
+  const statsEl = document.getElementById("insight-stats");
+  const conflictEl = document.getElementById("conflict-list");
+  const runsEl = document.getElementById("run-history");
+  try{
+    const [insights, runs] = await Promise.all([
+      fetch("/api/insights").then(r=>r.json()),
+      fetch("/api/runs?limit=12").then(r=>r.json()),
+    ]);
+    if(insights.detail) throw new Error(insights.detail);
+    const ev = insights.evidence || {};
+    const cf = insights.conflicts || {};
+    const md = insights.methods || {};
+    const ct = insights.counts || {};
+    document.getElementById("insight-stamp").textContent =
+      (insights.generated_at || "").replace("T"," ").slice(0,19) || "live";
+    statsEl.innerHTML = `
+      <div class="insight-stat"><div class="k">Coverage</div><div class="v">${ev.coverage_pct ?? 0}%</div>
+        <div class="s">${(ev.validated||0)+(ev.refuted||0)} / ${ev.total_claims||0} claims tested</div></div>
+      <div class="insight-stat"><div class="k">Validated</div><div class="v">${ev.validated||0}</div>
+        <div class="s">${ev.refuted||0} refuted · ${ev.untested||0} untested</div></div>
+      <div class="insight-stat"><div class="k">Conflicts</div><div class="v">${cf.total||0}</div>
+        <div class="s">${cf.resolved||0} resolved · ${cf.untested||0} untested</div></div>
+      <div class="insight-stat"><div class="k">Methods</div><div class="v">${md.with_runs||0}/${md.total||0}</div>
+        <div class="s">${md.next_recommended ? "next: "+md.next_recommended : (ct.runs||0)+" runs in graph"}</div></div>`;
+
+    const rows = insights.conflict_rows || [];
+    if(!rows.length){
+      conflictEl.innerHTML = '<div class="evidence-empty">No CONTRADICTS edges in this workspace.</div>';
+    } else {
+      conflictEl.innerHTML = rows.map(c=>{
+        const st = c.status || "untested";
+        const fv = c.from_verdict ? `<div class="ver ${c.from_verdict==="VALIDATES"?"ok":"bad"}">${c.from_verdict}${c.from_run_id?" · "+c.from_run_id:""}</div>`
+                                 : `<div class="ver none">no runs yet</div>`;
+        const tv = c.to_verdict ? `<div class="ver ${c.to_verdict==="VALIDATES"?"ok":"bad"}">${c.to_verdict}${c.to_run_id?" · "+c.to_run_id:""}</div>`
+                               : `<div class="ver none">no runs yet</div>`;
+        return `<div class="conflict-card" data-from="${esc(c.from_claim)}" data-to="${esc(c.to_claim)}">
+          <div class="conflict-top">
+            <span class="ev-id">${esc(c.from_paper)} ⇄ ${esc(c.to_paper)}</span>
+            <span class="conflict-status ${st}">${STATUS_LABEL[st]||st}</span>
+          </div>
+          <div class="conflict-pair">
+            <div class="conflict-side"><div class="id">${esc(c.from_claim)}</div>
+              <div class="txt">${esc(c.from_text)}</div>${fv}</div>
+            <div class="conflict-side"><div class="id">${esc(c.to_claim)}</div>
+              <div class="txt">${esc(c.to_text)}</div>${tv}</div>
+          </div>
+          <div class="conflict-summary">${esc(c.summary)}</div>
+        </div>`;
+      }).join("");
+      conflictEl.querySelectorAll(".conflict-card").forEach(card=>{
+        card.addEventListener("click", ()=>focusClaimPair(card.dataset.from, card.dataset.to));
+      });
+    }
+
+    const runList = Array.isArray(runs) ? runs : [];
+    if(!runList.length){
+      runsEl.innerHTML = '<div class="evidence-empty">No runs yet. Select a method and press ▶ RUN.</div>';
+    } else {
+      runsEl.innerHTML = runList.map(r=>{
+        const metrics = r.metrics && Object.keys(r.metrics).length
+          ? Object.entries(r.metrics).slice(0,3).map(([k,v])=>`${k}=${v}`).join(" · ")
+          : (r.error ? "error: "+String(r.error).slice(0,80) : "no metrics");
+        return `<div class="run-row" data-method="${esc(r.method_id||"")}">
+          <div class="rid">${esc(r.run_id)}</div>
+          <div class="meta">${esc(r.method_id)} · ${esc(r.backend||"?")} · ${(Number(r.duration_s)||0).toFixed(2)}s</div>
+          <div class="metrics">${esc(metrics)}</div>
+        </div>`;
+      }).join("");
+      runsEl.querySelectorAll(".run-row").forEach(row=>{
+        row.addEventListener("click", ()=>{
+          const eid = findNodeEidByKey(row.dataset.method, "Method");
+          if(eid && nodesDS){
+            const n = nodesDS.get(eid);
+            if(n?._raw){ selectMethod(n._raw); network.selectNodes([eid]); network.focus(eid,{scale:1.1,animation:{duration:500,easingFunction:"easeInOutCubic"}}); }
+          }
+        });
+      });
+    }
+  }catch(e){
+    statsEl.innerHTML = "";
+    conflictEl.innerHTML = `<div class="evidence-empty">Insights unavailable: ${esc(e.message||e)}</div>`;
+    runsEl.innerHTML = "";
+  }
+}
+
+function applyGraphSearch(q){
+  searchQuery = (q||"").trim().toLowerCase();
+  const clearBtn = document.getElementById("search-clear");
+  clearBtn.classList.toggle("show", !!searchQuery);
+  if(!nodesDS || !network) return;
+  const nodes = nodesDS.get();
+  const hits = [];
+  for(const n of nodes){
+    const raw = n._raw || {};
+    const hay = [raw.key, raw.caption, raw.label, raw.props?.id, raw.props?.name, raw.props?.title, raw.props?.text]
+      .filter(Boolean).join(" ").toLowerCase();
+    const match = !searchQuery || hay.includes(searchQuery);
+    const baseOpacity = n.opacity == null ? 1 : n.opacity;
+    nodesDS.update({
+      id: n.id,
+      opacity: searchQuery ? (match ? 1 : 0.12) : (n._fullOpacity ?? baseOpacity),
+      borderWidth: searchQuery && match ? 3 : (n.borderWidth || 1),
+    });
+    if(searchQuery && match) hits.push(n.id);
+  }
+  if(searchQuery && hits.length){
+    network.selectNodes(hits.slice(0, 12));
+    if(hits.length <= 8) network.fit({nodes:hits, animation:{duration:450, easingFunction:"easeInOutCubic"}});
+  } else if(!searchQuery){
+    network.unselectAll();
+  }
+}
+
+async function exportWorkspace(){
+  const btn = document.getElementById("export-btn");
+  const prev = btn.textContent;
+  btn.disabled = true; btn.textContent = "Exporting…";
+  try{
+    const res = await fetch("/api/export");
+    if(!res.ok){
+      const err = await res.json().catch(()=>({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = new Date().toISOString().replace(/[:.]/g,"").slice(0,15)+"Z";
+    a.href = url; a.download = `verigraph-export-${stamp}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    showDemoToast("Workspace exported as JSON", 2800);
+  }catch(e){
+    showDemoToast("Export failed: "+(e.message||e), 4200);
+  }finally{
+    btn.disabled = false; btn.textContent = prev;
+  }
+}
+
+function syncDeepLink(){
+  const params = new URLSearchParams();
+  if(selectedMethod) params.set("method", selectedMethod);
+  else if(selectedPaper) params.set("paper", selectedPaper);
+  if(activeTab && activeTab !== "evidence") params.set("tab", activeTab);
+  const hash = params.toString();
+  const next = hash ? "#"+hash : (location.pathname + location.search);
+  if(hash) history.replaceState(null, "", "#"+hash);
+  else if(location.hash) history.replaceState(null, "", next);
+}
+
+async function applyDeepLink(){
+  const raw = location.hash.replace(/^#/, "");
+  if(!raw) return;
+  const params = new URLSearchParams(raw.includes("=") ? raw : "");
+  const tab = params.get("tab");
+  const method = params.get("method");
+  const paper = params.get("paper");
+  if(tab && ["evidence","insights","console","ask"].includes(tab)) setTab(tab);
+  if(method){
+    const eid = findNodeEidByKey(method, "Method");
+    if(eid && nodesDS){
+      const n = nodesDS.get(eid);
+      if(n?._raw){
+        selectMethod(n._raw);
+        network.selectNodes([eid]);
+        network.focus(eid, {scale:1.1, animation:{duration:600, easingFunction:"easeInOutCubic"}});
+      }
+    }
+  } else if(paper){
+    const eid = findPaperNodeEid(paper);
+    if(eid && nodesDS){
+      const n = nodesDS.get(eid);
+      if(n?._raw) selectPaper(n._raw, eid);
+    }
+  }
+}
+
+function isTypingTarget(el){
+  if(!el) return false;
+  const tag = (el.tagName||"").toLowerCase();
+  return tag==="input" || tag==="textarea" || el.isContentEditable;
 }
 
 document.getElementById("run-btn").addEventListener("click", async ()=>{
@@ -1868,6 +2240,7 @@ async function runMethodAndWait(){
   btn.disabled = false;
   await loadGraph(!guidedDemoRunning);
   await loadEvidence();
+  if(activeTab === "insights") await loadInsights();
   return true;
 }
 
@@ -1932,6 +2305,41 @@ document.getElementById("load-demo-btn").addEventListener("click", ()=>doLoadDem
 document.getElementById("guided-demo-btn").addEventListener("click", runGuidedDemo);
 document.getElementById("graph-play").addEventListener("click", playGraphFormation);
 document.getElementById("panel-toggle").addEventListener("click", ()=>togglePanel());
+document.getElementById("export-btn").addEventListener("click", exportWorkspace);
+
+const searchInput = document.getElementById("search-input");
+const searchClear = document.getElementById("search-clear");
+searchInput.addEventListener("input", ()=>applyGraphSearch(searchInput.value));
+searchClear.addEventListener("click", ()=>{ searchInput.value=""; applyGraphSearch(""); searchInput.focus(); });
+
+const shortcutOverlay = document.getElementById("shortcut-overlay");
+shortcutOverlay.addEventListener("click", e=>{ if(e.target===shortcutOverlay) shortcutOverlay.classList.remove("show"); });
+document.addEventListener("keydown", e=>{
+  if(e.key === "Escape"){
+    shortcutOverlay.classList.remove("show");
+    if(document.activeElement === searchInput){ searchInput.blur(); return; }
+  }
+  if(isTypingTarget(e.target)) return;
+  if(e.key === "/" && !e.metaKey && !e.ctrlKey){
+    e.preventDefault(); searchInput.focus(); searchInput.select(); return;
+  }
+  if(e.key === "?" || (e.shiftKey && e.key === "/")){
+    e.preventDefault(); shortcutOverlay.classList.toggle("show"); return;
+  }
+  if(e.key === "1"){ setTab("evidence"); return; }
+  if(e.key === "2"){ setTab("insights"); return; }
+  if(e.key === "3"){ setTab("console"); return; }
+  if(e.key === "4"){ setTab("ask"); return; }
+  if(e.key === "e" || e.key === "E"){ exportWorkspace(); return; }
+  if(e.key === "f" || e.key === "F"){
+    network && network.fit({animation:{duration:450, easingFunction:"easeInOutCubic"}}); return;
+  }
+  if(e.key === "["){ togglePanel(); return; }
+  if((e.key === "r" || e.key === "R") && selectedMethod && !running){
+    e.preventDefault(); runMethodAndWait();
+  }
+});
+
 const themeToggle = document.getElementById("theme-toggle");
 const darkTheme = document.documentElement.dataset.theme === "dark";
 themeToggle.textContent = darkTheme ? "☀" : "☾";
@@ -1949,7 +2357,9 @@ document.getElementById("empty-load-demo").addEventListener("click", e=>{ e.prev
 (async ()=>{
   await ensureDemoAccess();
   await refreshWorkspaceMeta();
-  await loadGraph(); await loadEvidence();
+  await loadGraph();
+  await loadEvidence();
+  await applyDeepLink();
 })();
 </script>
 </body>

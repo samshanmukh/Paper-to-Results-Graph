@@ -1,5 +1,5 @@
 /** Verigraph read API for Butterbase static deploy.
- *  Routes via ?route=graph|evidence|workspace|...
+ *  Routes via ?route=graph|evidence|insights|conflicts|runs|export|workspace|...
  *  POST run/{method_id} replays the latest persisted run from Butterbase.
  *  POST ask/investigate/brief/conduct answer from persisted graph + run history.
  *  POST workspace/new and reset clear the local view (shared Butterbase data unchanged).
@@ -363,6 +363,153 @@ function nextMethodToRun(ctx: WorkspaceCtx) {
   const untested = ctx.methods.filter((m) => !m.hasRun);
   const wilson = untested.find((m) => m.id === "wilson2017-m1");
   return (wilson || untested[0] || ctx.methods[0])?.id || null;
+}
+
+function adjudicateConflict(c: WorkspaceCtx["conflicts"][0], claimById: Record<string, ClaimRow>) {
+  const fromEv = claimById[c.from]?.evidence;
+  const toEv = claimById[c.to]?.evidence;
+  const fv = fromEv?.verdict || null;
+  const tv = toEv?.verdict || null;
+  let status = "mixed";
+  let summary = "Mixed evidence — inspect both claim cards.";
+  if (!fv && !tv) {
+    status = "untested";
+    summary = "Neither side has a sandbox run yet.";
+  } else if (fv === "VALIDATES" && tv === "VALIDATES") {
+    status = "both_supported";
+    summary = "Both claims have validating runs — the conflict remains live.";
+  } else if (fv === "VALIDATES" && tv === "REFUTES") {
+    status = "from_wins";
+    summary = `${c.from} validated; ${c.to} refuted.`;
+  } else if (tv === "VALIDATES" && fv === "REFUTES") {
+    status = "to_wins";
+    summary = `${c.to} validated; ${c.from} refuted.`;
+  } else if (fv === "VALIDATES" && !tv) {
+    status = "from_leading";
+    summary = `${c.from} validated; opposing claim untested.`;
+  } else if (tv === "VALIDATES" && !fv) {
+    status = "to_leading";
+    summary = `${c.to} validated; opposing claim untested.`;
+  } else if (fv === "REFUTES" && tv === "REFUTES") {
+    status = "both_refuted";
+    summary = "Both sides were refuted by runs.";
+  } else if (fv === "REFUTES" && !tv) {
+    status = "from_refuted";
+    summary = `${c.from} refuted; opposing claim untested.`;
+  } else if (tv === "REFUTES" && !fv) {
+    status = "to_refuted";
+    summary = `${c.to} refuted; opposing claim untested.`;
+  }
+  return {
+    from_claim: c.from,
+    from_text: c.fromText,
+    from_paper: c.fromPaper,
+    from_paper_title: claimById[c.from]?.paperTitle || c.fromPaper,
+    from_verdict: fv,
+    from_run_id: fromEv?.runId || null,
+    to_claim: c.to,
+    to_text: c.toText,
+    to_paper: c.toPaper,
+    to_paper_title: claimById[c.to]?.paperTitle || c.toPaper,
+    to_verdict: tv,
+    to_run_id: toEv?.runId || null,
+    status,
+    summary,
+  };
+}
+
+function buildInsights(ctx: WorkspaceCtx) {
+  const validated = ctx.claims.filter((c) => c.evidence?.verdict === "VALIDATES").length;
+  const refuted = ctx.claims.filter((c) => c.evidence?.verdict === "REFUTES").length;
+  const untested = ctx.claims.filter((c) => !c.evidence).length;
+  const totalClaims = ctx.claims.length;
+  const coverage = totalClaims ? Math.round((1000 * (validated + refuted)) / totalClaims) / 10 : 0;
+  const conflictRows = ctx.conflicts.map((c) => adjudicateConflict(c, ctx.claimById));
+  const neverRun = ctx.methods.filter((m) => !m.hasRun);
+  return {
+    generated_at: new Date().toISOString(),
+    counts: {
+      papers: ctx.papers.length,
+      claims: totalClaims,
+      methods: ctx.methods.length,
+      runs: ctx.runs.length,
+      artifacts: 0,
+      nodes: ctx.papers.length + totalClaims + ctx.methods.length + ctx.runs.length,
+    },
+    evidence: {
+      total_claims: totalClaims,
+      validated,
+      refuted,
+      untested,
+      coverage_pct: coverage,
+    },
+    conflicts: {
+      total: conflictRows.length,
+      untested: conflictRows.filter((c) => c.status === "untested").length,
+      adjudicated: conflictRows.filter((c) => c.status !== "untested").length,
+      resolved: conflictRows.filter((c) => c.status === "from_wins" || c.status === "to_wins").length,
+      both_supported: conflictRows.filter((c) => c.status === "both_supported").length,
+    },
+    methods: {
+      total: ctx.methods.length,
+      with_runs: ctx.methods.filter((m) => m.hasRun).length,
+      never_run: neverRun.length,
+      next_recommended: nextMethodToRun(ctx),
+      items: ctx.methods.map((m) => ({
+        method: m.id,
+        name: m.name,
+        paper: m.paperId,
+        runnable_hint: null,
+        run_count: m.hasRun ? 1 : 0,
+        latest_run: null,
+      })),
+    },
+    conflict_rows: conflictRows,
+    claim_rows: ctx.claims.map((c) => ({
+      paper: c.paperId,
+      paper_title: c.paperTitle,
+      claim: c.id,
+      text: c.text,
+      verdict: c.evidence?.verdict || null,
+      run_id: c.evidence?.runId || null,
+      detail: c.evidence?.detail || null,
+    })),
+  };
+}
+
+function buildRunsList(runs: any[], limit = 50) {
+  return [...runs]
+    .sort((a, b) => String(b.id).localeCompare(String(a.id)))
+    .slice(0, limit)
+    .map((r) => ({
+      run_id: r.id,
+      method_id: r.method_id,
+      backend: r.backend || "daytona",
+      exit_code: r.exit_code ?? 0,
+      duration_s: Number(r.duration_s) || 0,
+      error: r.error || null,
+      metrics: r.metrics || {},
+      claim_checks: r.claim_checks?.items || r.claim_checks || [],
+      source: "butterbase",
+      replay: true,
+    }));
+}
+
+function buildExport(papers: any[], runs: any[], ctx: WorkspaceCtx) {
+  const insights = buildInsights(ctx);
+  return {
+    exported_at: new Date().toISOString(),
+    format: "verigraph-workspace-v1",
+    insights: {
+      counts: insights.counts,
+      evidence: insights.evidence,
+      conflicts: insights.conflicts,
+    },
+    conflicts: insights.conflict_rows,
+    evidence: insights.claim_rows,
+    runs: buildRunsList(runs, 200),
+    graph: buildGraph(papers, runs),
+  };
 }
 
 function answerAsk(question: string, ctx: WorkspaceCtx) {
@@ -759,6 +906,30 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
     if (route === "graph") return json(buildGraph(papers, runs));
 
     if (route === "evidence") return json(buildEvidence(papers, runs));
+
+    if (route === "insights") return json(buildInsights(ws));
+
+    if (route === "conflicts") {
+      return json(ws.conflicts.map((c) => adjudicateConflict(c, ws.claimById)));
+    }
+
+    if (route === "runs") {
+      const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 50), 1), 200);
+      return json(buildRunsList(runs, limit));
+    }
+
+    if (route === "export") {
+      const payload = buildExport(papers, runs, ws);
+      const stamp = new Date().toISOString().replace(/[:.]/g, "").slice(0, 15) + "Z";
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Disposition": `attachment; filename="verigraph-export-${stamp}.json"`,
+          ...CORS,
+        },
+      });
+    }
 
     if (route === "workspace") {
       const ids = papers.map((p: any) => (p.extraction?.paper?.id || p.id));

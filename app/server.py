@@ -9,6 +9,10 @@ Endpoints:
   DELETE /api/workspace/papers/{paper_id} -> remove one paper from workspace
   POST /api/reset         -> clear runs on current workspace (pristine evidence)
   GET  /api/evidence -> evidence table rows
+  GET  /api/insights -> coverage stats, conflict adjudication, method recommendations
+  GET  /api/conflicts -> CONTRADICTS pairs with evidence status on each side
+  GET  /api/runs -> recent sandbox run history
+  GET  /api/export -> downloadable workspace snapshot (graph + evidence + runs)
   POST /api/run/{method_id}?backend=auto|local|daytona -> closed loop:
        codegen -> execute -> curate -> return run record
   POST /api/ask      -> question through the RocketRide agent pipeline (+ Cognee recall when enabled)
@@ -27,7 +31,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from app.curator import curate
@@ -221,6 +225,53 @@ def graph():
 def evidence():
     with get_driver() as driver:
         return run_query(driver, "evidence")
+
+
+@app.get("/api/insights")
+def insights():
+    from app.insights import workspace_insights
+
+    try:
+        return workspace_insights()
+    except Exception as e:
+        raise HTTPException(500, f"insights failed: {e}")
+
+
+@app.get("/api/conflicts")
+def conflicts():
+    from app.insights import list_conflicts
+
+    try:
+        return list_conflicts()
+    except Exception as e:
+        raise HTTPException(500, f"conflicts failed: {e}")
+
+
+@app.get("/api/runs")
+def runs(limit: int = 50):
+    from app.insights import list_runs
+
+    try:
+        return list_runs(limit=min(max(limit, 1), 200))
+    except Exception as e:
+        raise HTTPException(500, f"runs failed: {e}")
+
+
+@app.get("/api/export")
+def export_workspace():
+    from app.insights import export_workspace as build_export
+
+    try:
+        payload = build_export()
+    except Exception as e:
+        raise HTTPException(500, f"export failed: {e}")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return JSONResponse(
+        content=payload,
+        headers={
+            "Content-Disposition": f'attachment; filename="verigraph-export-{stamp}.json"',
+        },
+    )
 
 
 class RunBody(BaseModel):
