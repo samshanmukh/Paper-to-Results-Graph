@@ -20,6 +20,7 @@
         "duration_s": { "type": "numeric" },
         "metrics": { "type": "jsonb" },
         "claim_checks": { "type": "jsonb" },
+        "params": { "type": "jsonb" },
         "stdout": { "type": "text" },
         "error": { "type": "text" }
       }
@@ -28,6 +29,7 @@
       "columns": {
         "id": { "type": "uuid", "primaryKey": true, "default": "gen_random_uuid()" },
         "email": { "type": "text", "nullable": false, "unique": true },
+        "display_name": { "type": "text" },
         "ip_address": { "type": "text" },
         "region": { "type": "text" },
         "country": { "type": "text" },
@@ -41,6 +43,21 @@
       "indexes": {
         "idx_demo_visitors_last_seen": { "columns": ["last_seen"] },
         "idx_demo_visitors_country": { "columns": ["country"] }
+      }
+    },
+    "workspaces": {
+      "columns": {
+        "id": { "type": "uuid", "primaryKey": true, "default": "gen_random_uuid()" },
+        "visitor_id": { "type": "uuid" },
+        "email": { "type": "text" },
+        "name": { "type": "text", "nullable": false },
+        "snapshot": { "type": "jsonb" },
+        "created_at": { "type": "timestamptz", "default": "now()" },
+        "updated_at": { "type": "timestamptz", "default": "now()" }
+      },
+      "indexes": {
+        "idx_workspaces_visitor": { "columns": ["visitor_id"] },
+        "idx_workspaces_email": { "columns": ["email"] }
       }
     }
   }

@@ -12,6 +12,9 @@ const CORS = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
+/** Injected at deploy time from papers/impl/*.py — empty locally until deploy. */
+const IMPL_BUNDLE: Record<string, string> = {};
+
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -488,6 +491,7 @@ function buildRunsList(runs: any[], limit = 50) {
       exit_code: r.exit_code ?? 0,
       duration_s: Number(r.duration_s) || 0,
       error: r.error || null,
+      params: r.params || {},
       metrics: r.metrics || {},
       claim_checks: r.claim_checks?.items || r.claim_checks || [],
       source: "butterbase",
@@ -510,6 +514,317 @@ function buildExport(papers: any[], runs: any[], ctx: WorkspaceCtx) {
     runs: buildRunsList(runs, 200),
     graph: buildGraph(papers, runs),
   };
+}
+
+function normalizeCloudRun(r: any) {
+  const checks = r.claim_checks?.items || r.claim_checks || [];
+  return {
+    run_id: r.id || r.run_id,
+    method_id: r.method_id,
+    backend: r.backend || "daytona",
+    exit_code: r.exit_code ?? 0,
+    duration_s: Number(r.duration_s) || 0,
+    error: r.error || null,
+    params: r.params || {},
+    metrics: r.metrics || {},
+    claim_checks: checks,
+    created_at: r.created_at || null,
+    source: "butterbase",
+  };
+}
+
+function compareCloudRuns(runA: string, runB: string, runs: any[]) {
+  const pool = new Map(runs.map((r) => [r.id, normalizeCloudRun(r)]));
+  const a = pool.get(runA);
+  const b = pool.get(runB);
+  if (!a || !b) {
+    const missing = [!a ? runA : null, !b ? runB : null].filter(Boolean);
+    throw new Error(`run(s) not found: ${missing.join(", ")}`);
+  }
+  const paramsA = a.params || {};
+  const paramsB = b.params || {};
+  const paramDiff = [...new Set([...Object.keys(paramsA), ...Object.keys(paramsB)])]
+    .sort()
+    .filter((k) => String(paramsA[k]) !== String(paramsB[k]))
+    .map((k) => ({ key: k, a: paramsA[k], b: paramsB[k] }));
+  const metricsA = a.metrics || {};
+  const metricsB = b.metrics || {};
+  const metricDiff = [...new Set([...Object.keys(metricsA), ...Object.keys(metricsB)])].sort().map((k) => {
+    const va = metricsA[k];
+    const vb = metricsB[k];
+    let delta = null as number | null;
+    try {
+      if (va != null && vb != null) delta = Number(vb) - Number(va);
+    } catch {
+      delta = null;
+    }
+    return { key: k, a: va, b: vb, delta, changed: String(va) !== String(vb) };
+  });
+  const checksA: Record<string, any> = {};
+  const checksB: Record<string, any> = {};
+  for (const c of a.claim_checks || []) if (c.claim_id) checksA[c.claim_id] = c;
+  for (const c of b.claim_checks || []) if (c.claim_id) checksB[c.claim_id] = c;
+  const claimDiff = [...new Set([...Object.keys(checksA), ...Object.keys(checksB)])].sort().map((cid) => ({
+    claim_id: cid,
+    a: checksA[cid]?.verdict,
+    b: checksB[cid]?.verdict,
+    a_detail: checksA[cid]?.detail,
+    b_detail: checksB[cid]?.detail,
+    flipped: checksA[cid]?.verdict !== checksB[cid]?.verdict,
+  }));
+  return {
+    same_method: a.method_id === b.method_id,
+    method_id: a.method_id || b.method_id,
+    a,
+    b,
+    param_diff: paramDiff,
+    metric_diff: metricDiff,
+    claim_diff: claimDiff,
+    summary: {
+      params_changed: paramDiff.length,
+      metrics_changed: metricDiff.filter((m) => m.changed).length,
+      verdicts_flipped: claimDiff.filter((c) => c.flipped).length,
+    },
+  };
+}
+
+function claimTimelineCloud(runs: any[]) {
+  const ordered = [...runs].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const byClaim: Record<string, any[]> = {};
+  const last: Record<string, string | null> = {};
+  for (const r of ordered) {
+    const checks = r.claim_checks?.items || r.claim_checks || [];
+    for (const chk of checks) {
+      if (!chk.claim_id) continue;
+      const prev = last[chk.claim_id] ?? null;
+      const event = {
+        claim_id: chk.claim_id,
+        run_id: r.id,
+        method_id: r.method_id,
+        verdict: chk.verdict,
+        detail: chk.detail,
+        previous: prev,
+        flipped: prev != null && prev !== chk.verdict,
+        at: r.id,
+      };
+      (byClaim[chk.claim_id] ||= []).push(event);
+      last[chk.claim_id] = chk.verdict;
+    }
+  }
+  return Object.keys(byClaim)
+    .sort()
+    .map((cid) => ({
+      claim_id: cid,
+      events: byClaim[cid],
+      latest: byClaim[cid][byClaim[cid].length - 1]?.verdict || null,
+      flips: byClaim[cid].filter((e) => e.flipped).length,
+    }));
+}
+
+function evidenceBriefMarkdown(ctx: WorkspaceCtx) {
+  const insights = buildInsights(ctx);
+  const ev = insights.evidence;
+  const cf = insights.conflicts;
+  const ct = insights.counts;
+  const lines = [
+    "# Verigraph evidence brief",
+    "",
+    `_Generated ${insights.generated_at}_`,
+    "",
+    "## Coverage",
+    "",
+    `- Papers: **${ct.papers}**`,
+    `- Claims: **${ev.total_claims}** (${ev.validated} validated · ${ev.refuted} refuted · ${ev.untested} untested)`,
+    `- Coverage: **${ev.coverage_pct}%**`,
+    `- Runs: **${ct.runs}**`,
+    `- Conflicts: **${cf.total}** (${cf.resolved} resolved · ${cf.untested} untested)`,
+    "",
+    "## Conflicts",
+    "",
+  ];
+  if (!insights.conflict_rows.length) lines.push("_No CONTRADICTS edges in this workspace._");
+  else {
+    for (const c of insights.conflict_rows) {
+      lines.push(
+        `- **${c.from_claim}** (${c.from_paper}) ⇄ **${c.to_claim}** (${c.to_paper}) — \`${c.status}\`: ${c.summary}`,
+      );
+      lines.push(`  - A: ${c.from_verdict || "no runs yet"}`);
+      lines.push(`  - B: ${c.to_verdict || "no runs yet"}`);
+    }
+  }
+  lines.push("", "## Claims with evidence", "");
+  for (const row of insights.claim_rows) {
+    if (!row.verdict) continue;
+    lines.push(
+      `- **${row.claim}** (${row.paper}): \`${row.verdict}\` via \`${row.run_id}\`` +
+        (row.detail ? ` — ${row.detail}` : ""),
+    );
+  }
+  lines.push("", "---", "", "_Evidence is written only after real executions (or cloud Daytona live runs)._", "");
+  return lines.join("\n");
+}
+
+function pendingMethods(ctx: WorkspaceCtx) {
+  return ctx.methods.filter((m) => !m.hasRun).map((m) => m.id);
+}
+
+function daytonaReady(ctx: any): boolean {
+  return !!ctx?.env?.DAYTONA_API_KEY;
+}
+
+function parseResultLine(stdout: string) {
+  const lines = (stdout || "").trim().split("\n").filter(Boolean);
+  if (!lines.length) throw new Error("empty stdout");
+  return JSON.parse(lines[lines.length - 1]);
+}
+
+async function daytonaLiveRun(ctx: any, methodId: string, params: Record<string, any> = {}) {
+  const code = IMPL_BUNDLE[methodId];
+  if (!code) {
+    throw new Error(`No bundled implementation for ${methodId}`);
+  }
+  const apiKey = ctx.env.DAYTONA_API_KEY;
+  const runId = `run-${methodId}-${new Date().toISOString().replace(/[:.]/g, "").slice(0, 15)}Z`;
+  const started = Date.now();
+
+  const createRes = await fetch("https://app.daytona.io/api/sandbox", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: runId.slice(0, 60),
+      labels: { app: "verigraph", run_id: runId },
+      ephemeral: true,
+      autoStopInterval: 5,
+    }),
+  });
+  if (!createRes.ok) {
+    throw new Error(`daytona create ${createRes.status}: ${(await createRes.text()).slice(0, 200)}`);
+  }
+  const sandbox = await createRes.json();
+  const sandboxId = sandbox.id || sandbox.sandboxId;
+  if (!sandboxId) throw new Error("daytona create returned no sandbox id");
+
+  try {
+    // Wait briefly for sandbox readiness
+    for (let i = 0; i < 20; i++) {
+      const st = await fetch(`https://app.daytona.io/api/sandbox/${sandboxId}`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+      if (st.ok) {
+        const info = await st.json();
+        const state = String(info.state || info.status || "").toLowerCase();
+        if (state.includes("start") || state === "started" || state === "running" || state === "ready") break;
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+
+    const env: Record<string, string> = {};
+    for (const [k, v] of Object.entries(params || {})) {
+      env[`P2R_${k.toUpperCase()}`] = String(v);
+    }
+
+    const install = await fetch(
+      `https://proxy.app.daytona.io/toolbox/${sandboxId}/process/execute`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ command: "pip install -q numpy", timeout: 180 }),
+      },
+    );
+    if (!install.ok) {
+      // non-fatal if numpy already present
+      console.error("daytona pip", install.status, await install.text());
+    }
+
+    const runRes = await fetch(
+      `https://proxy.app.daytona.io/toolbox/${sandboxId}/process/code-run`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ code, language: "python", envs: env }),
+      },
+    );
+    const rawText = await runRes.text();
+    if (!runRes.ok) throw new Error(`daytona code-run ${runRes.status}: ${rawText.slice(0, 240)}`);
+    let payload: any = {};
+    try {
+      payload = JSON.parse(rawText);
+    } catch {
+      payload = { result: rawText, exitCode: 0 };
+    }
+    const stdout = payload.result || payload.stdout || rawText || "";
+    const exitCode = payload.exitCode ?? payload.exit_code ?? 0;
+    let result = null;
+    let error = null as string | null;
+    if (exitCode === 0) {
+      try {
+        result = parseResultLine(stdout);
+      } catch (e: any) {
+        error = `output contract violation: ${e.message || e}`;
+      }
+    } else {
+      error = `non-zero exit (${exitCode})`;
+    }
+
+    const record = {
+      run_id: runId,
+      method_id: methodId,
+      backend: "daytona",
+      exit_code: exitCode,
+      duration_s: Math.round((Date.now() - started) / 10) / 100,
+      stdout: String(stdout).slice(0, 4000),
+      stderr: "",
+      error,
+      params,
+      result,
+      live: true,
+      sandbox_id: sandboxId,
+    };
+
+    // Persist into Butterbase runs table for future visitors
+    try {
+      await ctx.db.query(
+        `INSERT INTO runs (id, method_id, backend, status, exit_code, duration_s, metrics, claim_checks, params, stdout, error)
+         VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,$10,$11)
+         ON CONFLICT (id) DO NOTHING`,
+        [
+          runId,
+          methodId,
+          "daytona",
+          error ? "failure" : "success",
+          exitCode,
+          record.duration_s,
+          JSON.stringify(result?.metrics || {}),
+          JSON.stringify({ items: result?.claim_checks || [] }),
+          JSON.stringify(params || {}),
+          record.stdout,
+          error,
+        ],
+      );
+    } catch (e) {
+      console.error("persist live run failed", e);
+      record.butterbase_sync_error = String(e);
+    }
+    return record;
+  } finally {
+    try {
+      await fetch(`https://app.daytona.io/api/sandbox/${sandboxId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+    } catch (_) {
+      /* ignore cleanup errors */
+    }
+  }
 }
 
 function answerAsk(question: string, ctx: WorkspaceCtx) {
@@ -901,7 +1216,15 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
     const runs = (runsRes.rows || []).filter((run: any) => !isInfrastructureFailure(run));
     const ws = buildWorkspaceCtx(papers, runs);
 
-    if (route === "health") return json({ ok: true, papers: papers.length, runs: runs.length });
+    if (route === "health") {
+      return json({
+        ok: true,
+        papers: papers.length,
+        runs: runs.length,
+        live_run: daytonaReady(ctx),
+        impl_methods: Object.keys(IMPL_BUNDLE).length,
+      });
+    }
 
     if (route === "graph") return json(buildGraph(papers, runs));
 
@@ -918,6 +1241,26 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
       return json(buildRunsList(runs, limit));
     }
 
+    if (route === "timeline") return json(claimTimelineCloud(runs));
+
+    if (route === "batch-plan") {
+      const pending = pendingMethods(ws);
+      return json({ pending, count: pending.length });
+    }
+
+    if (route === "evidence-brief") {
+      const md = evidenceBriefMarkdown(ws);
+      const stamp = new Date().toISOString().replace(/[:.]/g, "").slice(0, 15) + "Z";
+      return new Response(md, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/markdown; charset=utf-8",
+          "Content-Disposition": `attachment; filename="verigraph-brief-${stamp}.md"`,
+          ...CORS,
+        },
+      });
+    }
+
     if (route === "export") {
       const payload = buildExport(papers, runs, ws);
       const stamp = new Date().toISOString().replace(/[:.]/g, "").slice(0, 15) + "Z";
@@ -929,6 +1272,17 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
           ...CORS,
         },
       });
+    }
+
+    if (route === "saved-workspaces") {
+      const visitor = url.searchParams.get("visitor") || visitorId || "";
+      const email = url.searchParams.get("email") || "";
+      if (!visitor && !email) return json({ workspaces: [] });
+      const q = visitor
+        ? `SELECT * FROM workspaces WHERE visitor_id = $1 ORDER BY updated_at DESC LIMIT 50`
+        : `SELECT * FROM workspaces WHERE email = $1 ORDER BY updated_at DESC LIMIT 50`;
+      const result = await ctx.db.query(q, [visitor || email]);
+      return json({ workspaces: result.rows || [] });
     }
 
     if (route === "workspace") {
@@ -994,24 +1348,130 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
       }
       if (route.startsWith("run/")) {
         const methodId = route.slice(4);
+        const body = await readJsonBody(req);
+        const params = body.params || {};
+
+        // Prefer live Daytona when key + impl are available
+        if (daytonaReady(ctx) && IMPL_BUNDLE[methodId]) {
+          try {
+            const live = await daytonaLiveRun(ctx, methodId, params);
+            await cogneeLogSession(
+              ctx,
+              `LIVE RUN ${methodId}`,
+              `${live.run_id} ${live.error || "ok"} ${(live.result?.claim_checks || [])
+                .map((c: any) => `${c.verdict} ${c.claim_id}`)
+                .join(", ")}`,
+              visitorId,
+            );
+            return json(live);
+          } catch (e: any) {
+            console.error("live daytona failed, falling back to replay", e);
+          }
+        }
+
         const hit = latestRunForMethod(runs, methodId);
         if (hit) {
           const rec = runRowToRecord(hit);
+          rec.params = params;
           const checks = hit.claim_checks?.items || hit.claim_checks || [];
           const summary =
             `[run replay ${hit.id}] method ${methodId} ` +
             checks.map((c: any) => `${c.verdict} ${c.claim_id}`).join(", ");
           await cogneeLogSession(ctx, `RUN ${methodId}`, summary, visitorId);
-          return json(rec);
+          return json({
+            ...rec,
+            live: false,
+            live_capable: daytonaReady(ctx),
+            replay_reason: daytonaReady(ctx)
+              ? "Daytona live run unavailable for this method; replaying persisted result."
+              : "Daytona not configured on this deploy — replaying persisted result.",
+          });
         }
         return json(
           {
             detail:
-              `No persisted run for ${methodId} on this deploy. ` +
-              "Load the demo or run wilson2017-m1 locally against the full Verigraph backend.",
+              `No persisted run for ${methodId} on this deploy` +
+              (daytonaReady(ctx) ? " and live Daytona failed or has no bundled impl." : ".") +
+              " Load the demo or run against the full Verigraph backend.",
           },
-          404
+          404,
         );
+      }
+      if (route === "compare") {
+        const body = await readJsonBody(req);
+        try {
+          return json(compareCloudRuns(String(body.run_a || ""), String(body.run_b || ""), runs));
+        } catch (e: any) {
+          return json({ detail: String(e.message || e) }, 404);
+        }
+      }
+      if (route === "batch-run") {
+        const body = await readJsonBody(req);
+        const targets: string[] = Array.isArray(body.method_ids) && body.method_ids.length
+          ? body.method_ids
+          : pendingMethods(ws);
+        if (!targets.length) return json({ ok: true, ran: [], message: "No never-run methods left." });
+        const results: any[] = [];
+        for (const mid of targets) {
+          if (daytonaReady(ctx) && IMPL_BUNDLE[mid]) {
+            try {
+              const live = await daytonaLiveRun(ctx, mid, body.params || {});
+              results.push({
+                method_id: mid,
+                run_id: live.run_id,
+                error: live.error,
+                backend: "daytona",
+                live: true,
+                metrics: live.result?.metrics,
+              });
+              continue;
+            } catch (e: any) {
+              results.push({ method_id: mid, error: String(e.message || e), live: false });
+              continue;
+            }
+          }
+          const hit = latestRunForMethod(runs, mid);
+          if (hit) {
+            results.push({
+              method_id: mid,
+              run_id: hit.id,
+              error: null,
+              backend: hit.backend || "daytona",
+              live: false,
+              replay: true,
+              metrics: hit.metrics,
+            });
+          } else {
+            results.push({
+              method_id: mid,
+              error: "no live Daytona and no persisted run",
+              live: false,
+            });
+          }
+        }
+        return json({ ok: true, ran: results, count: results.length, live_capable: daytonaReady(ctx) });
+      }
+      if (route === "saved-workspaces") {
+        const body = await readJsonBody(req);
+        const name = String(body.name || "").trim();
+        if (!name || name.length > 80) return json({ detail: "Workspace name required (max 80 chars)." }, 400);
+        const vid = body.visitor_id || visitorId || null;
+        const email = body.email || null;
+        if (body.display_name && vid) {
+          try {
+            await ctx.db.query(
+              `UPDATE demo_visitors SET display_name = $1, last_seen = now() WHERE id = $2`,
+              [String(body.display_name).slice(0, 80), vid],
+            );
+          } catch (_) {}
+        }
+        const result = await ctx.db.query(
+          `INSERT INTO workspaces (visitor_id, email, name, snapshot)
+           VALUES ($1, $2, $3, $4::jsonb)
+           RETURNING *`,
+          [vid, email, name, JSON.stringify(body.snapshot || {})],
+        );
+        return json({ ok: true, workspace: (result.rows || [])[0] });
       }
       if (route === "ask") {
         const body = await readJsonBody(req);
@@ -1040,6 +1500,17 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
         return json(r);
       }
       return notImplemented(`POST ${route} is not available on the Butterbase read-only deploy.`);
+    }
+
+    if (req.method === "DELETE" && route.startsWith("saved-workspaces/")) {
+      const id = route.slice("saved-workspaces/".length);
+      const visitor = url.searchParams.get("visitor") || visitorId || "";
+      if (visitor) {
+        await ctx.db.query(`DELETE FROM workspaces WHERE id = $1 AND visitor_id = $2`, [id, visitor]);
+      } else {
+        await ctx.db.query(`DELETE FROM workspaces WHERE id = $1`, [id]);
+      }
+      return json({ ok: true });
     }
 
     if (req.method === "DELETE" && route.startsWith("workspace/papers/")) {

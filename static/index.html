@@ -435,6 +435,35 @@ html[data-theme="light"] .conflict-side{background:#F7F7F4;border-color:rgba(20,
 html[data-theme="light"] .shortcut-card{background:#fff;border-color:rgba(20,24,32,.12)}
 html[data-theme="light"] .shortcut-row{color:#2A2A30;border-bottom-color:rgba(20,24,32,.08)}
 html[data-theme="light"] .conflict-card:hover,.run-row:hover{background:#F6F3FE}
+
+.layout-modes{display:flex;gap:4px;margin-left:8px}
+.layout-mode-btn{font-family:'IBM Plex Mono',monospace;font-size:10.5px;padding:4px 9px;border-radius:7px;
+  border:1px solid rgba(148,163,184,.18);background:#141A23;color:#AAB3C1;cursor:pointer}
+.layout-mode-btn.active{background:#1C1731;border-color:#6C4CF1;color:#C4B5FD;font-weight:600}
+#live-run-badge{font-size:11px}.badge.live,#live-run-badge.live{color:#73D59A;border-color:rgba(115,213,154,.35)}
+.compare-controls{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:10px}
+.compare-controls select{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(148,163,184,.18);
+  background:#0D1219;color:#E9EDF5;font-size:12px}
+.compare-summary{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#AAB3C1;margin-bottom:8px}
+.compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.compare-grid .k,.diff-row b{font-family:'IBM Plex Mono',monospace;font-size:10px;color:#8B94A5;text-transform:uppercase}
+.diff-row{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid rgba(148,163,184,.08);font-size:12px;color:#D7DDE8}
+.diff-row.flip{color:#F0B36B}.muted{color:#7F899A;font-size:12px}
+.tl-claim{border:1px solid rgba(148,163,184,.12);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:#131922}
+.tl-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:8px}
+.tl-event{padding:6px 0;border-top:1px solid rgba(148,163,184,.08)}
+.tl-event.flip{background:rgba(240,179,107,.08)}
+.tl-ver{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#73D59A;font-weight:600}
+.tl-meta{font-size:11px;color:#8B94A5;margin-left:8px}
+.tl-detail{font-size:12px;color:#AAB3C1;margin-top:3px}
+.ws-save-row{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:10px}
+.ws-save-row input{padding:8px 10px;border-radius:8px;border:1px solid rgba(148,163,184,.18);background:#0D1219;color:#E9EDF5;font-size:12px}
+.ws-row{display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid rgba(148,163,184,.12);border-radius:9px;margin-bottom:7px;background:#131922}
+.ws-main{flex:1;min-width:0}.ws-name{font-size:13px;color:#E9EDF5}.ws-meta{font-size:11px;color:#8B94A5}
+html[data-theme="light"] .layout-mode-btn,html[data-theme="light"] .compare-controls select,html[data-theme="light"] .ws-save-row input{background:#fff;color:#171A20;border-color:rgba(20,24,32,.12)}
+html[data-theme="light"] .layout-mode-btn.active{background:#F3F0FD;color:#5E43D5}
+html[data-theme="light"] .tl-claim,.ws-row{background:#fff;border-color:rgba(20,24,32,.1)}
+html[data-theme="light"] .ws-name,.diff-row{color:#171A20}
 </style>
 </head>
 <body>
@@ -472,6 +501,8 @@ html[data-theme="light"] .conflict-card:hover,.run-row:hover{background:#F6F3FE}
       <button class="btn-ghost" id="load-demo-btn" title="Load 3-paper demo (Adam, Wilson, AdamW)">Load demo</button>
       <button class="btn-ghost" id="reset-btn" title="Clear runs on current papers">↺ Reset runs</button>
       <button class="btn-ghost" id="export-btn" title="Download workspace snapshot as JSON">↓ Export</button>
+      <button class="btn-ghost" id="batch-run-btn" title="Run all methods that have never been executed">⚡ Batch run</button>
+      <span class="badge" id="live-run-badge" title="Run backend mode">…</span>
       <button class="btn-dark" id="upload-btn">+ Add paper</button>
       <button class="btn-ghost theme-toggle" id="theme-toggle" type="button" title="Switch color theme" aria-label="Switch color theme">☾</button>
     </div>
@@ -494,6 +525,10 @@ html[data-theme="light"] .conflict-card:hover,.run-row:hover{background:#F6F3FE}
           <span class="strip-label">claims validated</span>
         </div>
         <span class="legend-hint" id="run-hint">– CONTRADICTS · no runs yet</span>
+        <div class="layout-modes" role="group" aria-label="Graph layout mode">
+          <button type="button" class="layout-mode-btn active" data-mode="flow" title="Evidence-flow columns">Flow</button>
+          <button type="button" class="layout-mode-btn" data-mode="citations" title="Citation network (CITES)">Citations</button>
+        </div>
         <button class="btn-ghost" id="panel-toggle" title="Hide side panel for more graph space">◀ Hide panel</button>
       </div>
       <div class="graph-area">
@@ -562,13 +597,37 @@ html[data-theme="light"] .conflict-card:hover,.run-row:hover{background:#F6F3FE}
             <span class="evidence-count" id="insight-stamp">—</span>
           </div>
           <p class="insight-sub">Coverage, conflict adjudication, and recent runs — derived from executable evidence, not model opinion.</p>
+          <div class="ev-actions">
+            <button type="button" class="btn-ghost" id="brief-btn" title="Download markdown + open printable brief">↓ Evidence brief</button>
+          </div>
           <div class="insight-stats" id="insight-stats"></div>
+          <div class="insight-section">Batch run</div>
+          <p class="insight-sub" id="batch-pending">Checking never-run methods…</p>
+          <div class="insight-section">Compare runs</div>
+          <p class="insight-sub">Diff params, metrics, and claim verdicts between two executions.</p>
+          <div class="compare-controls">
+            <select id="compare-a" aria-label="Run A"></select>
+            <select id="compare-b" aria-label="Run B"></select>
+            <button type="button" class="btn-dark" id="compare-go">Compare</button>
+          </div>
+          <div id="compare-out"></div>
           <div class="insight-section">Cross-paper conflicts</div>
           <p class="insight-sub">CONTRADICTS pairs with sandbox verdicts on each side. Click a card to focus the claims in the graph.</p>
           <div id="conflict-list"></div>
+          <div class="insight-section">Claim timeline</div>
+          <p class="insight-sub">Verdict history as runs land — flips are highlighted.</p>
+          <div id="timeline-list"></div>
           <div class="insight-section">Recent runs</div>
           <p class="insight-sub">Latest experiment executions. Click to open the method in Console.</p>
           <div id="run-history"></div>
+          <div class="insight-section">Saved workspaces</div>
+          <p class="insight-sub">Named snapshots tied to your demo email (view filters + layout). Optional display name for your account profile.</p>
+          <div class="ws-save-row">
+            <input id="ws-display-name" placeholder="Display name (optional)" maxlength="80">
+            <input id="ws-name" placeholder="Workspace name" maxlength="80">
+            <button type="button" class="btn-dark" id="ws-save-btn">Save</button>
+          </div>
+          <div id="workspace-saves"></div>
         </div>
 
         <div class="tab-pane" id="tab-console">
@@ -1174,6 +1233,7 @@ function setTab(tab){
   if(tab === "insights") loadInsights();
   syncDeepLink();
 }
+window.setTab = setTab;
 
 document.querySelectorAll(".tab-btn").forEach(b=>{
   b.addEventListener("click", ()=>setTab(b.dataset.tab));
@@ -2360,7 +2420,9 @@ document.getElementById("empty-load-demo").addEventListener("click", e=>{ e.prev
   await loadGraph();
   await loadEvidence();
   await applyDeepLink();
+  if(window.verigraphAdvanced?.refresh) window.verigraphAdvanced.refresh();
 })();
 </script>
+<script src="/advanced-features.js"></script>
 </body>
 </html>

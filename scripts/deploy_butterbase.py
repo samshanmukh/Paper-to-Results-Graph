@@ -105,6 +105,7 @@ def cognee_env_vars() -> dict[str, str]:
         "COGNEE_API_KEY",
         "COGNEE_DATASET",
         "COGNEE_SESSION_ID",
+        "DAYTONA_API_KEY",
     )
     out: dict[str, str] = {}
     for k in keys:
@@ -114,9 +115,26 @@ def cognee_env_vars() -> dict[str, str]:
     return out
 
 
+def inject_impl_bundle(code: str) -> str:
+    """Embed curated papers/impl/*.py into the edge function for live Daytona runs."""
+    bundle_path = os.path.join(ROOT, "butterbase", "impl_bundle.json")
+    if not os.path.isfile(bundle_path):
+        from app.research_tools import load_impl_bundle
+        bundle = load_impl_bundle()
+        with open(bundle_path, "w") as f:
+            json.dump(bundle, f)
+    with open(bundle_path) as f:
+        bundle_json = f.read().strip()
+    marker = "const IMPL_BUNDLE: Record<string, string> = {};"
+    replacement = f"const IMPL_BUNDLE: Record<string, string> = {bundle_json};"
+    if marker not in code:
+        raise RuntimeError("IMPL_BUNDLE marker missing from verigraph_api.ts")
+    return code.replace(marker, replacement, 1)
+
+
 def deploy_function() -> str:
     with open(FN_PATH) as f:
-        code = f.read()
+        code = inject_impl_bundle(f.read())
     env_vars = cognee_env_vars()
     # Remove existing function with same name if present
     try:
@@ -131,15 +149,18 @@ def deploy_function() -> str:
 
     body: dict = {
         "name": FN_NAME,
-        "description": "Verigraph read API (graph, evidence, workspace, Cognee sessions)",
+        "description": "Verigraph API (graph, evidence, live Daytona runs, workspaces, Cognee)",
         "code": code,
         "trigger": {"type": "http", "config": {"auth": "none"}},
     }
     if env_vars:
         body["envVars"] = env_vars
-        safe_keys = [k for k in env_vars if k not in ("COGNEE_API_KEY", "ADMIN_TRACKING_KEY")]
+        safe_keys = [k for k in env_vars if k not in ("COGNEE_API_KEY", "ADMIN_TRACKING_KEY", "DAYTONA_API_KEY")]
+        if "DAYTONA_API_KEY" in env_vars:
+            safe_keys.append("DAYTONA_API_KEY(set)")
         if safe_keys:
             print(f"  function env: {', '.join(safe_keys)}")
+    print(f"  impl bundle: {code.count(chr(10))} lines after inject")
 
     _, res = bb_req("POST", f"/v1/{APP_ID}/functions", body)
     url = res["url"]
@@ -157,6 +178,11 @@ def build_frontend_zip(fn_url: str) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("config.js", config_js)
+        # Extra static assets referenced by the demo
+        for asset in ("advanced-features.js",):
+            asset_path = os.path.join(STATIC_DIR, asset)
+            if os.path.isfile(asset_path):
+                zf.writestr(asset, open(asset_path).read())
 
         for src_name, dest_name in (
             ("landing.html", "index.html"),
@@ -167,6 +193,7 @@ def build_frontend_zip(fn_url: str) -> bytes:
             if 'src="/config.js"' not in html:
                 html = html.replace("<head>", '<head>\n<script src="/config.js"></script>\n', 1)
             html = html.replace('src="/config.js"', f'src="/config.js?v={config_version}"')
+            html = html.replace('src="/advanced-features.js"', f'src="/advanced-features.js?v={config_version}"')
             zf.writestr(dest_name, html)
 
     return buf.getvalue()
@@ -203,14 +230,14 @@ def deploy_frontend(fn_url: str) -> str:
 
 
 def smoke_test(fn_url: str, site_url: str) -> None:
-    for route in ("health", "graph", "evidence", "workspace"):
+    for route in ("health", "graph", "evidence", "workspace", "insights", "timeline", "batch-plan"):
         req = urllib.request.Request(f"{fn_url}?route={route}")
         with urllib.request.urlopen(req, timeout=30) as resp:
             body = json.load(resp)
         print(f"  ✓ {route}: {str(body)[:80]}…")
 
     demo_url = site_url.rstrip("/") + "/demo/"
-    for attempt, url in enumerate([site_url, demo_url, site_url.rstrip("/") + "/config.js"]):
+    for attempt, url in enumerate([site_url, demo_url, site_url.rstrip("/") + "/config.js", site_url.rstrip("/") + "/advanced-features.js"]):
         for retry in range(5):
             try:
                 with urllib.request.urlopen(url, timeout=30) as resp:
@@ -227,6 +254,8 @@ def smoke_test(fn_url: str, site_url: str) -> None:
             raise RuntimeError(f"frontend check failed at {site_url}")
         if attempt == 2 and "VERIGRAPH_FN_URL" not in body:
             raise RuntimeError("config.js missing VERIGRAPH_FN_URL")
+        if attempt == 3 and "verigraphAdvanced" not in body:
+            raise RuntimeError("advanced-features.js missing verigraphAdvanced")
     print(f"  ✓ frontend live: {site_url}")
     print(f"  ✓ demo: {demo_url}")
 
