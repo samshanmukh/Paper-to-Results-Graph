@@ -271,6 +271,11 @@ a:hover{color:var(--purple-dim)}
 #drop-zone.busy{opacity:0.5;pointer-events:none}
 #modal .m-foot{padding:13px 22px;border-top:1px solid rgba(20,20,26,0.08)}
 #upload-status{font-size:12px;color:var(--dim);font-style:italic}
+.cloud-upload-note{padding:8px 2px 4px}
+.cloud-upload-note strong{display:block;font-size:14px;margin-bottom:8px;color:var(--ink)}
+.cloud-upload-note p{font-size:13px;color:var(--dim);line-height:1.5;margin:0 0 10px}
+.cloud-upload-note .btn-dark{margin-top:4px}
+html[data-theme="light"] .cloud-upload-note strong{color:#171A20}
 div.vis-tooltip{font-size:11px!important;color:var(--ink)!important;background:#fff!important;
   border:1px solid rgba(20,20,26,0.14)!important;border-radius:8px!important;
   padding:8px 11px!important;max-width:340px;white-space:normal!important;
@@ -696,19 +701,27 @@ html[data-theme="light"] .ws-name,.diff-row{color:#171A20}
   <div id="modal">
     <div class="m-head">
       <h2 id="modal-title">Add a paper</h2>
-      <span>extracts claims, methods &amp; conflicts into the graph</span>
+      <span id="modal-subtitle">extracts claims, methods &amp; conflicts into the graph</span>
       <button id="modal-close">✕</button>
     </div>
     <div class="m-body">
-      <label class="m-label" for="arxiv-url">arXiv link or id</label>
-      <div class="m-row">
-        <input id="arxiv-url" placeholder="https://arxiv.org/abs/1907.08610   ·   or just 1907.08610">
-        <button id="arxiv-go">fetch &amp; extract</button>
+      <div id="cloud-upload-note" class="cloud-upload-note" hidden>
+        <strong>Cloud demo limitation</strong>
+        <p>Paper upload and arXiv extraction need the full FastAPI backend (LLM extraction + Neo4j writes). This Butterbase deploy serves the shared graph and run history only.</p>
+        <p>Use <b>Load demo</b> for the Adam · Wilson · AdamW corpus, or run Verigraph locally to add new papers.</p>
+        <button type="button" class="btn-dark" id="cloud-load-demo-btn">Load demo papers</button>
       </div>
-      <div class="m-or"><span>or</span></div>
-      <div id="drop-zone">
-        <b>drop a PDF here</b> — or click to choose a file
-        <input id="file-input" type="file" accept=".pdf,.txt,.md" hidden>
+      <div id="upload-controls">
+        <label class="m-label" for="arxiv-url">arXiv link or id</label>
+        <div class="m-row">
+          <input id="arxiv-url" placeholder="https://arxiv.org/abs/1907.08610   ·   or just 1907.08610">
+          <button id="arxiv-go">fetch &amp; extract</button>
+        </div>
+        <div class="m-or"><span>or</span></div>
+        <div id="drop-zone">
+          <b>drop a PDF here</b> — or click to choose a file
+          <input id="file-input" type="file" accept=".pdf,.txt,.md" hidden>
+        </div>
       </div>
     </div>
     <div class="m-foot">
@@ -2140,22 +2153,64 @@ document.getElementById("zoom-fit").addEventListener("click", ()=>
 
 const backdrop = document.getElementById("modal-backdrop");
 const status = document.getElementById("upload-status");
-document.getElementById("upload-btn").addEventListener("click", ()=>{
+const IS_CLOUD_DEPLOY = !!window.VERIGRAPH_FN_URL;
+
+function openAddPaperModal(){
   document.getElementById("modal-title").textContent = "Add a paper";
+  const note = document.getElementById("cloud-upload-note");
+  const controls = document.getElementById("upload-controls");
+  const subtitle = document.getElementById("modal-subtitle");
+  if(IS_CLOUD_DEPLOY){
+    note.hidden = false;
+    controls.hidden = true;
+    subtitle.textContent = "available on the full local backend";
+    status.textContent = "This Butterbase deploy cannot ingest new papers (edge function body limits + no extraction spine).";
+  } else {
+    note.hidden = true;
+    controls.hidden = false;
+    subtitle.textContent = "extracts claims, methods & conflicts into the graph";
+    status.textContent = "extraction runs through the Butterbase AI gateway (~20–30s)";
+  }
   backdrop.classList.add("show");
+}
+
+document.getElementById("upload-btn").addEventListener("click", openAddPaperModal);
+document.getElementById("cloud-load-demo-btn")?.addEventListener("click", ()=>{
+  backdrop.classList.remove("show");
+  doLoadDemo(false);
 });
 document.getElementById("modal-close").addEventListener("click", ()=>backdrop.classList.remove("show"));
 backdrop.addEventListener("click", e=>{ if(e.target===backdrop) backdrop.classList.remove("show"); });
 
+function formatUploadError(payload, fallback){
+  if(!payload || typeof payload !== "object") return fallback;
+  if(typeof payload.detail === "string") return payload.detail;
+  const err = payload.error;
+  if(err && typeof err === "object"){
+    const msg = err.message || err.code || "";
+    if(/too large/i.test(msg)){
+      return "Upload rejected: file/request is too large for the Butterbase edge function. " +
+        "Use Load demo on this cloud site, or run the full FastAPI backend locally to ingest PDFs.";
+    }
+    return msg || fallback;
+  }
+  try{ return JSON.stringify(payload).slice(0,180); }catch{ return fallback; }
+}
+
 async function ingest(promise, label){
+  if(IS_CLOUD_DEPLOY){
+    status.textContent = "✗ Paper ingest is not available on the Butterbase cloud demo.";
+    log("[upload ] ✗ cloud deploy cannot extract new papers — use Load demo or run locally", "t-bad");
+    return false;
+  }
   status.textContent = `reading ${label} & extracting claims via the AI gateway…`;
   setTab("console");
   clearLog();
   log(`[upload ] verigraph add ${label}`, "t-warn");
   try{
     const res = await promise;
-    const r = await res.json();
-    if(!res.ok) throw new Error(r.detail || JSON.stringify(r).slice(0,160));
+    const r = await res.json().catch(()=>({}));
+    if(!res.ok) throw new Error(formatUploadError(r, `HTTP ${res.status}`));
     status.textContent = `✓ ${r.paper_id}: ${r.claims} claims, ${r.methods} methods, ${r.relations} cross-paper links`;
     log(`[upload ] ✓ ${r.paper_id} — "${r.title}"`, "t-ok");
     log(`  ${r.claims} claims · ${r.methods} methods · ${r.relations} relations`, "t-dim");
@@ -2171,6 +2226,7 @@ async function ingest(promise, label){
 
 const arxivGo = document.getElementById("arxiv-go");
 arxivGo.addEventListener("click", async ()=>{
+  if(IS_CLOUD_DEPLOY){ openAddPaperModal(); return; }
   const url = document.getElementById("arxiv-url").value.trim();
   if(!url){ status.textContent = "paste an arXiv link or id first."; return; }
   arxivGo.disabled = true;
@@ -2191,6 +2247,13 @@ dropZone.addEventListener("drop", e=>{
 });
 fileInput.addEventListener("change", ()=>{ if(fileInput.files.length) sendFile(fileInput.files[0]); });
 async function sendFile(file){
+  if(IS_CLOUD_DEPLOY){ openAddPaperModal(); return; }
+  // Butterbase edge functions reject large bodies; keep a soft local guard too
+  const maxBytes = 8 * 1024 * 1024;
+  if(file.size > maxBytes){
+    status.textContent = `✗ "${file.name}" is ${(file.size/1024/1024).toFixed(1)} MB — please use a smaller PDF/text excerpt (under 8 MB).`;
+    return;
+  }
   dropZone.classList.add("busy");
   const form = new FormData();
   form.append("file", file);
@@ -2227,7 +2290,7 @@ async function doNewWorkspace(){
     resetUIState(r.message || "New workspace ready. Add a paper via arXiv or PDF — I'll extract claims, methods, and conflicts into the graph.");
     setTab("evidence");
     await loadGraph(); await loadEvidence();
-    backdrop.classList.add("show");
+    openAddPaperModal();
     document.getElementById("modal-title").textContent = "Add your first paper";
   }catch(e){ alert("New workspace failed: "+e.message); }
   btn.disabled = false;
@@ -2409,8 +2472,8 @@ themeToggle.addEventListener("click",()=>{
   location.reload();
 });
 document.getElementById("empty-add-btn").addEventListener("click", ()=>{
-  document.getElementById("modal-title").textContent = "Add a paper";
-  backdrop.classList.add("show");
+  openAddPaperModal();
+  document.getElementById("modal-title").textContent = "Add your first paper";
 });
 document.getElementById("empty-load-demo").addEventListener("click", e=>{ e.preventDefault(); doLoadDemo(false); });
 
