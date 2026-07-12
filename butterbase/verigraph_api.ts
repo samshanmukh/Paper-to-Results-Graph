@@ -945,7 +945,7 @@ async function extractLocalArxiv(ctx: any, url: string) {
   });
   if (!res.ok) throw new Error(`arXiv API HTTP ${res.status}`);
   const xml = await res.text();
-  const title = (xml.match(/<title>([\s\S]*?)<\/title>/i) || [])[1]?.replace(/^arXiv.*?\\n/, "").trim() || `arXiv:${id}`;
+  const title = (xml.match(/<title>([\s\S]*?)<\/title>/i) || [])[1]?.replace(/^arXiv.*?\n/, "").trim() || `arXiv:${id}`;
   const summary = (xml.match(/<summary>([\s\S]*?)<\/summary>/i) || [])[1]?.replace(/\s+/g, " ").trim() || "";
   const authors = [...xml.matchAll(/<name>([\s\S]*?)<\/name>/gi)].map((m) => m[1].trim()).filter(Boolean);
   const yearMatch = xml.match(/<published>(\d{4})/i);
