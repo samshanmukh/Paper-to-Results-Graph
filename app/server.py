@@ -173,6 +173,107 @@ def health():
     }
 
 
+def _heuristic_extraction(text: str, title: str | None = None, arxiv: str | None = None) -> dict:
+    import re
+    from datetime import datetime
+
+    cleaned = " ".join(str(text or "").split())
+    lines = [l.strip() for l in str(text or "").splitlines() if l.strip()]
+    title = title or next(
+        (l for l in lines if 12 < len(l) < 180 and not l.lower().startswith("arxiv:")),
+        "Untitled local paper",
+    )
+    year_m = re.search(r"\b((?:19|20)\d{2})\b", title + " " + cleaned)
+    year = int(year_m.group(1)) if year_m else datetime.now().year
+    slug = re.sub(r"[^a-z0-9]+", "", title.lower())[:18] or "localpaper"
+    pid = f"{slug}{year}"[:32]
+    if arxiv:
+        pid = f"arxiv{str(arxiv).replace('.', '')}"[:32]
+    sentences = [
+        s.strip()
+        for s in re.split(r"(?<=[.!?])\s+", cleaned)
+        if 40 < len(s.strip()) < 320
+    ][:3]
+    if not sentences:
+        sentences = [cleaned[:200]]
+    claims = [{"id": f"{pid}-c{i+1}", "text": s, "metric": None} for i, s in enumerate(sentences)]
+    return {
+        "paper": {
+            "id": pid,
+            "title": title[:240],
+            "authors": ["local"],
+            "year": year,
+            "arxiv": arxiv,
+            "topic": "local-import",
+        },
+        "claims": claims,
+        "methods": [{
+            "id": f"{pid}-m1",
+            "name": "Toy reproduction experiment",
+            "description": f"Simplified numpy simulation of the core claim in “{title[:80]}”.",
+            "runnable_hint": (
+                "Build a tiny synthetic task; sample candidates; score with a verifier; "
+                "report accuracy_at_n vs n_candidates."
+            ),
+            "params": [
+                {"name": "n_candidates", "default": 8, "description": "best-of-n width"},
+                {"name": "n_trials", "default": 200, "description": "synthetic problems"},
+                {"name": "noise", "default": 0.3, "description": "task difficulty"},
+            ],
+        }],
+        "datasets": [],
+        "cites": [],
+        "claim_relations": [],
+    }
+
+
+@app.post("/api/extract-local-arxiv")
+def extract_local_arxiv(body: dict):
+    """Cloud-friendly extract: return extraction JSON for browser localStorage (no graph write)."""
+    from app.arxiv import fetch_arxiv_text, parse_arxiv_id
+    from app.extract import ensure_methods, extract_live_text
+
+    url = str((body or {}).get("url") or "")
+    try:
+        arxiv_id, _ = parse_arxiv_id(url)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+    try:
+        text = fetch_arxiv_text(url)
+        data = extract_live_text(text)
+        source = "arxiv-llm"
+    except Exception:
+        try:
+            text = fetch_arxiv_text(url)
+        except Exception as e:
+            raise HTTPException(400, f"arXiv fetch failed: {e}")
+        data = _heuristic_extraction(text, arxiv=arxiv_id)
+        source = "arxiv-heuristic"
+    data = ensure_methods(data)
+    data.setdefault("paper", {})["arxiv"] = data["paper"].get("arxiv") or arxiv_id
+    return {"extraction": data, "source": source, "local": True}
+
+
+@app.post("/api/extract-local-text")
+def extract_local_text(body: dict):
+    from app.extract import ensure_methods, extract_live_text
+
+    text = str((body or {}).get("text") or "")
+    if len(text.strip()) < 200:
+        raise HTTPException(400, "paper text too short — need at least ~200 characters")
+    try:
+        data = extract_live_text(text)
+        source = "text-llm"
+    except Exception:
+        data = _heuristic_extraction(
+            text,
+            title=(body or {}).get("title"),
+            arxiv=(body or {}).get("arxiv"),
+        )
+        source = "text-heuristic"
+    return {"extraction": ensure_methods(data), "source": source, "local": True}
+
+
 @app.post("/api/workspace/new")
 def workspace_new():
     from app.workspace import new_workspace

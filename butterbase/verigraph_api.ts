@@ -827,6 +827,176 @@ async function daytonaLiveRun(ctx: any, methodId: string, params: Record<string,
   }
 }
 
+
+function parseArxivId(url: string) {
+  const m = String(url || "").match(/(\d{4}\.\d{4,5})(v\d+)?/i);
+  if (!m) throw new Error("couldn't find an arXiv id in that link");
+  return { id: m[1], version: m[2] || "" };
+}
+
+function stripHtml(html: string) {
+  return String(html || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function heuristicExtraction(text: string, hint: any = {}) {
+  const cleaned = String(text || "").replace(/\s+/g, " ").trim();
+  if (cleaned.length < 80) throw new Error("paper text too short to extract");
+  const title =
+    hint.title ||
+    cleaned.slice(0, 160).split(/[.?!]/)[0].trim() ||
+    "Untitled local paper";
+  const year =
+    Number(hint.year) ||
+    Number((title.match(/\b(19|20)\d{2}\b/) || cleaned.match(/\b(19|20)\d{2}\b/) || [])[0]) ||
+    new Date().getFullYear();
+  let id = hint.id;
+  if (!id) {
+    const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 18) || "localpaper";
+    id = `${slug}${year}`.slice(0, 32);
+  }
+  const sentences = cleaned
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 40 && s.length < 320)
+    .slice(0, 8);
+  const claims = (sentences.length ? sentences.slice(0, 3) : [cleaned.slice(0, 200)]).map(
+    (s, i) => ({ id: `${id}-c${i + 1}`, text: s, metric: null }),
+  );
+  return {
+    paper: {
+      id,
+      title: String(title).slice(0, 240),
+      authors: hint.authors || ["local"],
+      year,
+      arxiv: hint.arxiv || null,
+      topic: hint.topic || "local-import",
+    },
+    claims,
+    methods: [
+      {
+        id: `${id}-m1`,
+        name: "Toy reproduction experiment",
+        description: `Simplified numpy simulation of the core claim in “${String(title).slice(0, 80)}”.`,
+        runnable_hint:
+          "Build a tiny synthetic task; sample candidates; score with a verifier; report accuracy_at_n vs n_candidates.",
+        params: [
+          { name: "n_candidates", default: 8, description: "best-of-n width" },
+          { name: "n_trials", default: 200, description: "synthetic problems" },
+          { name: "noise", default: 0.3, description: "task difficulty" },
+        ],
+      },
+    ],
+    datasets: [],
+    cites: [],
+    claim_relations: [],
+  };
+}
+
+async function llmExtractIfConfigured(ctx: any, text: string) {
+  const base = ctx?.env?.ROCKETRIDE_GATEWAY_BASE_URL || ctx?.env?.BUTTERBASE_GATEWAY_BASE_URL;
+  const key = ctx?.env?.ROCKETRIDE_GATEWAY_KEY || ctx?.env?.BUTTERBASE_SERVICE_KEY;
+  const model = ctx?.env?.ROCKETRIDE_GATEWAY_MODEL || "x-ai/grok-4.3";
+  if (!base || !key) return null;
+  const prompt =
+    "Extract Verigraph JSON with keys paper,claims,methods,datasets,cites,claim_relations. " +
+    "2-4 claims, at least 1 method with runnable_hint and params. Paper text:\n" +
+    String(text).slice(0, 18000);
+  const res = await fetch(`${String(base).replace(/\/$/, "")}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 3000,
+      temperature: 0,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+  if (!res.ok) throw new Error(`gateway HTTP ${res.status}`);
+  const out = await res.json();
+  const content = out?.choices?.[0]?.message?.content || "";
+  const start = content.indexOf("{");
+  const end = content.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("gateway returned no JSON");
+  const data = JSON.parse(content.slice(start, end + 1));
+  if (!data.methods?.length) {
+    const stub = heuristicExtraction(text, data.paper || {});
+    data.methods = stub.methods;
+  }
+  return data;
+}
+
+async function extractLocalArxiv(ctx: any, url: string) {
+  const { id, version } = parseArxivId(url);
+  const apiUrl = `https://export.arxiv.org/api/query?id_list=${encodeURIComponent(id + version)}`;
+  const res = await fetch(apiUrl, {
+    headers: { "User-Agent": "verigraph/1.0 (local-paper-import)" },
+  });
+  if (!res.ok) throw new Error(`arXiv API HTTP ${res.status}`);
+  const xml = await res.text();
+  const title = (xml.match(/<title>([\s\S]*?)<\/title>/i) || [])[1]?.replace(/^arXiv.*?\\n/, "").trim() || `arXiv:${id}`;
+  const summary = (xml.match(/<summary>([\s\S]*?)<\/summary>/i) || [])[1]?.replace(/\s+/g, " ").trim() || "";
+  const authors = [...xml.matchAll(/<name>([\s\S]*?)<\/name>/gi)].map((m) => m[1].trim()).filter(Boolean);
+  const yearMatch = xml.match(/<published>(\d{4})/i);
+  const year = yearMatch ? Number(yearMatch[1]) : new Date().getFullYear();
+  const text = `${title}\n\n${summary}`;
+  let extraction = null as any;
+  let source = "arxiv-api";
+  try {
+    extraction = await llmExtractIfConfigured(ctx, text);
+    if (extraction) source = "arxiv-llm";
+  } catch (e) {
+    console.error("llm extract failed", e);
+  }
+  if (!extraction) {
+    extraction = heuristicExtraction(text, {
+      title,
+      authors: authors.length ? authors : ["arXiv"],
+      year,
+      arxiv: id,
+      id: `arxiv${id.replace(".", "")}`,
+      topic: "arxiv-import",
+    });
+    extraction.paper.arxiv = id;
+    extraction.paper.authors = authors.length ? authors : extraction.paper.authors;
+  } else {
+    extraction.paper = extraction.paper || {};
+    extraction.paper.arxiv = extraction.paper.arxiv || id;
+  }
+  return { extraction, source, arxiv_id: id, local: true };
+}
+
+async function extractLocalText(ctx: any, body: any) {
+  const text = String(body.text || "");
+  if (text.trim().length < 200) throw new Error("paper text too short — need at least ~200 characters");
+  let extraction = null as any;
+  let source = "text-heuristic";
+  try {
+    extraction = await llmExtractIfConfigured(ctx, text);
+    if (extraction) source = "text-llm";
+  } catch (e) {
+    console.error("llm extract failed", e);
+  }
+  if (!extraction) {
+    extraction = heuristicExtraction(text, {
+      title: body.title || undefined,
+      arxiv: body.arxiv || undefined,
+    });
+  }
+  return { extraction, source, local: true };
+}
+
 function answerAsk(question: string, ctx: WorkspaceCtx) {
   const q = (question || "").toLowerCase().trim();
   const evidenced = claimsWithEvidence(ctx);
@@ -1346,11 +1516,29 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
           message: 'Runs cleared — all claims show "no runs yet" in this view.',
         });
       }
-      if (route === "upload" || route === "upload-file" || route === "upload-arxiv") {
+      if (route === "extract-local-arxiv" || route === "upload-arxiv") {
+        const body = await readJsonBody(req);
+        try {
+          const out = await extractLocalArxiv(ctx, String(body.url || body.arxiv || ""));
+          return json(out);
+        } catch (e: any) {
+          return json({ detail: String(e.message || e) }, 400);
+        }
+      }
+      if (route === "extract-local-text" || route === "upload") {
+        const body = await readJsonBody(req);
+        try {
+          const out = await extractLocalText(ctx, body);
+          return json(out);
+        } catch (e: any) {
+          return json({ detail: String(e.message || e) }, 400);
+        }
+      }
+      if (route === "upload-file") {
         return notImplemented(
-          "Paper upload/extraction is not available on the Butterbase cloud demo " +
-            "(edge functions cannot run the LLM extraction spine, and large PDFs exceed the request body limit). " +
-            "Use Load demo here, or run the full FastAPI backend locally to ingest new papers.",
+          "PDF binary upload exceeds Butterbase edge body limits. " +
+            "In the demo UI, PDFs are parsed in-browser and only extracted text is sent " +
+            "(or use an arXiv link). Results are saved to browser localStorage.",
         );
       }
       if (route.startsWith("run/")) {

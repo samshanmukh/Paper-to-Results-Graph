@@ -106,6 +106,11 @@ def cognee_env_vars() -> dict[str, str]:
         "COGNEE_DATASET",
         "COGNEE_SESSION_ID",
         "DAYTONA_API_KEY",
+        "ROCKETRIDE_GATEWAY_BASE_URL",
+        "ROCKETRIDE_GATEWAY_KEY",
+        "ROCKETRIDE_GATEWAY_MODEL",
+        "BUTTERBASE_SERVICE_KEY",
+        "BUTTERBASE_GATEWAY_BASE_URL",
     )
     out: dict[str, str] = {}
     for k in keys:
@@ -179,7 +184,7 @@ def build_frontend_zip(fn_url: str) -> bytes:
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("config.js", config_js)
         # Extra static assets referenced by the demo
-        for asset in ("advanced-features.js",):
+        for asset in ("advanced-features.js", "local-papers.js"):
             asset_path = os.path.join(STATIC_DIR, asset)
             if os.path.isfile(asset_path):
                 zf.writestr(asset, open(asset_path).read())
@@ -194,6 +199,7 @@ def build_frontend_zip(fn_url: str) -> bytes:
                 html = html.replace("<head>", '<head>\n<script src="/config.js"></script>\n', 1)
             html = html.replace('src="/config.js"', f'src="/config.js?v={config_version}"')
             html = html.replace('src="/advanced-features.js"', f'src="/advanced-features.js?v={config_version}"')
+            html = html.replace('src="/local-papers.js"', f'src="/local-papers.js?v={config_version}"')
             zf.writestr(dest_name, html)
 
     return buf.getvalue()
