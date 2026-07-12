@@ -1346,6 +1346,13 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
           message: 'Runs cleared — all claims show "no runs yet" in this view.',
         });
       }
+      if (route === "upload" || route === "upload-file" || route === "upload-arxiv") {
+        return notImplemented(
+          "Paper upload/extraction is not available on the Butterbase cloud demo " +
+            "(edge functions cannot run the LLM extraction spine, and large PDFs exceed the request body limit). " +
+            "Use Load demo here, or run the full FastAPI backend locally to ingest new papers.",
+        );
+      }
       if (route.startsWith("run/")) {
         const methodId = route.slice(4);
         const body = await readJsonBody(req);
