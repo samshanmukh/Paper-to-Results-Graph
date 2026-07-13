@@ -4,6 +4,13 @@ __pycache__/
 *.pyc
 .DS_Store
 .rocketride/
+# Keep the local pipeline contract in version control; the remaining RocketRide
+# catalog is environment-provided and should stay ignored.
+!.rocketride/
+.rocketride/*
+!.rocketride/schema/
+.rocketride/schema/*
+!.rocketride/schema/tool_http_request.json
 generated/
 runs/
 deploy/site.zip

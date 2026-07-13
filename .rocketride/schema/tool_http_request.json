@@ -1,0 +1,221 @@
+{
+  "actions": 0,
+  "capabilities": 3072,
+  "classType": [
+    "tool"
+  ],
+  "description": "Makes HTTP requests to any API endpoint, like curl for agents.\nThe agent provides the full request (method, URL, headers, body, auth).\nThe node enforces security guardrails: only whitelisted URLs and enabled HTTP methods are permitted.",
+  "documentation": "https://docs.rocketride.org",
+  "icon": "http.svg",
+  "lanes": {},
+  "Pipe": {
+    "schema": {
+      "properties": {
+        "allowDELETE": {
+          "default": true,
+          "enum": [
+            true,
+            false
+          ],
+          "title": "DELETE",
+          "type": "boolean"
+        },
+        "allowGET": {
+          "default": true,
+          "enum": [
+            true,
+            false
+          ],
+          "title": "GET",
+          "type": "boolean"
+        },
+        "allowHEAD": {
+          "default": false,
+          "enum": [
+            true,
+            false
+          ],
+          "title": "HEAD",
+          "type": "boolean"
+        },
+        "allowOPTIONS": {
+          "default": false,
+          "enum": [
+            true,
+            false
+          ],
+          "title": "OPTIONS",
+          "type": "boolean"
+        },
+        "allowPATCH": {
+          "default": true,
+          "enum": [
+            true,
+            false
+          ],
+          "title": "PATCH",
+          "type": "boolean"
+        },
+        "allowPOST": {
+          "default": true,
+          "enum": [
+            true,
+            false
+          ],
+          "title": "POST",
+          "type": "boolean"
+        },
+        "allowPUT": {
+          "default": true,
+          "enum": [
+            true,
+            false
+          ],
+          "title": "PUT",
+          "type": "boolean"
+        },
+        "maxConcurrentRequests": {
+          "default": 5,
+          "description": "Maximum number of HTTP requests that can be in-flight simultaneously.",
+          "title": "Max concurrent requests",
+          "type": "number"
+        },
+        "rateLimitPerMinute": {
+          "default": 100,
+          "description": "Maximum number of HTTP requests allowed per minute. Provides a broader throttle beyond the per-second limit.",
+          "title": "Max requests per minute",
+          "type": "number"
+        },
+        "rateLimitPerSecond": {
+          "default": 10,
+          "description": "Maximum number of HTTP requests allowed per second. Uses a token-bucket algorithm for smooth enforcement.",
+          "title": "Max requests per second",
+          "type": "number"
+        },
+        "type": {
+          "default": "tool_http_request",
+          "type": "string"
+        },
+        "urlWhitelist": {
+          "description": "Regex patterns for allowed URLs. A request URL must match at least one pattern. If empty, all URLs are allowed.",
+          "items": {
+            "properties": {
+              "whitelistPattern": {
+                "default": "",
+                "title": "URL Pattern (regex)",
+                "type": "string"
+              }
+            },
+            "required": [
+              "whitelistPattern"
+            ],
+            "type": "object"
+          },
+          "minItems": 0,
+          "title": "URL Whitelist",
+          "type": "array"
+        }
+      },
+      "required": [
+        "type",
+        "allowGET",
+        "allowPOST",
+        "allowPUT",
+        "allowPATCH",
+        "allowDELETE",
+        "allowHEAD",
+        "allowOPTIONS",
+        "rateLimitPerSecond",
+        "rateLimitPerMinute",
+        "maxConcurrentRequests"
+      ],
+      "title": "HTTP Request",
+      "type": "object"
+    },
+    "ui": {
+      "allowDELETE": {
+        "ui:enumNames": [
+          "Yes",
+          "No"
+        ]
+      },
+      "allowGET": {
+        "ui:enumNames": [
+          "Yes",
+          "No"
+        ]
+      },
+      "allowHEAD": {
+        "ui:enumNames": [
+          "Yes",
+          "No"
+        ]
+      },
+      "allowOPTIONS": {
+        "ui:enumNames": [
+          "Yes",
+          "No"
+        ]
+      },
+      "allowPATCH": {
+        "ui:enumNames": [
+          "Yes",
+          "No"
+        ]
+      },
+      "allowPOST": {
+        "ui:enumNames": [
+          "Yes",
+          "No"
+        ]
+      },
+      "allowPUT": {
+        "ui:enumNames": [
+          "Yes",
+          "No"
+        ]
+      },
+      "maxConcurrentRequests": {},
+      "rateLimitPerMinute": {},
+      "rateLimitPerSecond": {},
+      "type": {
+        "ui:options": {
+          "label": false
+        },
+        "ui:widget": "hidden"
+      },
+      "ui:order": [
+        "type",
+        "allowGET",
+        "allowPOST",
+        "allowPUT",
+        "allowPATCH",
+        "allowDELETE",
+        "allowHEAD",
+        "allowOPTIONS",
+        "urlWhitelist",
+        "rateLimitPerSecond",
+        "rateLimitPerMinute",
+        "maxConcurrentRequests"
+      ],
+      "urlWhitelist": {
+        "items": {
+          "ui:order": [
+            "whitelistPattern"
+          ],
+          "whitelistPattern": {}
+        },
+        "ui:order": [
+          "items"
+        ]
+      }
+    }
+  },
+  "plans": null,
+  "prefix": "http",
+  "protocol": "tool_http_request://",
+  "tile": [
+    "Tool: ${parameters.http_request.serverName}.http_request"
+  ],
+  "title": "HTTP Request"
+}
