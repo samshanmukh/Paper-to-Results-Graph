@@ -50,6 +50,10 @@ def _butterbase_run_record(row: dict) -> dict:
         "backend": row.get("backend"),
         "exit_code": row.get("exit_code"),
         "duration_s": row.get("duration_s"),
+        "implementation_source": row.get("implementation_source") or "unknown",
+        "implementation_fingerprint": row.get("implementation_fingerprint"),
+        "context_digest": row.get("context_digest"),
+        "provisional": row.get("provisional"),
         "stdout": row.get("stdout") or "",
         "error": row.get("error"),
         "result": {

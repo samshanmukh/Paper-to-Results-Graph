@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.db import DATABASE, get_driver
+from app.db import DATABASE, GRAPH_NAMESPACE, get_driver
 
 
 @dataclass
@@ -32,7 +33,9 @@ def _load_workspace() -> WorkspaceCtx:
     ctx = WorkspaceCtx()
     with get_driver() as driver:
         paper_recs, _, _ = driver.execute_query(
-            "MATCH (p:Paper) RETURN p.id AS id, p.title AS title, p.year AS year ORDER BY p.year, p.id",
+            "MATCH (p:Paper:Verigraph {verigraph_namespace: $graph_namespace}) "
+            "RETURN p.id AS id, p.title AS title, p.year AS year ORDER BY p.year, p.id",
+            graph_namespace=GRAPH_NAMESPACE,
             database_=DATABASE,
         )
         ctx.papers = [dict(r) for r in paper_recs]
@@ -40,12 +43,23 @@ def _load_workspace() -> WorkspaceCtx:
 
         claim_recs, _, _ = driver.execute_query(
             """
-            MATCH (c:Claim)-[:FROM]->(p:Paper)
-            OPTIONAL MATCH (r:Run)-[v:VALIDATES|REFUTES]->(c)
+            MATCH (c:Claim:Verigraph {verigraph_namespace: $graph_namespace})
+                  -[:FROM]->
+                  (p:Paper:Verigraph {verigraph_namespace: $graph_namespace})
+            OPTIONAL MATCH (r:Run:Verigraph {verigraph_namespace: $graph_namespace})
+                           -[v:VALIDATES|REFUTES]->(c)
+            WHERE r.status = 'success'
+               OR (r.status IS NULL AND r.error IS NULL AND r.exit_code = 0)
             RETURN c.id AS id, c.text AS text, p.id AS paper_id,
-                   type(v) AS verdict, r.id AS run_id, v.detail AS detail
-            ORDER BY paper_id, id
+                   type(v) AS verdict, r.id AS run_id, v.detail AS detail,
+                   r.implementation_source AS implementation_source,
+                   r.implementation_fingerprint AS implementation_fingerprint,
+                   r.context_digest AS context_digest,
+                   coalesce(v.provisional, r.provisional, false) AS marked_provisional,
+                   r.created_at AS run_created_at
+            ORDER BY paper_id, id, run_created_at DESC, run_id DESC
             """,
+            graph_namespace=GRAPH_NAMESPACE,
             database_=DATABASE,
         )
         seen: set[str] = set()
@@ -56,7 +70,19 @@ def _load_workspace() -> WorkspaceCtx:
             seen.add(cid)
             ev = None
             if r.get("verdict") and r.get("run_id"):
-                ev = {"verdict": r["verdict"], "runId": r["run_id"], "detail": r.get("detail")}
+                source = r.get("implementation_source") or "unknown"
+                ev = {
+                    "verdict": r["verdict"],
+                    "runId": r["run_id"],
+                    "detail": r.get("detail"),
+                    "implementationSource": source,
+                    "provisional": (
+                        bool(r.get("marked_provisional"))
+                        or source != "curated"
+                        or not r.get("implementation_fingerprint")
+                        or not r.get("context_digest")
+                    ),
+                }
             row = ClaimRow(
                 id=cid,
                 text=r.get("text") or "",
@@ -69,42 +95,70 @@ def _load_workspace() -> WorkspaceCtx:
 
         method_recs, _, _ = driver.execute_query(
             """
-            MATCH (m:Method)-[:DESCRIBED_IN]->(p:Paper)
-            OPTIONAL MATCH (r:Run)-[:IMPLEMENTS]->(m)
+            MATCH (m:Method:Verigraph {verigraph_namespace: $graph_namespace})
+                  -[:DESCRIBED_IN]->
+                  (p:Paper:Verigraph {verigraph_namespace: $graph_namespace})
+            OPTIONAL MATCH (r:Run:Verigraph {verigraph_namespace: $graph_namespace})
+                           -[:IMPLEMENTS]->(m)
+            WHERE r.status = 'success'
+               OR (r.status IS NULL AND r.error IS NULL AND r.exit_code = 0)
             RETURN m.id AS id, m.name AS name, p.id AS paper_id,
                    count(r) > 0 AS has_run
             ORDER BY id
             """,
+            graph_namespace=GRAPH_NAMESPACE,
             database_=DATABASE,
         )
         ctx.methods = [dict(r) for r in method_recs]
 
         conflict_recs, _, _ = driver.execute_query(
             """
-            MATCH (a:Claim)-[:CONTRADICTS]->(b:Claim),
-                  (a)-[:FROM]->(pa:Paper), (b)-[:FROM]->(pb:Paper)
+            MATCH (a:Claim:Verigraph {verigraph_namespace: $graph_namespace})
+                  -[:CONTRADICTS]->
+                  (b:Claim:Verigraph {verigraph_namespace: $graph_namespace}),
+                  (a)-[:FROM]->
+                  (pa:Paper:Verigraph {verigraph_namespace: $graph_namespace}),
+                  (b)-[:FROM]->
+                  (pb:Paper:Verigraph {verigraph_namespace: $graph_namespace})
             RETURN a.id AS from_id, b.id AS to_id,
                    a.text AS from_text, b.text AS to_text,
                    pa.id AS from_paper, pb.id AS to_paper
             """,
+            graph_namespace=GRAPH_NAMESPACE,
             database_=DATABASE,
         )
         ctx.conflicts = [dict(r) for r in conflict_recs]
 
         run_recs, _, _ = driver.execute_query(
             """
-            MATCH (r:Run)
-            OPTIONAL MATCH (r)-[:IMPLEMENTS]->(m:Method)
-            OPTIONAL MATCH (r)-[v:VALIDATES|REFUTES]->(c:Claim)
+            MATCH (r:Run:Verigraph {verigraph_namespace: $graph_namespace})
+            OPTIONAL MATCH (r)-[:IMPLEMENTS]->
+                           (m:Method:Verigraph {verigraph_namespace: $graph_namespace})
+            OPTIONAL MATCH (r)-[v:VALIDATES|REFUTES]->
+                           (c:Claim:Verigraph {verigraph_namespace: $graph_namespace})
             RETURN r.id AS id, m.id AS method_id, r.backend AS backend,
-                   r.metrics AS metrics, collect({
+                   r.metrics AS metrics, r.status AS status,
+                   r.implementation_source AS implementation_source,
+                   r.implementation_fingerprint AS implementation_fingerprint,
+                   r.context_digest AS context_digest,
+                   r.provisional AS provisional,
+                   r.error AS error, r.exit_code AS exit_code,
+                   r.created_at AS created_at, collect({
                      claim_id: c.id, verdict: type(v), detail: v.detail
                    }) AS claim_checks
-            ORDER BY r.id
+            ORDER BY created_at DESC, id DESC
             """,
+            graph_namespace=GRAPH_NAMESPACE,
             database_=DATABASE,
         )
         ctx.runs = [dict(r) for r in run_recs]
+        for run in ctx.runs:
+            run["provisional"] = (
+                bool(run.get("provisional"))
+                or run.get("implementation_source") != "curated"
+                or not run.get("implementation_fingerprint")
+                or not run.get("context_digest")
+            )
     return ctx
 
 
@@ -127,11 +181,115 @@ def _next_method_to_run(ctx: WorkspaceCtx) -> str | None:
 
 
 def _latest_run_for_method(ctx: WorkspaceCtx, method_id: str) -> dict[str, Any] | None:
-    hits = [r for r in ctx.runs if r.get("method_id") == method_id]
+    hits = [
+        run
+        for run in ctx.runs
+        if run.get("method_id") == method_id and _run_is_successful(run)
+    ]
     if not hits:
         return None
-    hits.sort(key=lambda r: str(r.get("id", "")), reverse=True)
-    return hits[0]
+    return max(hits, key=_run_sort_key)
+
+
+def _run_is_successful(run: dict[str, Any]) -> bool:
+    status = run.get("status")
+    if status is not None:
+        return status == "success"
+    exit_code = run.get("exit_code")
+    return run.get("error") is None and exit_code in (None, 0)
+
+
+def _run_sort_key(run: dict[str, Any]) -> tuple[str, str]:
+    return str(run.get("created_at") or ""), str(run.get("id") or "")
+
+
+def _provisional_label(source: Any, provisional: Any = None) -> str:
+    if source == "curated" and provisional is False:
+        return ""
+    if source == "llm":
+        return " [provisional LLM-generated]"
+    return " [provisional unverified provenance]"
+
+
+def _provisional_prefix(source: Any, provisional: Any = None) -> str:
+    if source == "curated" and provisional is False:
+        return ""
+    if source == "llm":
+        return "Provisional LLM-generated "
+    return "Provisional unverified-provenance "
+
+
+def _decode_metrics(run: dict[str, Any]) -> dict[str, Any]:
+    metrics = run.get("metrics")
+    if isinstance(metrics, dict):
+        return metrics
+    if isinstance(metrics, str):
+        try:
+            parsed = json.loads(metrics)
+            return parsed if isinstance(parsed, dict) else {}
+        except (TypeError, ValueError):
+            return {}
+    return {}
+
+
+def _format_metric(value: Any) -> str:
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, (int, float)):
+        return f"{value:.3f}"
+    return str(value)
+
+
+def _brief_headline(
+    ctx: WorkspaceCtx,
+    validated: list[ClaimRow],
+    refuted: list[ClaimRow],
+    untested: list[ClaimRow],
+) -> str:
+    covered_ids = {
+        claim.evidence.get("runId")
+        for claim in validated + refuted
+        if claim.evidence and claim.evidence.get("runId")
+    }
+    covered_runs = [
+        run
+        for run in ctx.runs
+        if run.get("id") in covered_ids and _run_is_successful(run)
+    ]
+    if covered_runs:
+        latest = max(covered_runs, key=_run_sort_key)
+        metrics = _decode_metrics(latest)
+        gd_error = metrics.get("test_error_gd", metrics.get("test_error_sgd"))
+        adam_error = metrics.get("test_error_adam")
+        if gd_error is not None and adam_error is not None:
+            prefix = (
+                "Wilson counterexample"
+                if latest.get("method_id") == "wilson2017-m1"
+                else "Latest optimizer evidence"
+            )
+            provisional_prefix = _provisional_prefix(
+                latest.get("implementation_source"), latest.get("provisional")
+            )
+            if provisional_prefix:
+                prefix = f"{provisional_prefix}{prefix.lower()}"
+            return (
+                f"{prefix}: GD test error {_format_metric(gd_error)} vs "
+                f"Adam {_format_metric(adam_error)}"
+            )
+        scalar_metrics = [
+            (key, value)
+            for key, value in sorted(metrics.items())
+            if isinstance(value, (str, int, float, bool))
+        ]
+        if scalar_metrics:
+            summary = ", ".join(
+                f"{key}={_format_metric(value)}" for key, value in scalar_metrics[:2]
+            )
+            provenance = _provisional_prefix(
+                latest.get("implementation_source"), latest.get("provisional")
+            )
+            return f"{provenance}latest evidence run {latest.get('id')}: {summary}"
+    return f"{len(validated)} validated, {len(refuted)} refuted, {len(untested)} untested"
 
 
 def answer_ask(question: str, ctx: WorkspaceCtx | None = None) -> str:
@@ -151,7 +309,13 @@ def answer_ask(question: str, ctx: WorkspaceCtx | None = None) -> str:
         for c in evidenced:
             ev = c.evidence or {}
             detail = f" — {ev['detail']}" if ev.get("detail") else ""
-            lines.append(f"• **{c.id}** ({c.paper_id}): {ev.get('verdict')} via `{ev.get('runId')}`{detail}")
+            provisional = _provisional_label(
+                ev.get("implementationSource"), ev.get("provisional")
+            )
+            lines.append(
+                f"• **{c.id}** ({c.paper_id}): {ev.get('verdict')}{provisional} "
+                f"via `{ev.get('runId')}`{detail}"
+            )
         pending = ""
         if untested:
             ids = ", ".join(c.id for c in untested[:4])
@@ -286,24 +450,41 @@ def answer_brief(ctx: WorkspaceCtx | None = None) -> dict[str, Any]:
     validated = [c for c in evidenced if c.evidence and c.evidence.get("verdict") == "VALIDATES"]
     refuted = [c for c in evidenced if c.evidence and c.evidence.get("verdict") == "REFUTES"]
     untested = _untested_claims(ctx)
-    run_ids = [r["id"] for r in ctx.runs]
-    headline = (
-        "Wilson counterexample: GD test error 0.000 vs Adam 0.425 — VALIDATES generalization gap"
-        if validated and any(r.get("method_id") == "wilson2017-m1" for r in ctx.runs)
-        else f"{len(validated)} validated, {len(refuted)} refuted, {len(untested)} untested"
-    )
+    evidence_run_ids = {
+        claim.evidence.get("runId")
+        for claim in evidenced
+        if claim.evidence and claim.evidence.get("runId")
+    }
+    covered_runs = [
+        run
+        for run in ctx.runs
+        if run.get("id") in evidence_run_ids and _run_is_successful(run)
+    ]
+    covered_runs.sort(key=_run_sort_key, reverse=True)
+    known_ids = {run.get("id") for run in covered_runs}
+    run_ids = [run["id"] for run in covered_runs]
+    run_ids.extend(sorted(evidence_run_ids - known_ids, reverse=True))
+    headline = _brief_headline(ctx, validated, refuted, untested)
     lines = [f"**{headline}**", ""]
     if validated:
         lines.append("**Validated**")
         for c in validated:
             detail = (c.evidence or {}).get("detail") or c.text
-            lines.append(f"• {c.id}: {detail}")
+            provisional = _provisional_label(
+                (c.evidence or {}).get("implementationSource"),
+                (c.evidence or {}).get("provisional"),
+            )
+            lines.append(f"• {c.id}{provisional}: {detail}")
         lines.append("")
     if refuted:
         lines.append("**Refuted**")
         for c in refuted:
             detail = (c.evidence or {}).get("detail") or c.text
-            lines.append(f"• {c.id}: {detail}")
+            provisional = _provisional_label(
+                (c.evidence or {}).get("implementationSource"),
+                (c.evidence or {}).get("provisional"),
+            )
+            lines.append(f"• {c.id}{provisional}: {detail}")
         lines.append("")
     if untested:
         lines.append(f"**Untested** ({len(untested)}): {', '.join(c.id for c in untested[:5])}")
@@ -317,6 +498,12 @@ def answer_brief(ctx: WorkspaceCtx | None = None) -> dict[str, Any]:
             "headline": headline,
             "validated": [c.id for c in validated],
             "refuted": [c.id for c in refuted],
+            "provisional": [
+                c.id
+                for c in evidenced
+                if (c.evidence or {}).get("provisional") is not False
+                or (c.evidence or {}).get("implementationSource") != "curated"
+            ],
             "untested": [c.id for c in untested],
         },
     }
@@ -334,19 +521,31 @@ def answer_conduct(*, skip_execute: bool = False) -> dict[str, Any]:
     record = None
     if not skip_execute and method_id:
         try:
-            from app.codegen import materialize
             from app.curator import curate
             from app.runner import execute
+            from app.workspace import active_method_guard
 
-            record = execute(method_id, "auto")
-            curate(record)
+            with active_method_guard(method_id):
+                record = execute(method_id, "auto")
+                curate(record)
             run = record
-            checks = (record.get("result") or {}).get("claim_checks", [])
-            verdicts = ", ".join(f"{c['verdict']} {c['claim_id']}" for c in checks)
-            steps.append(
-                f"[executor] ✓ {record['run_id']} [{record.get('backend')}] "
-                f"{record.get('duration_s')}s — {verdicts or 'metrics recorded'}"
-            )
+            if record.get("error"):
+                steps.append(
+                    f"[executor] ✗ {record['run_id']} failed: {record['error']}"
+                )
+            else:
+                checks = (record.get("result") or {}).get("claim_checks", [])
+                verdicts = ", ".join(
+                    f"{check['verdict']} {check['claim_id']}" for check in checks
+                )
+                steps.append(
+                    f"[executor] ✓ {record['run_id']} [{record.get('backend')}] "
+                    f"{record.get('duration_s')}s"
+                    + _provisional_label(
+                        record.get("implementation_source"), record.get("provisional")
+                    )
+                    + f" — {verdicts or 'metrics recorded'}"
+                )
         except Exception as e:
             steps.append(f"[executor] ✗ {method_id} failed: {e}")
     else:
@@ -354,7 +553,13 @@ def answer_conduct(*, skip_execute: bool = False) -> dict[str, Any]:
         if hit:
             checks = [c for c in (hit.get("claim_checks") or []) if c.get("claim_id")]
             verdicts = ", ".join(f"{c.get('verdict')} {c.get('claim_id')}" for c in checks)
-            steps.append(f"[executor] ✓ replay {hit['id']} — {verdicts or 'metrics recorded'}")
+            provisional = _provisional_label(
+                hit.get("implementation_source"), hit.get("provisional")
+            )
+            steps.append(
+                f"[executor] ✓ replay {hit['id']}{provisional} — "
+                f"{verdicts or 'metrics recorded'}"
+            )
             run = hit
         else:
             steps.append(f"[executor] ✗ no run for {method_id}")

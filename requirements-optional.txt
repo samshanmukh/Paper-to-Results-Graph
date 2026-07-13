@@ -1,0 +1,4 @@
+# Optional paper-fetching and semantic-memory integrations.
+brightdata-sdk>=2.0,<3
+cognee>=1.2,<2
+fastembed>=0.6,<1

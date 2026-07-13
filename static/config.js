@@ -15,8 +15,21 @@
     const visitorParam = visitorId && path !== "register"
       ? `&visitor=${encodeURIComponent(visitorId)}`
       : "";
+    const view = sessionStorage.getItem("vg_bb_view") || "full";
+    let removed = "";
+    try {
+      removed = JSON.parse(sessionStorage.getItem("vg_bb_removed_papers") || "[]")
+        .filter(id => /^[a-z0-9-]{1,96}$/.test(String(id)))
+        .slice(0, 50)
+        .join(",");
+    } catch (_) {
+      removed = "";
+    }
+    const viewParams = FN
+      ? `&view=${encodeURIComponent(view)}${removed ? `&removed=${encodeURIComponent(removed)}` : ""}`
+      : "";
     const target = FN
-      ? `${FN}?route=${encodeURIComponent(route)}${visitorParam}`
+      ? `${FN}?route=${encodeURIComponent(route)}${visitorParam}${viewParams}`
       : visitorId
         ? `${url}${url.includes("?") ? "&" : "?"}visitor=${encodeURIComponent(visitorId)}`
         : url;

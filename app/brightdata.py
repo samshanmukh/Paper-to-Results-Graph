@@ -25,8 +25,18 @@ def fetch_url_text(
     *,
     timeout: int = 120,
     poll_timeout: int = 180,
+    max_bytes: int = 8_000_000,
 ) -> str:
-    """Fetch a URL body as text via Bright Data Web Unlocker."""
+    """Fetch bounded HTML from an official arXiv URL via Web Unlocker."""
+    from app.arxiv import canonicalize_arxiv_url
+
+    url = canonicalize_arxiv_url(url, kind="html")
+    if (
+        isinstance(max_bytes, bool)
+        or not isinstance(max_bytes, int)
+        or not 1 <= max_bytes <= 25_000_000
+    ):
+        raise ValueError("max_bytes must be between 1 and 25000000")
     token = _api_token()
     if not token:
         raise RuntimeError("BRIGHTDATA_API_TOKEN is not set")
@@ -52,12 +62,23 @@ def fetch_url_text(
     if data is None:
         raise RuntimeError("Bright Data returned an empty body")
     if isinstance(data, str):
-        return data
-    if isinstance(data, bytes):
-        return data.decode("utf-8", errors="replace")
+        text = data
+    elif isinstance(data, bytes):
+        if len(data) > max_bytes:
+            raise RuntimeError(f"Bright Data response exceeds {max_bytes} byte limit")
+        text = data.decode("utf-8", errors="replace")
     if isinstance(data, dict):
         for key in ("raw_html", "html", "body", "content"):
             if key in data and data[key]:
-                return str(data[key])
-        raise RuntimeError(f"unexpected Bright Data dict response keys: {list(data.keys())[:8]}")
-    raise RuntimeError(f"unexpected Bright Data response type: {type(data).__name__}")
+                text = str(data[key])
+                break
+        else:
+            raise RuntimeError(
+                f"unexpected Bright Data dict response keys: {list(data.keys())[:8]}"
+            )
+    elif not isinstance(data, (str, bytes)):
+        raise RuntimeError(f"unexpected Bright Data response type: {type(data).__name__}")
+
+    if len(text.encode("utf-8")) > max_bytes:
+        raise RuntimeError(f"Bright Data response exceeds {max_bytes} byte limit")
+    return text

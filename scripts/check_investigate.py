@@ -10,7 +10,7 @@ import sys
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from app.db import DATABASE, get_driver
+from app.db import DATABASE, GRAPH_NAMESPACE, get_driver
 
 BASE = os.environ.get("P2R_BASE", "http://127.0.0.1:8787")
 
@@ -35,15 +35,18 @@ def main() -> int:
     else:
         with get_driver() as driver:
             recs, _, _ = driver.execute_query(
-                "MATCH (m:Method {id: $id}) RETURN count(m) AS c",
-                id=method_id, database_=DATABASE)
+                "MATCH (m:Method:Verigraph {"
+                "id: $id, verigraph_namespace: $graph_namespace"
+                "}) RETURN count(m) AS c",
+                id=method_id, graph_namespace=GRAPH_NAMESPACE, database_=DATABASE)
             if recs[0]["c"] != 1:
                 failures.append(f"V3_method_recommended: '{method_id}' not in graph")
         claim_ids = payload.get("recommended_claim_ids") or []
         with get_driver() as driver:
             recs, _, _ = driver.execute_query(
-                "MATCH (c:Claim) WHERE c.id IN $ids RETURN count(c) AS c",
-                ids=claim_ids, database_=DATABASE)
+                "MATCH (c:Claim:Verigraph {verigraph_namespace: $graph_namespace}) "
+                "WHERE c.id IN $ids RETURN count(c) AS c",
+                ids=claim_ids, graph_namespace=GRAPH_NAMESPACE, database_=DATABASE)
             if recs[0]["c"] != len(claim_ids):
                 failures.append("V4_claims_linked: some recommended_claim_ids not in graph")
 

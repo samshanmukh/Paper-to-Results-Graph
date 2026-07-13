@@ -64,6 +64,7 @@ class CogneeDocumentTests(unittest.TestCase):
                 "run_id": "run-wilson2017-m1-test",
                 "method_id": "wilson2017-m1",
                 "backend": "daytona",
+                "implementation_source": "llm",
                 "exit_code": 0,
                 "duration_s": 4.2,
                 "stdout": "train error GD=0.000 Adam=0.425",
@@ -82,6 +83,8 @@ class CogneeDocumentTests(unittest.TestCase):
         self.assertIn("wilson2017-c1", doc)
         self.assertIn("VALIDATES", doc)
         self.assertIn("0.425", doc)
+        self.assertIn("implementation_source=llm", doc)
+        self.assertIn("provisional=true", doc)
 
 
 class CogneeRecallTests(unittest.IsolatedAsyncioTestCase):

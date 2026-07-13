@@ -135,10 +135,10 @@
 				"default": {
 					"uri": "${ROCKETRIDE_NEO4J_URI}",
 					"auth_method": "userpass",
-					"user": "${ROCKETRIDE_NEO4J_USER}",
-					"password": "${ROCKETRIDE_NEO4J_PASSWORD}",
-					"database": "neo4j",
-					"db_description": "STRICT READ-ONLY: generate ONLY MATCH/RETURN/WITH/ORDER/COUNT queries. NEVER generate CREATE, MERGE, DELETE, DETACH, SET, or REMOVE clauses — any write corrupts irreplaceable research evidence and is forbidden. Research evidence graph. Nodes: Paper(id,title,year), Claim(id,text), Method(id,name,runnable_hint), Run(id,status,backend,duration_s,metrics,params — metrics/params are JSON strings). Edges: FROM (claim->paper), CONTRADICTS/SUPPORTS (claim->claim), DESCRIBED_IN (method->paper), IMPLEMENTS (run->method), VALIDATES/REFUTES (run->claim), CITES. Ignore unrelated SceneStyle/Product/Creator nodes.",
+					"user": "${ROCKETRIDE_NEO4J_READONLY_USER}",
+					"password": "${ROCKETRIDE_NEO4J_READONLY_PASSWORD}",
+					"database": "${ROCKETRIDE_NEO4J_DATABASE}",
+					"db_description": "STRICT READ-ONLY: generate ONLY MATCH/RETURN/WITH/ORDER/COUNT queries. EVERY node pattern, including each endpoint in a relationship pattern, MUST carry both the :Verigraph label and {verigraph_namespace: '${ROCKETRIDE_GRAPH_NAMESPACE}'}. Never query a node with only its domain label or only one ownership marker. NEVER generate CREATE, MERGE, DELETE, DETACH, SET, or REMOVE clauses. Research evidence graph. Nodes: Paper(id,title,year), Claim(id,text), Method(id,name,runnable_hint), Run(id,status,backend,duration_s,metrics,params — metrics/params are JSON strings). Edges: FROM (claim->paper), CONTRADICTS/SUPPORTS (claim->claim), DESCRIBED_IN (method->paper), IMPLEMENTS (run->method), VALIDATES/REFUTES (run->claim), CITES.",
 					"allow_execute": false,
 					"max_attempts": 5
 				},
@@ -156,12 +156,21 @@
 			"provider": "tool_http_request",
 			"config": {
 				"type": "tool_http_request",
-				"allowGET": true,
+				"allowGET": false,
 				"allowPOST": true,
 				"allowPUT": false,
 				"allowPATCH": false,
 				"allowDELETE": false,
-				"urlWhitelist": ["^http://127\\.0\\.0\\.1:8787/api/.*$", "^http://localhost:8787/api/.*$"]
+				"allowHEAD": false,
+				"allowOPTIONS": false,
+				"urlWhitelist": [
+					{
+						"whitelistPattern": "^http://127\\.0\\.0\\.1:8787/api/run/[a-z0-9]+(?:-[a-z0-9]+)*$"
+					}
+				],
+				"rateLimitPerSecond": 1,
+				"rateLimitPerMinute": 5,
+				"maxConcurrentRequests": 1
 			},
 			"control": [{ "classType": "tool", "from": "agent_executor" }],
 			"ui": { "position": { "x": 600, "y": 420 }, "measured": { "width": 150, "height": 40 } }

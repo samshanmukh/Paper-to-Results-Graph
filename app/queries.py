@@ -9,34 +9,38 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from app.db import DATABASE, get_driver
+from app.db import DATABASE, GRAPH_NAMESPACE, get_driver
 
 QUERIES = {
     "claims": (
         "All claims with their source paper",
         """
-        MATCH (c:Claim)-[:FROM]->(p:Paper)
+        MATCH (c:Claim:Verigraph {verigraph_namespace: $graph_namespace})-[:FROM]->
+              (p:Paper:Verigraph {verigraph_namespace: $graph_namespace})
         RETURN p.id AS paper, c.id AS claim, c.text AS text
         ORDER BY paper, claim
         """,
     ),
     "conflicts": (
-        "Cross-paper claim conflicts (with evidence status when runs exist)",
+        "Cross-paper claim conflicts",
         """
-        MATCH (a:Claim)-[:CONTRADICTS]->(b:Claim),
-              (a)-[:FROM]->(pa:Paper), (b)-[:FROM]->(pb:Paper)
-        OPTIONAL MATCH (ra:Run)-[va:VALIDATES|REFUTES]->(a)
-        OPTIONAL MATCH (rb:Run)-[vb:VALIDATES|REFUTES]->(b)
-        RETURN pa.id AS from_paper, a.id AS from_claim, a.text AS claim,
-               CASE WHEN ra IS NULL THEN 'no runs yet' ELSE type(va) + ' by ' + ra.id END AS from_evidence,
-               pb.id AS against_paper, b.id AS to_claim, b.text AS contradicts,
-               CASE WHEN rb IS NULL THEN 'no runs yet' ELSE type(vb) + ' by ' + rb.id END AS to_evidence
+        MATCH (a:Claim:Verigraph {verigraph_namespace: $graph_namespace})-
+              [:CONTRADICTS]->
+              (b:Claim:Verigraph {verigraph_namespace: $graph_namespace}),
+              (a)-[:FROM]->
+              (pa:Paper:Verigraph {verigraph_namespace: $graph_namespace}),
+              (b)-[:FROM]->
+              (pb:Paper:Verigraph {verigraph_namespace: $graph_namespace})
+        RETURN pa.id AS from_paper, a.text AS claim,
+               pb.id AS against_paper, b.text AS contradicts
         """,
     ),
     "methods": (
         "Runnable methods and where they were described",
         """
-        MATCH (m:Method)-[:DESCRIBED_IN]->(p:Paper)
+        MATCH (m:Method:Verigraph {verigraph_namespace: $graph_namespace})-
+              [:DESCRIBED_IN]->
+              (p:Paper:Verigraph {verigraph_namespace: $graph_namespace})
         RETURN m.id AS method, m.name AS name, p.id AS paper,
                m.runnable_hint AS runnable_hint
         ORDER BY method
@@ -45,11 +49,34 @@ QUERIES = {
     "evidence": (
         "Which claims have executable evidence (Run nodes)?",
         """
-        MATCH (c:Claim)-[:FROM]->(p:Paper)
-        OPTIONAL MATCH (r:Run)-[v:VALIDATES|REFUTES]->(c)
+        MATCH (c:Claim:Verigraph {verigraph_namespace: $graph_namespace})-[:FROM]->
+              (p:Paper:Verigraph {verigraph_namespace: $graph_namespace})
+        OPTIONAL MATCH (r:Run:Verigraph {verigraph_namespace: $graph_namespace})-
+                       [v:VALIDATES|REFUTES]->(c)
+        WHERE r.status = 'success'
+           OR (r.status IS NULL AND r.error IS NULL AND r.exit_code = 0)
+        WITH p, c, r, v
+        ORDER BY r.created_at DESC, r.id DESC
+        WITH p, c, head(collect(CASE WHEN r IS NULL THEN NULL ELSE {
+            run_id: r.id,
+            verdict: type(v),
+            implementation_source: coalesce(r.implementation_source, 'unknown'),
+            implementation_fingerprint: r.implementation_fingerprint,
+            context_digest: r.context_digest,
+            provisional: coalesce(v.provisional, false)
+                OR coalesce(r.provisional, false)
+                OR coalesce(r.implementation_source, 'unknown') <> 'curated'
+                OR r.implementation_fingerprint IS NULL
+                OR r.context_digest IS NULL
+        } END)) AS latest
         RETURN p.id AS paper, c.id AS claim, c.text AS text,
-               CASE WHEN r IS NULL THEN 'no runs yet'
-                    ELSE type(v) + ' by ' + r.id END AS evidence
+               CASE WHEN latest IS NULL THEN 'no runs yet'
+                    ELSE latest.verdict + ' by ' + latest.run_id END AS evidence,
+               latest.run_id AS run_id, latest.verdict AS verdict,
+               latest.implementation_source AS implementation_source,
+               latest.implementation_fingerprint AS implementation_fingerprint,
+               latest.context_digest AS context_digest,
+               coalesce(latest.provisional, false) AS provisional
         ORDER BY paper, claim
         """,
     ),
@@ -58,7 +85,9 @@ QUERIES = {
 
 def run_query(driver, name: str) -> list[dict]:
     _, cypher = QUERIES[name]
-    records, _, _ = driver.execute_query(cypher, database_=DATABASE)
+    records, _, _ = driver.execute_query(
+        cypher, graph_namespace=GRAPH_NAMESPACE, database_=DATABASE
+    )
     return [dict(r) for r in records]
 
 

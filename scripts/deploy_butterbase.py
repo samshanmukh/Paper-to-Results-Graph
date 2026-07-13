@@ -23,6 +23,11 @@ import urllib.error
 import urllib.request
 import zipfile
 
+import certifi
+
+# macOS python.org builds do not reliably inherit the system trust store.
+os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
@@ -68,6 +73,24 @@ def ensure_schema() -> None:
         _, current = bb_req("GET", f"/v1/{APP_ID}/schema")
         current_tables = current.get("schema", {}).get("tables", {})
         numeric_types = {"smallint", "integer", "bigint", "real", "float4", "float8", "decimal", "numeric"}
+        desired_tables = schema.setdefault("tables", {})
+        # Schema apply treats omission as an explicit drop. Preserve objects
+        # created by older deployments or other app features unless this
+        # repository explicitly manages them.
+        for table_name, existing_table in current_tables.items():
+            if table_name not in desired_tables:
+                desired_tables[table_name] = existing_table
+                print(f"  preserving existing table {table_name}")
+                continue
+            desired_table = desired_tables[table_name]
+            desired_columns = desired_table.setdefault("columns", {})
+            for column_name, column in existing_table.get("columns", {}).items():
+                if column_name not in desired_columns:
+                    desired_columns[column_name] = column
+                    print(f"  preserving existing column {table_name}.{column_name}")
+            desired_indexes = desired_table.setdefault("indexes", {})
+            for index_name, index in existing_table.get("indexes", {}).items():
+                desired_indexes.setdefault(index_name, index)
         for table_name, table in schema.get("tables", {}).items():
             existing_columns = current_tables.get(table_name, {}).get("columns", {})
             for column_name, column in table.get("columns", {}).items():
@@ -90,10 +113,13 @@ def ensure_schema() -> None:
 
 
 def sync_data() -> None:
-    from app.butterbase import sync_papers, sync_runs
+    from app.butterbase import sync_workspace
 
-    print(f"  syncing {sync_papers()} papers…")
-    print(f"  syncing {sync_runs()} runs…")
+    result = sync_workspace()
+    print(
+        "  published workspace "
+        f"revision {result['revision']} ({result['papers']} papers, {result['runs']} runs)"
+    )
 
 
 def cognee_env_vars() -> dict[str, str]:
@@ -105,12 +131,6 @@ def cognee_env_vars() -> dict[str, str]:
         "COGNEE_API_KEY",
         "COGNEE_DATASET",
         "COGNEE_SESSION_ID",
-        "DAYTONA_API_KEY",
-        "ROCKETRIDE_GATEWAY_BASE_URL",
-        "ROCKETRIDE_GATEWAY_KEY",
-        "ROCKETRIDE_GATEWAY_MODEL",
-        "BUTTERBASE_SERVICE_KEY",
-        "BUTTERBASE_GATEWAY_BASE_URL",
     )
     out: dict[str, str] = {}
     for k in keys:
@@ -120,26 +140,9 @@ def cognee_env_vars() -> dict[str, str]:
     return out
 
 
-def inject_impl_bundle(code: str) -> str:
-    """Embed curated papers/impl/*.py into the edge function for live Daytona runs."""
-    bundle_path = os.path.join(ROOT, "butterbase", "impl_bundle.json")
-    if not os.path.isfile(bundle_path):
-        from app.research_tools import load_impl_bundle
-        bundle = load_impl_bundle()
-        with open(bundle_path, "w") as f:
-            json.dump(bundle, f)
-    with open(bundle_path) as f:
-        bundle_json = f.read().strip()
-    marker = "const IMPL_BUNDLE: Record<string, string> = {};"
-    replacement = f"const IMPL_BUNDLE: Record<string, string> = {bundle_json};"
-    if marker not in code:
-        raise RuntimeError("IMPL_BUNDLE marker missing from verigraph_api.ts")
-    return code.replace(marker, replacement, 1)
-
-
 def deploy_function() -> str:
     with open(FN_PATH) as f:
-        code = inject_impl_bundle(f.read())
+        code = f.read()
     env_vars = cognee_env_vars()
     # Remove existing function with same name if present
     try:
@@ -154,18 +157,15 @@ def deploy_function() -> str:
 
     body: dict = {
         "name": FN_NAME,
-        "description": "Verigraph API (graph, evidence, live Daytona runs, workspaces, Cognee)",
+        "description": "Verigraph read API (graph, evidence, workspace, Cognee sessions)",
         "code": code,
         "trigger": {"type": "http", "config": {"auth": "none"}},
     }
     if env_vars:
         body["envVars"] = env_vars
-        safe_keys = [k for k in env_vars if k not in ("COGNEE_API_KEY", "ADMIN_TRACKING_KEY", "DAYTONA_API_KEY")]
-        if "DAYTONA_API_KEY" in env_vars:
-            safe_keys.append("DAYTONA_API_KEY(set)")
+        safe_keys = [k for k in env_vars if k not in ("COGNEE_API_KEY", "ADMIN_TRACKING_KEY")]
         if safe_keys:
             print(f"  function env: {', '.join(safe_keys)}")
-    print(f"  impl bundle: {code.count(chr(10))} lines after inject")
 
     _, res = bb_req("POST", f"/v1/{APP_ID}/functions", body)
     url = res["url"]
@@ -183,11 +183,6 @@ def build_frontend_zip(fn_url: str) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("config.js", config_js)
-        # Extra static assets referenced by the demo
-        for asset in ("advanced-features.js", "local-papers.js"):
-            asset_path = os.path.join(STATIC_DIR, asset)
-            if os.path.isfile(asset_path):
-                zf.writestr(asset, open(asset_path).read())
 
         for src_name, dest_name in (
             ("landing.html", "index.html"),
@@ -198,8 +193,6 @@ def build_frontend_zip(fn_url: str) -> bytes:
             if 'src="/config.js"' not in html:
                 html = html.replace("<head>", '<head>\n<script src="/config.js"></script>\n', 1)
             html = html.replace('src="/config.js"', f'src="/config.js?v={config_version}"')
-            html = html.replace('src="/advanced-features.js"', f'src="/advanced-features.js?v={config_version}"')
-            html = html.replace('src="/local-papers.js"', f'src="/local-papers.js?v={config_version}"')
             zf.writestr(dest_name, html)
 
     return buf.getvalue()
@@ -236,22 +229,27 @@ def deploy_frontend(fn_url: str) -> str:
 
 
 def smoke_test(fn_url: str, site_url: str) -> None:
-    for route in ("health", "graph", "evidence", "workspace", "insights", "timeline", "batch-plan"):
+    for route in ("health", "graph", "evidence", "workspace"):
         req = urllib.request.Request(f"{fn_url}?route={route}")
         with urllib.request.urlopen(req, timeout=30) as resp:
             body = json.load(resp)
         print(f"  ✓ {route}: {str(body)[:80]}…")
 
     demo_url = site_url.rstrip("/") + "/demo/"
-    for attempt, url in enumerate([site_url, demo_url, site_url.rstrip("/") + "/config.js", site_url.rstrip("/") + "/advanced-features.js"]):
-        for retry in range(5):
+    for attempt, url in enumerate([site_url, demo_url, site_url.rstrip("/") + "/config.js"]):
+        for retry in range(12):
             try:
                 with urllib.request.urlopen(url, timeout=30) as resp:
                     body = resp.read(800).decode(errors="replace")
                 break
             except urllib.error.HTTPError as e:
-                if e.code in (403, 404) and retry < 4:
-                    time.sleep(4)
+                if e.code in (403, 404, 502, 503) and retry < 11:
+                    time.sleep(5)
+                    continue
+                raise
+            except urllib.error.URLError:
+                if retry < 11:
+                    time.sleep(5)
                     continue
                 raise
         else:
@@ -260,8 +258,6 @@ def smoke_test(fn_url: str, site_url: str) -> None:
             raise RuntimeError(f"frontend check failed at {site_url}")
         if attempt == 2 and "VERIGRAPH_FN_URL" not in body:
             raise RuntimeError("config.js missing VERIGRAPH_FN_URL")
-        if attempt == 3 and "verigraphAdvanced" not in body:
-            raise RuntimeError("advanced-features.js missing verigraphAdvanced")
     print(f"  ✓ frontend live: {site_url}")
     print(f"  ✓ demo: {demo_url}")
 

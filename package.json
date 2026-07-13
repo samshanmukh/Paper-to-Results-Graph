@@ -1,11 +1,12 @@
 {
-  "name": "verigraph-e2e",
+  "name": "verigraph-edge-checks",
   "private": true,
   "scripts": {
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "typecheck": "tsc --noEmit",
+    "build:edge": "tsc --outDir .tsbuild --noEmit false",
+    "test:edge": "npm run build:edge && node --test butterbase/verigraph_api.test.cjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.52.0"
+    "typescript": "5.9.3"
   }
 }

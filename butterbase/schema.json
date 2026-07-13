@@ -7,7 +7,15 @@
         "year": { "type": "integer" },
         "arxiv": { "type": "text" },
         "topic": { "type": "text" },
-        "extraction": { "type": "jsonb" }
+        "extraction": { "type": "jsonb" },
+        "content_digest": { "type": "text" },
+        "workspace_revision": { "type": "integer" },
+        "active": { "type": "boolean", "default": "false" },
+        "source_kind": { "type": "text" },
+        "source_object": { "type": "text" }
+      },
+      "indexes": {
+        "idx_papers_active": { "columns": ["active"] }
       }
     },
     "runs": {
@@ -18,18 +26,40 @@
         "status": { "type": "text" },
         "exit_code": { "type": "integer" },
         "duration_s": { "type": "numeric" },
+        "created_at": { "type": "timestamptz" },
+        "implementation_source": { "type": "text" },
+        "implementation_fingerprint": { "type": "text" },
+        "context_digest": { "type": "text" },
+        "workspace_revision": { "type": "integer" },
+        "active": { "type": "boolean", "default": "false" },
+        "provisional": { "type": "boolean", "default": "true" },
+        "params": { "type": "jsonb" },
+        "parameter_overrides": { "type": "jsonb" },
         "metrics": { "type": "jsonb" },
         "claim_checks": { "type": "jsonb" },
-        "params": { "type": "jsonb" },
         "stdout": { "type": "text" },
         "error": { "type": "text" }
+      },
+      "indexes": {
+        "idx_runs_active": { "columns": ["active"] },
+        "idx_runs_method_created": { "columns": ["method_id", "created_at"] }
+      }
+    },
+    "workspace_state": {
+      "columns": {
+        "id": { "type": "text", "primaryKey": true },
+        "revision": { "type": "integer" },
+        "manifest_digest": { "type": "text" },
+        "active_papers": { "type": "jsonb" },
+        "active_run_ids": { "type": "jsonb" },
+        "snapshot_digest": { "type": "text" },
+        "updated_at": { "type": "timestamptz" }
       }
     },
     "demo_visitors": {
       "columns": {
         "id": { "type": "uuid", "primaryKey": true, "default": "gen_random_uuid()" },
         "email": { "type": "text", "nullable": false, "unique": true },
-        "display_name": { "type": "text" },
         "ip_address": { "type": "text" },
         "region": { "type": "text" },
         "country": { "type": "text" },
@@ -45,19 +75,14 @@
         "idx_demo_visitors_country": { "columns": ["country"] }
       }
     },
-    "workspaces": {
+    "api_rate_limits": {
       "columns": {
-        "id": { "type": "uuid", "primaryKey": true, "default": "gen_random_uuid()" },
-        "visitor_id": { "type": "uuid" },
-        "email": { "type": "text" },
-        "name": { "type": "text", "nullable": false },
-        "snapshot": { "type": "jsonb" },
-        "created_at": { "type": "timestamptz", "default": "now()" },
-        "updated_at": { "type": "timestamptz", "default": "now()" }
+        "id": { "type": "text", "primaryKey": true },
+        "window_start": { "type": "timestamptz", "default": "now()" },
+        "request_count": { "type": "integer", "default": "0" }
       },
       "indexes": {
-        "idx_workspaces_visitor": { "columns": ["visitor_id"] },
-        "idx_workspaces_email": { "columns": ["email"] }
+        "idx_api_rate_limits_window": { "columns": ["window_start"] }
       }
     }
   }
