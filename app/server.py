@@ -28,7 +28,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from app.curator import curate
@@ -259,6 +259,75 @@ def workspace_info():
         raise HTTPException(500, "workspace status failed") from e
 
 
+@app.get("/api/health")
+def health():
+    from app.research_tools import load_impl_bundle
+
+    return {
+        "ok": True,
+        "live_run": bool(os.environ.get("DAYTONA_API_KEY")),
+        "impl_methods": len(load_impl_bundle()),
+    }
+
+
+def _heuristic_extraction(text: str, title: str | None = None, arxiv: str | None = None) -> dict:
+    """Create a bounded local-only extraction when LLM extraction is unavailable."""
+    cleaned = " ".join(str(text or "").split())
+    lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
+    title = title or next(
+        (line for line in lines if 12 < len(line) < 180 and not line.lower().startswith("arxiv:")),
+        "Untitled local paper",
+    )
+    year_match = re.search(r"\b((?:19|20)\d{2})\b", title + " " + cleaned)
+    year = int(year_match.group(1)) if year_match else datetime.now().year
+    slug = re.sub(r"[^a-z0-9]+", "", title.lower())[:18] or "localpaper"
+    paper_id = f"arxiv{str(arxiv).replace('.', '')}"[:32] if arxiv else f"{slug}{year}"[:32]
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", cleaned) if 40 < len(s.strip()) < 320][:3]
+    if not sentences:
+        sentences = [cleaned[:200]]
+    return {
+        "paper": {"id": paper_id, "title": title[:240], "authors": ["local"], "year": year, "arxiv": arxiv, "topic": "local-import"},
+        "claims": [{"id": f"{paper_id}-c{i + 1}", "text": sentence, "metric": None} for i, sentence in enumerate(sentences)],
+        "methods": [{"id": f"{paper_id}-m1", "name": "Toy reproduction experiment", "description": f"Simplified simulation of {title[:80]}.", "runnable_hint": "Build a small synthetic task and report a metric.", "params": [{"name": "n_trials", "default": 200, "description": "synthetic problems"}]}],
+        "datasets": [], "cites": [], "claim_relations": [],
+    }
+
+
+@app.post("/api/extract-local-text")
+def extract_local_text(body: dict, request: Request):
+    authorize_expensive_request(request, bucket="ingest", default_limit=20)
+    from app.extract import ensure_methods, extract_live_text
+
+    text = str((body or {}).get("text") or "")
+    if len(text.strip()) < 200:
+        raise HTTPException(400, "paper text too short — need at least ~200 characters")
+    try:
+        data, source = extract_live_text(text), "text-llm"
+    except Exception:
+        data, source = _heuristic_extraction(text, (body or {}).get("title"), (body or {}).get("arxiv")), "text-heuristic"
+    return {"extraction": ensure_methods(data), "source": source, "local": True}
+
+
+@app.post("/api/extract-local-arxiv")
+def extract_local_arxiv(body: dict, request: Request):
+    authorize_expensive_request(request, bucket="ingest", default_limit=20)
+    from app.arxiv import fetch_arxiv_text, parse_arxiv_id
+    from app.extract import ensure_methods, extract_live_text
+
+    url = str((body or {}).get("url") or "")
+    try:
+        arxiv_id, _ = parse_arxiv_id(url)
+        text = fetch_arxiv_text(url)
+    except Exception as exc:
+        raise HTTPException(400, f"arXiv fetch failed: {exc}") from exc
+    try:
+        data, source = extract_live_text(text), "arxiv-llm"
+    except Exception:
+        data, source = _heuristic_extraction(text, arxiv=arxiv_id), "arxiv-heuristic"
+    data.setdefault("paper", {})["arxiv"] = data["paper"].get("arxiv") or arxiv_id
+    return {"extraction": ensure_methods(data), "source": source, "local": True}
+
+
 @app.post("/api/workspace/new")
 def workspace_new(request: Request):
     authorize_expensive_request(request, bucket="workspace", default_limit=10)
@@ -339,6 +408,150 @@ def graph():
 def evidence():
     with get_driver() as driver:
         return run_query(driver, "evidence")
+
+
+@app.get("/api/insights")
+def insights():
+    from app.insights import workspace_insights
+    try:
+        return workspace_insights()
+    except Exception as exc:
+        raise HTTPException(503, "insights unavailable") from exc
+
+
+@app.get("/api/conflicts")
+def conflicts():
+    from app.insights import list_conflicts
+    try:
+        return list_conflicts()
+    except Exception as exc:
+        raise HTTPException(503, "conflicts unavailable") from exc
+
+
+@app.get("/api/runs")
+def runs(limit: int = 50):
+    from app.insights import list_runs
+    try:
+        return list_runs(limit=min(max(limit, 1), 200))
+    except Exception as exc:
+        raise HTTPException(503, "runs unavailable") from exc
+
+
+@app.get("/api/export")
+def export_workspace():
+    from app.insights import export_workspace as build_export
+    try:
+        payload = build_export()
+    except Exception as exc:
+        raise HTTPException(503, "export unavailable") from exc
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return JSONResponse(payload, headers={"Content-Disposition": f'attachment; filename="verigraph-export-{stamp}.json"'})
+
+
+class CompareBody(BaseModel):
+    run_a: str
+    run_b: str
+
+
+@app.post("/api/compare")
+def compare_endpoint(body: CompareBody, request: Request):
+    authorize_expensive_request(request, bucket="analysis", default_limit=30)
+    from app.research_tools import compare_runs
+    try:
+        return compare_runs(body.run_a, body.run_b)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.get("/api/timeline")
+def timeline_endpoint():
+    from app.research_tools import claim_timeline
+    try:
+        return claim_timeline()
+    except Exception as exc:
+        raise HTTPException(503, "timeline unavailable") from exc
+
+
+@app.get("/api/evidence-brief")
+def evidence_brief_endpoint():
+    from app.research_tools import evidence_brief_markdown
+    try:
+        markdown = evidence_brief_markdown()
+    except Exception as exc:
+        raise HTTPException(503, "evidence brief unavailable") from exc
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return PlainTextResponse(markdown, media_type="text/markdown", headers={"Content-Disposition": f'attachment; filename="verigraph-brief-{stamp}.md"'})
+
+
+@app.get("/api/batch-plan")
+def batch_plan():
+    from app.research_tools import methods_never_run
+    pending = methods_never_run()
+    return {"pending": pending, "count": len(pending)}
+
+
+class BatchRunBody(BaseModel):
+    method_ids: list[str] = Field(default_factory=list)
+    backend: str = "auto"
+    params: dict = Field(default_factory=dict)
+
+
+@app.post("/api/batch-run")
+def batch_run(body: BatchRunBody | None, request: Request):
+    authorize_expensive_request(request, bucket="run", default_limit=5)
+    from app.research_tools import methods_never_run
+    body = body or BatchRunBody()
+    backend = body.backend if body.backend in {"auto", "local", "daytona"} else "auto"
+    targets = (body.method_ids or methods_never_run())[:32]
+    results = []
+    for method_id in targets:
+        try:
+            record = _execute_and_curate(method_id, backend, body.params or {})
+            results.append({"method_id": method_id, "run_id": record.get("run_id"), "error": record.get("error"), "metrics": (record.get("result") or {}).get("metrics", {})})
+        except Exception as exc:
+            results.append({"method_id": method_id, "error": str(exc)})
+    return {"ok": True, "ran": results, "count": len(results)}
+
+
+class WorkspaceSaveBody(BaseModel):
+    name: str
+    snapshot: dict = Field(default_factory=dict)
+    visitor_id: str = ""
+    email: str = ""
+    display_name: str = ""
+
+
+@app.get("/api/saved-workspaces")
+def list_saved_workspaces(visitor: str = "", email: str = ""):
+    try:
+        from app.butterbase import list_workspaces
+        return {"workspaces": list_workspaces(visitor_id=visitor, email=email)}
+    except Exception as exc:
+        raise HTTPException(503, "saved workspaces unavailable") from exc
+
+
+@app.post("/api/saved-workspaces")
+def save_workspace(body: WorkspaceSaveBody, request: Request):
+    authorize_expensive_request(request, bucket="workspace", default_limit=10)
+    name = body.name.strip()
+    if not name or len(name) > 80:
+        raise HTTPException(400, "workspace name required (max 80 chars)")
+    try:
+        from app.butterbase import save_workspace as cloud_save
+        return {"ok": True, "workspace": cloud_save(name=name, snapshot=body.snapshot, visitor_id=body.visitor_id or None, email=body.email or None)}
+    except Exception as exc:
+        raise HTTPException(503, "save workspace unavailable") from exc
+
+
+@app.delete("/api/saved-workspaces/{workspace_id}")
+def delete_saved_workspace(workspace_id: str, request: Request, visitor: str = ""):
+    authorize_expensive_request(request, bucket="workspace", default_limit=10)
+    try:
+        from app.butterbase import delete_workspace
+        delete_workspace(workspace_id, visitor_id=visitor or None)
+        return {"ok": True}
+    except Exception as exc:
+        raise HTTPException(503, "delete workspace unavailable") from exc
 
 
 class RunBody(BaseModel):

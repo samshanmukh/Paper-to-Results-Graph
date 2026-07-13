@@ -392,6 +392,14 @@ function buildEvidence(papers: any[], runs: any[]) {
   return rows;
 }
 
+function localHeuristic(text: string, title = "Untitled local paper", arxiv = "") {
+  const cleaned = String(text || "").replace(/\s+/g, " ").trim();
+  const year = Number((cleaned.match(/\b(?:19|20)\d{2}\b/) || [new Date().getUTCFullYear()])[0]);
+  const id = (arxiv ? `arxiv${arxiv.replace(/\./g, "")}` : `${title.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 18)}${year}`).slice(0, 32);
+  const claims = cleaned.split(/(?<=[.!?])\s+/).filter((s) => s.length > 40).slice(0, 3);
+  return { paper: { id, title: title.slice(0, 240), authors: ["local"], year, arxiv: arxiv || null, topic: "local-import" }, claims: (claims.length ? claims : [cleaned.slice(0, 200)]).map((s, i) => ({ id: `${id}-c${i + 1}`, text: s, metric: null })), methods: [{ id: `${id}-m1`, name: "Toy reproduction experiment", description: `Simplified simulation of ${title.slice(0, 80)}.`, runnable_hint: "Build a small synthetic task and report a metric.", params: [{ name: "n_trials", default: 200, description: "synthetic problems" }] }], datasets: [], cites: [], claim_relations: [] };
+}
+
 type ClaimRow = {
   id: string;
   text: string;
@@ -1034,6 +1042,19 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
 
     if (route === "evidence") return json(buildEvidence(papers, runs));
 
+    if (route === "insights") {
+      const evidence = buildEvidence(papers, runs);
+      const validated = evidence.filter((row: any) => row.verdict === "VALIDATES").length;
+      const refuted = evidence.filter((row: any) => row.verdict === "REFUTES").length;
+      return json({ generated_at: new Date().toISOString(), counts: { papers: papers.length, claims: evidence.length }, evidence: { total_claims: evidence.length, validated, refuted, untested: evidence.length - validated - refuted, coverage_pct: evidence.length ? Math.round(((validated + refuted) / evidence.length) * 1000) / 10 : 0 }, conflicts: { total: 0, resolved: 0 }, methods: { items: [] }, conflict_rows: [] });
+    }
+    if (route === "conflicts") return json([]);
+    if (route === "runs") return json(runs.map((run: any) => runRowToRecord(run)));
+    if (route === "timeline") return json([]);
+    if (route === "batch-plan") return json({ pending: [], count: 0, replay: true });
+    if (route === "evidence-brief") return new Response(`# Verigraph evidence brief\n\nPapers: ${papers.length}\nClaims: ${buildEvidence(papers, runs).length}\n`, { status: 200, headers: { ...CORS, "Content-Type": "text/markdown; charset=utf-8" } });
+    if (route === "export") return json({ generated_at: new Date().toISOString(), papers, runs, evidence: buildEvidence(papers, runs) });
+
     if (route === "workspace") {
       const ids = papers.map((p: any) => (p.extraction?.paper?.id || p.id));
       return json({
@@ -1150,12 +1171,27 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
         await cogneeLogSession(ctx, msg, r.answer, visitorId);
         return json(r);
       }
+      if (route === "extract-local-text") {
+        const text = String(requestBody.text || "");
+        if (text.trim().length < 200) return json({ detail: "paper text too short" }, 400);
+        return json({ extraction: localHeuristic(text, String(requestBody.title || "Untitled local paper"), String(requestBody.arxiv || "")), source: "text-heuristic", local: true });
+      }
+      if (route === "extract-local-arxiv") return json({ detail: "arXiv extraction requires the full backend; use the local API for ingestion." }, 503);
+      if (route === "compare") {
+        const a = runs.find((run: any) => run.id === requestBody.run_a);
+        const b = runs.find((run: any) => run.id === requestBody.run_b);
+        if (!a || !b) return json({ detail: "run(s) not found" }, 404);
+        return json({ same_method: a.method_id === b.method_id, a: runRowToRecord(a), b: runRowToRecord(b), param_diff: [], metric_diff: [], claim_diff: [], summary: { params_changed: 0, metrics_changed: 0, verdicts_flipped: 0 } });
+      }
+      if (route === "batch-run") return json({ ok: true, ran: [], count: 0, replay: true });
+      if (route === "saved-workspaces") return json({ ok: true, workspace: requestBody, replay: true });
       return notImplemented(`POST ${route} is not available on the Butterbase read-only deploy.`);
     }
 
     if (req.method === "DELETE" && route.startsWith("workspace/papers/")) {
       return notImplemented("Paper removal requires the full FastAPI backend.");
     }
+    if (req.method === "DELETE" && route.startsWith("saved-workspaces/")) return json({ ok: true, replay: true });
 
     return json({ error: `unknown route: ${route}` }, 404);
   } catch (e) {
