@@ -254,6 +254,7 @@ def sync_run(record: dict, *, active: bool = True) -> str:
         "metrics": result.get("metrics"),
         # Butterbase jsonb columns reject top-level arrays; wrap in an object
         "claim_checks": {"items": result.get("claim_checks", [])},
+        "params": record.get("params") or {},
         "stdout": (record.get("stdout") or "")[:4000],
         "error": record.get("error"),
     })
@@ -383,6 +384,53 @@ def record_visitor_tool(visitor_id: str, tool: str) -> None:
 def list_visitors() -> list[dict]:
     rows = _req("GET", "/demo_visitors?order=last_seen.desc&limit=500")
     return rows if isinstance(rows, list) else rows.get("data", rows.get("rows", []))
+
+
+def update_visitor_profile(visitor_id: str, display_name: str) -> None:
+    _req(
+        "PATCH",
+        f"/demo_visitors/{visitor_id}",
+        {
+            "display_name": display_name[:80],
+            "last_seen": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+
+def list_workspaces(visitor_id: str = "", email: str = "") -> list[dict]:
+    if visitor_id:
+        q = urllib.parse.urlencode({"visitor_id": f"eq.{visitor_id}", "order": "updated_at.desc", "limit": 50})
+    elif email:
+        q = urllib.parse.urlencode({"email": f"eq.{email}", "order": "updated_at.desc", "limit": 50})
+    else:
+        return []
+    rows = _req("GET", f"/workspaces?{q}")
+    return rows if isinstance(rows, list) else rows.get("data", rows.get("rows", []))
+
+
+def save_workspace(name: str, snapshot: dict, visitor_id: str | None = None, email: str | None = None) -> dict:
+    now = datetime.now(timezone.utc).isoformat()
+    row = {
+        "id": str(uuid.uuid4()),
+        "name": name[:80],
+        "snapshot": snapshot or {},
+        "visitor_id": visitor_id,
+        "email": email,
+        "created_at": now,
+        "updated_at": now,
+    }
+    _req("POST", "/workspaces", row)
+    return row
+
+
+def delete_workspace(workspace_id: str, visitor_id: str | None = None) -> None:
+    if visitor_id:
+        q = urllib.parse.urlencode({"id": f"eq.{workspace_id}", "visitor_id": f"eq.{visitor_id}", "limit": 1})
+        existing = _req("GET", f"/workspaces?{q}")
+        rows = existing if isinstance(existing, list) else existing.get("data", existing.get("rows", []))
+        if not rows:
+            raise RuntimeError("workspace not found")
+    _req("DELETE", f"/workspaces/{workspace_id}")
 
 
 def counts():

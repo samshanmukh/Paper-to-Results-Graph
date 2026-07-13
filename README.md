@@ -369,9 +369,11 @@ app/
   brightdata.py  Thin wrapper around brightdata-sdk scrape_url for paper ingestion.
   cognee_memory.py  Optional Cognee remember/recall for paper text and run stdout.
   server.py      FastAPI. Endpoints: GET /api/graph, GET /api/evidence,
-                 POST /api/run/{method_id},                  POST /api/ask,
-                 POST /api/memory/recall,
-                 POST /api/upload | /upload-file | /upload-arxiv.
+                 GET /api/insights, GET /api/conflicts, GET /api/runs,
+                 GET /api/export, POST /api/run/:id, POST /api/ask,
+                 POST /api/memory/recall, POST /api/upload*, workspace + reset
+  insights.py   Coverage stats, conflict adjudication, run history, export snapshot
+  grounded_qa.py Graph-grounded agent fallbacks when RocketRide is offline
   db.py          Shared Neo4j driver + macOS certifi fix + OUR_LABELS.
   security.py    Default-deny API key checks, direct-loopback opt-in,
                  request bounds, rate limiting, and concurrency controls.
@@ -395,6 +397,7 @@ scripts/
   check_pipeline.py   Agent pipeline smoke test.
   sync_cognee.py      Backfill Cognee index from papers/ + runs/.
   test_cognee_memory.py  Unit smoke test for remember/recall.
+  test_insights_logic.py Conflict adjudication unit smoke test.
   check_cognee_cloud.py  Smoke test Cognee Cloud connectivity (COGNEE_CLOUD=true).
   demo_loop.py        Whole closed loop in one command + graph diff.
   reset_demo.py       Pristine pre-demo state: clears Run/Artifact only,
