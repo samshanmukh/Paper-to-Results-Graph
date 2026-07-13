@@ -1,10 +1,9 @@
 """Extractor: paper text -> structured JSON (claims, methods, datasets, citations).
 
 Two modes:
-  --mock  : return the hand-verified golden JSON from papers/extracted/ (default
-            until the RocketRide extraction pipeline lands in M6).
-  live    : POST the paper text to the local RocketRide pipeline (PIPELINE_URL);
-            wired up in M6. Direct LLM calls use XAI_API_KEY (Grok).
+  --mock  : validate the hand-verified golden JSON from papers/extracted/.
+  live    : send paper text through the configured Butterbase-compatible LLM
+            gateway (ROCKETRIDE_GATEWAY_*), then validate the untrusted result.
 """
 
 import argparse
@@ -14,44 +13,13 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+from app.validation import (normalize_extraction, require_paper_id,
+                            validate_extraction)
+
 PAPERS_DIR = os.path.join(ROOT, "papers")
 EXTRACTED_DIR = os.path.join(PAPERS_DIR, "extracted")
 
 RELATION_TYPES = {"SUPPORTS", "CONTRADICTS"}
-
-
-def validate_extraction(data: dict) -> list[str]:
-    """Return a list of schema problems (empty list = valid)."""
-    errors = []
-    paper = data.get("paper")
-    if not isinstance(paper, dict):
-        return ["missing 'paper' object"]
-    for field in ("id", "title", "authors", "year"):
-        if not paper.get(field):
-            errors.append(f"paper.{field} missing")
-
-    claim_ids = set()
-    for claim in data.get("claims", []):
-        if not claim.get("id") or not claim.get("text"):
-            errors.append(f"claim missing id/text: {claim}")
-        claim_ids.add(claim.get("id"))
-
-    for method in data.get("methods", []):
-        for field in ("id", "name", "description", "runnable_hint"):
-            if not method.get(field):
-                errors.append(f"method {method.get('id')} missing {field}")
-
-    for rel in data.get("claim_relations", []):
-        if rel.get("type") not in RELATION_TYPES:
-            errors.append(f"bad relation type: {rel}")
-        if rel.get("from") not in claim_ids:
-            errors.append(f"relation 'from' not a claim in this paper: {rel}")
-
-    if not isinstance(data.get("cites", []), list):
-        errors.append("'cites' must be a list of paper ids")
-    if not data.get("methods"):
-        errors.append("at least one method is required")
-    return errors
 
 
 def ensure_methods(data: dict) -> dict:
@@ -88,11 +56,18 @@ def ensure_methods(data: dict) -> dict:
 
 
 def extract_mock(paper_id: str) -> dict:
+    paper_id = require_paper_id(paper_id)
     path = os.path.join(EXTRACTED_DIR, f"{paper_id}.json")
     if not os.path.exists(path):
         raise FileNotFoundError(f"no golden extraction for '{paper_id}' at {path}")
     with open(path) as f:
-        return json.load(f)
+        data = json.load(f)
+    errors = validate_extraction(data)
+    if errors:
+        raise ValueError(f"golden extraction failed validation: {errors}")
+    if data["paper"]["id"] != paper_id:
+        raise ValueError("golden extraction paper id does not match its filename")
+    return data
 
 
 EXTRACTION_PROMPT = """You are the extraction stage of Verigraph.
@@ -134,14 +109,14 @@ def extract_live_text(text: str) -> dict:
     from app.llm import chat, extract_json_obj
     reply = chat(EXTRACTION_PROMPT + text[:24000], max_tokens=4000)
     data = extract_json_obj(reply)
+    if not isinstance(data, dict):
+        return normalize_extraction(data)
     data = ensure_methods(data)
-    errors = validate_extraction(data)
-    if errors:
-        raise ValueError(f"extraction failed validation: {errors}")
-    return data
+    return normalize_extraction(data)
 
 
 def extract_live(paper_id: str) -> dict:
+    paper_id = require_paper_id(paper_id)
     with open(os.path.join(PAPERS_DIR, f"{paper_id}.txt")) as f:
         return extract_live_text(f.read())
 

@@ -409,13 +409,13 @@ html[data-theme="light"] .cta-box p{color:#626C79}
       <div class="card"><div class="icon">📄</div><div class="tag">extract.py · arxiv.py</div><h3>Paper ingestion</h3><p>Upload via arXiv URL (HTML or PDF with retry/fallback), PDF drop, or raw text. LLM extracts claims, methods, datasets, citations, and cross-paper relations into structured JSON.</p></div>
       <div class="card"><div class="icon" style="color:var(--purple)">◆</div><div class="tag">graph.py</div><h3>Knowledge graph</h3><p>Idempotent MERGE into Neo4j Aura. Papers, claims, methods, runs, and artifacts as first-class nodes. CONTRADICTS edges surface real disagreements between papers.</p></div>
       <div class="card"><div class="icon" style="color:var(--purple)">⚙</div><div class="tag">codegen.py</div><h3>Method → code</h3><p>Any method node becomes a runnable single-file experiment. Curated implementations for demo papers; live LLM codegen for newly uploaded papers via Grok.</p></div>
-      <div class="card"><div class="icon" style="color:var(--green)">⚡</div><div class="tag">runner.py</div><h3>Sandbox execution</h3><p>Daytona isolated sandboxes when <code>DAYTONA_API_KEY</code> is set. Local subprocess fallback keeps the demo unkillable. Captures stdout, stderr, duration, exit code.</p></div>
+      <div class="card"><div class="icon" style="color:var(--green)">⚡</div><div class="tag">runner.py</div><h3>Sandbox execution</h3><p>LLM-generated code runs only in network-blocked Daytona sandboxes. Reviewed bundled implementations may use a scrubbed, resource-limited local process. Captures stdout, stderr, duration, and exit code.</p></div>
       <div class="card"><div class="icon" style="color:var(--green)">✓</div><div class="tag">curator.py</div><h3>Evidence curation</h3><p>Writes Run + Artifact nodes back to Neo4j with IMPLEMENTS, VALIDATES, and REFUTES edges. Failed runs are evidence too; the graph remembers what broke.</p></div>
       <div class="card"><div class="icon">📊</div><div class="tag">queries.py</div><h3>Evidence table</h3><p>Live view of which claims carry executable evidence vs. paper-only assertions. Flips in real time as runs complete, the core demo moment.</p></div>
       <div class="card"><div class="icon">🕸</div><div class="tag">static/index.html</div><h3>Interactive graph UI</h3><p>vis-network visualization with color-coded node types, edge legends (CONTRADICTS / VALIDATES), zoom controls, and tabbed side panel (Evidence · Console · Ask).</p></div>
       <div class="card"><div class="icon" style="color:var(--purple)">◈</div><div class="tag">verigraph.pipe · cognee_memory.py</div><h3>Ask the research agent</h3><p>Every Ask now recalls relevant Cognee Brain context before the graph-grounded answer. Visitor sessions remain isolated by anonymous id—no email or IP is sent to Cognee.</p></div>
       <div class="card"><div class="icon">↺</div><div class="tag">demo_reset.py</div><h3>Reset demo</h3><p>One-click pristine state: clears Run/Artifact nodes, reloads papers, wipes local run dirs. Evidence returns to "no runs yet" for a clean stage demo.</p></div>
-      <div class="card"><div class="icon">☁</div><div class="tag">butterbase.py</div><h3>Run history mirror</h3><p>Papers and 25 measured runs are persisted in Butterbase outside Neo4j, powering reliable cloud replay without rerunning a sandbox for every visitor.</p></div>
+      <div class="card"><div class="icon">☁</div><div class="tag">butterbase.py</div><h3>Run history mirror</h3><p>Active paper revisions and measured runs are persisted in Butterbase outside Neo4j, powering reliable cloud replay without rerunning a sandbox for every visitor.</p></div>
       <div class="card"><div class="icon" style="color:var(--amber)">⇄</div><div class="tag">graph.py</div><h3>Cross-paper conflicts</h3><p>CONTRADICTS edges between claims from different papers. The graph doesn't hide disagreement; a run can adjudicate which side reproduces.</p></div>
       <div class="card"><div class="icon">🧪</div><div class="tag">demo_loop.py</div><h3>CLI closed loop</h3><p>Headless one-command loop: <code>python scripts/demo_loop.py wilson2017-m1</code> (codegen → run → curate → evidence diff, no UI required).</p></div>
     </div>
@@ -492,7 +492,7 @@ html[data-theme="light"] .cta-box p{color:#626C79}
       <div class="compare-col good">
         <h3>Verigraph ends in evidence</h3>
         <ul>
-          <li>Code runs in Daytona or local sandbox</li>
+          <li>Generated code runs in Daytona; reviewed code may run locally</li>
           <li>VALIDATES / REFUTES attached to claims</li>
           <li>Failed runs recorded as graph citizens</li>
           <li>CONTRADICTS edges + run adjudication</li>
@@ -514,7 +514,7 @@ html[data-theme="light"] .cta-box p{color:#626C79}
       <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">01 · extract.py</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Extract</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Paper text → claims, methods, datasets, citations, claim_relations as JSON. Schema-validated; fallback method if LLM returns none.</p></div>
       <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">02 · graph.py</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Load</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Idempotent MERGE into Neo4j Aura. Label-scoped deletes on shared instance. CONTRADICTS, CITES, FROM, DESCRIBED_IN edges.</p></div>
       <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">03 · codegen.py</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Generate</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Method node → single-file experiment. Output contract: last stdout line is JSON with metrics and claim_checks verdicts.</p></div>
-      <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">04 · runner.py</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Run</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Execute in Daytona sandbox (<code>auto</code> | <code>daytona</code> | <code>local</code>). Persist run record to <code>runs/</code> with full capture.</p></div>
+      <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">04 · runner.py</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Run</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Execute generated code in a network-blocked Daytona sandbox; reviewed bundled code may use the constrained local launcher. Persist a provenance-stamped run record to <code>runs/</code>.</p></div>
       <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">05 · curator.py</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Curate</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Write Run + Artifact nodes. IMPLEMENTS → Method, VALIDATES/REFUTES → Claim, PRODUCED → Artifact (stdout capped 4k).</p></div>
       <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">06 · queries.py</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Evidence</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Canned Cypher: claims, conflicts, methods, evidence. Powers the evidence table and CLI inspection.</p></div>
       <div><div class="mono" style="font-size:12px;color:var(--purple);margin-bottom:10px">07 · db_neo4j + cognee</div><h3 style="font-size:16px;font-weight:600;margin-bottom:6px">Ask</h3><p style="font-size:13.5px;color:var(--dim);line-height:1.5">Every question recalls semantic context from Cognee Brain, then combines it with authoritative graph evidence.</p></div>
@@ -534,10 +534,10 @@ html[data-theme="light"] .cta-box p{color:#626C79}
     <div class="spec-block">
       <h4>Sponsor integrations</h4>
       <table class="spec-table">
-        <tr><th>RocketRide</th><td>Local engine on <code>:5565</code>. Pipeline <code>verigraph.pipe</code>: <code>agent_rocketride</code> (6 waves, internal memory) + <code>db_neo4j</code> (NL→Cypher) + <code>tool_python</code>. LLM routed through one gateway node.</td></tr>
+        <tr><th>RocketRide</th><td>Optional local engine on <code>:5565</code>. Pipeline <code>verigraph.pipe</code>: <code>agent_rocketride</code> (6 waves, internal memory) + <code>db_neo4j</code> (NL→Cypher) using a separately verified read-only identity. LLM routed through one gateway node.</td></tr>
         <tr><th>Neo4j Aura</th><td>Cloud graph database (<code>neo4j+s://</code>). Product <em>is</em> the graph, 8 node labels, 10+ relationship types. Label-scoped ops on shared Aura instance.</td></tr>
         <tr><th>Butterbase</th><td>AI gateway (OpenAI-compatible) for <strong>all</strong> LLM calls: extraction, codegen, agent. Dedicated <code>paper2result</code> app for papers + run history persistence.</td></tr>
-        <tr><th>Daytona</th><td>Isolated sandbox execution via <code>daytona-sdk</code>. <code>--backend auto</code> selects Daytona when API key present; local subprocess fallback otherwise.</td></tr>
+        <tr><th>Daytona</th><td>Isolated sandbox execution via <code>daytona-sdk</code>. LLM-generated implementations are sandbox-only and never fall back to the host; curated implementations may run locally with a scrubbed environment.</td></tr>
         <tr><th>Cognee</th><td>Managed semantic memory — 25 documents in Brain, <code>recall()</code> on every Ask, and anonymous visitor-specific Sessions. Neo4j remains authoritative for verdict edges.</td></tr>
       </table>
     </div>
@@ -548,7 +548,7 @@ html[data-theme="light"] .cta-box p{color:#626C79}
         <tr><th>Gateway</th><td>Butterbase AI gateway: <code>ROCKETRIDE_GATEWAY_BASE_URL</code> + <code>ROCKETRIDE_GATEWAY_KEY</code></td></tr>
         <tr><th>Model</th><td><code>x-ai/grok-4.3</code> (Grok) via <code>ROCKETRIDE_GATEWAY_MODEL</code>. Single route for extract, codegen, and agent pipeline.</td></tr>
         <tr><th>Temperature</th><td><code>0.0</code> for extraction/codegen (deterministic JSON). Agent uses pipeline instructions with accuracy rule for metric quoting.</td></tr>
-        <tr><th>Direct key</th><td><code>XAI_API_KEY</code> available for direct xAI access if needed; production path uses Butterbase gateway.</td></tr>
+        <tr><th>Execution policy</th><td>Generated Python requires Daytona, a network-blocked sandbox, strict output validation, and claim ownership checks before evidence is curated.</td></tr>
       </table>
     </div>
 
@@ -577,7 +577,7 @@ html[data-theme="light"] .cta-box p{color:#626C79}
         <tr><th>GET /demo</th><td>Live demo UI (vis-network graph + side panel)</td></tr>
         <tr><th>GET /api/graph</th><td>Full node/edge payload for graph visualization</td></tr>
         <tr><th>GET /api/evidence</th><td>Evidence table rows (claim → verdict or "no runs yet")</td></tr>
-        <tr><th>POST /api/run/{method_id}</th><td>Closed loop: codegen → execute → curate. Body: <code>{"params":{}}</code>. Query: <code>backend=auto|local|daytona</code></td></tr>
+        <tr><th>POST /api/run/{method_id}</th><td>Authenticated closed loop: codegen → sandbox → validate → curate. Body: <code>{"params":{}}</code>. Query: <code>backend=auto|local|daytona</code></td></tr>
         <tr><th>POST /api/ask</th><td>Question → Cognee recall (when enabled) + RocketRide agent pipeline → graph-grounded answer</td></tr>
         <tr><th>POST /api/memory/recall</th><td>Direct semantic memory search over indexed papers and run logs</td></tr>
         <tr><th>POST /api/upload-arxiv</th><td>Fetch arXiv (HTML/PDF) → extract → load graph</td></tr>
@@ -591,22 +591,21 @@ html[data-theme="light"] .cta-box p{color:#626C79}
         <h4>Python dependencies</h4>
         <div class="schema" style="margin:0">
 neo4j ≥ 5.20 · fastapi ≥ 0.110 · uvicorn ≥ 0.29<br>
-rocketride ≥ 1.3 · daytona-sdk ≥ 0.10<br>
-cognee · fastembed (optional semantic memory)<br>
-openai ≥ 1.30 · anthropic ≥ 0.30 · numpy ≥ 1.26<br>
-pypdf ≥ 4.0 · python-multipart · certifi · python-dotenv
+rocketride ≥ 1.3 · daytona-sdk ≥ 0.194 · numpy ≥ 1.26<br>
+pypdf ≥ 4.0 · python-multipart · certifi · python-dotenv<br>
+cognee · fastembed · brightdata-sdk (optional integrations)
         </div>
       </div>
       <div class="spec-block" style="margin:0">
         <h4>Environment variables</h4>
         <div class="schema" style="margin:0">
 NEO4J_URI · NEO4J_USERNAME · NEO4J_PASSWORD<br>
-ROCKETRIDE_URI · ROCKETRIDE_APIKEY · PIPELINE_URL<br>
+ROCKETRIDE_URI · ROCKETRIDE_APIKEY<br>
 ROCKETRIDE_GATEWAY_BASE_URL · _KEY · _MODEL<br>
-ROCKETRIDE_NEO4J_URI · _USER · _PASSWORD<br>
-BUTTERBASE_API_KEY · BUTTERBASE_APP_ID · _SERVICE_KEY<br>
-P2R_BUTTERBASE_APP_ID · DAYTONA_API_KEY · XAI_API_KEY<br>
-COGNEE_ENABLED (true|false) · COGNEE_DATASET_NAME
+ROCKETRIDE_NEO4J_URI · _READONLY_USER · _READONLY_PASSWORD<br>
+BUTTERBASE_API_KEY · P2R_BUTTERBASE_APP_ID<br>
+DAYTONA_API_KEY · VERIGRAPH_API_KEY<br>
+COGNEE_ENABLED (true|false) · COGNEE_DATASET
         </div>
       </div>
     </div>
@@ -614,7 +613,7 @@ COGNEE_ENABLED (true|false) · COGNEE_DATASET_NAME
     <div class="spec-block" style="margin-top:16px">
       <h4>Run commands</h4>
       <table class="spec-table">
-        <tr><th>Setup</th><td><code>python3 -m venv .venv && pip install -r requirements.txt && cp .env.example .env</code></td></tr>
+        <tr><th>Setup</th><td><code>python3 -m venv .venv &amp;&amp; .venv/bin/python -m pip install -r requirements.txt &amp;&amp; cp .env.example .env</code></td></tr>
         <tr><th>Load graph</th><td><code>.venv/bin/python app/graph.py --reset</code></td></tr>
         <tr><th>Smoke tests</th><td><code>scripts/check_neo4j.py</code> · <code>scripts/check_pipeline.py</code></td></tr>
         <tr><th>Start UI</th><td><code>.venv/bin/uvicorn app.server:app --port 8787</code> → <code>http://localhost:8787</code></td></tr>

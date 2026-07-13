@@ -237,9 +237,19 @@ def _format_run_document(record: dict) -> str:
     metrics = result.get("metrics") or {}
     checks = result.get("claim_checks") or []
     stdout = (record.get("stdout") or "")[:4000]
+    source = record.get("implementation_source") or "unknown"
+    provisional = bool(
+        record.get("provisional")
+        or source != "curated"
+        or not record.get("implementation_fingerprint")
+        or not record.get("context_digest")
+    )
     lines = [
         f"[run {record.get('run_id')}] method {record.get('method_id')}",
         f"backend={record.get('backend')} exit={record.get('exit_code')} duration_s={record.get('duration_s')}",
+        f"implementation_source={source} provisional={str(provisional).lower()}",
+        f"implementation_fingerprint={record.get('implementation_fingerprint') or 'unknown'}",
+        f"context_digest={record.get('context_digest') or 'unknown'}",
         f"metrics={json.dumps(metrics)}",
     ]
     for chk in checks:
@@ -362,8 +372,13 @@ async def log_session_qa(question: str, answer: str, *, session_id: str | None =
         pass
 
 
-def log_session_qa_sync(question: str, answer: str) -> None:
+def log_session_qa_sync(
+    question: str,
+    answer: str,
+    *,
+    session_id: str | None = None,
+) -> None:
     try:
-        _run_async(log_session_qa(question, answer), timeout=90)
+        _run_async(log_session_qa(question, answer, session_id=session_id), timeout=90)
     except Exception:
         pass

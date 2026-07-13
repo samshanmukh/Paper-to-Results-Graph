@@ -11,7 +11,7 @@ import sys
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from app.db import DATABASE, get_driver
+from app.db import DATABASE, GRAPH_NAMESPACE, get_driver
 
 BASE = os.environ.get("P2R_BASE", "http://127.0.0.1:8787")
 METHOD = sys.argv[1] if len(sys.argv) > 1 else "wilson2017-m1"
@@ -35,8 +35,10 @@ def main() -> int:
     else:
         with get_driver() as driver:
             recs, _, _ = driver.execute_query(
-                "MATCH (x:Run {id: $id}) RETURN count(x) AS c",
-                id=run_id, database_=DATABASE)
+                "MATCH (x:Run:Verigraph {"
+                "id: $id, verigraph_namespace: $graph_namespace"
+                "}) RETURN count(x) AS c",
+                id=run_id, graph_namespace=GRAPH_NAMESPACE, database_=DATABASE)
             if recs[0]["c"] != 1:
                 failures.append(f"E4_graph_updated: {run_id} not found in Neo4j")
     if payload.get("exit_code") != 0 or payload.get("error") not in (None, "null"):

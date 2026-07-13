@@ -2,7 +2,8 @@
  *  Routes via ?route=graph|evidence|workspace|...
  *  POST run/{method_id} replays the latest persisted run from Butterbase.
  *  POST ask/investigate/brief/conduct answer from persisted graph + run history.
- *  POST workspace/new and reset clear the local view (shared Butterbase data unchanged).
+ *  Default reads are scoped by the authoritative workspace_state snapshot.
+ *  POST workspace/new and reset can additionally clear a visitor's local view.
  *  Upload/delete still require the full FastAPI backend.
  */
 
@@ -11,6 +12,7 @@ const CORS = {
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -23,6 +25,15 @@ function notImplemented(msg: string) {
   return json({ detail: msg }, 501);
 }
 
+class HttpError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 /** Cognee Cloud session logging — Sessions tab needs POST /api/v1/remember/entry (qa/trace). */
 function cogneeReady(ctx: any): boolean {
   return (
@@ -30,6 +41,12 @@ function cogneeReady(ctx: any): boolean {
     !!ctx.env.COGNEE_SERVICE_URL &&
     !!ctx.env.COGNEE_API_KEY
   );
+}
+
+function cogneeSessionId(ctx: any, visitorId = ""): string {
+  return UUID_PATTERN.test(visitorId)
+    ? `verigraph-${visitorId}`
+    : ctx?.env?.COGNEE_SESSION_ID || "verigraph-cloud-demo";
 }
 
 async function cogneeLogSession(
@@ -41,9 +58,7 @@ async function cogneeLogSession(
   if (!cogneeReady(ctx)) return;
   const base = String(ctx.env.COGNEE_SERVICE_URL).replace(/\/$/, "");
   const dataset = ctx.env.COGNEE_DATASET || "default_dataset";
-  const sessionId = /^[0-9a-f-]{36}$/i.test(visitorId)
-    ? `verigraph-${visitorId}`
-    : ctx.env.COGNEE_SESSION_ID || "verigraph-cloud-demo";
+  const sessionId = cogneeSessionId(ctx, visitorId);
   try {
     const res = await fetch(`${base}/api/v1/remember/entry`, {
       method: "POST",
@@ -151,10 +166,18 @@ function buildGraph(papers: any[], runs: any[]) {
     for (const cited of data.cites || []) {
       edges.push({ src: `p-${pid}`, dst: `p-${cited}`, rel: "CITES" });
     }
+  }
+
+  // Claim targets can belong to a paper sorted later, so relations need a
+  // second pass after the complete claim index has been built.
+  for (const row of papers) {
+    const data = row.extraction || {};
     for (const rel of data.claim_relations || []) {
       const from = claimIndex[rel.from];
       const to = claimIndex[rel.to];
-      if (from && to) edges.push({ src: from, dst: to, rel: rel.type });
+      if (from && to && (rel.type === "SUPPORTS" || rel.type === "CONTRADICTS")) {
+        edges.push({ src: from, dst: to, rel: rel.type });
+      }
     }
   }
 
@@ -172,12 +195,16 @@ function buildGraph(papers: any[], runs: any[]) {
         exit_code: r.exit_code,
         duration_s: Number(r.duration_s),
         metrics: JSON.stringify(r.metrics || {}),
+        implementation_source: implementationSource(r),
+        implementation_fingerprint: r.implementation_fingerprint || null,
+        context_digest: r.context_digest || null,
+        provisional: isProvisionalRun(r),
       },
     });
     if (r.method_id) {
       edges.push({ src: rid, dst: `m-${r.method_id}`, rel: "IMPLEMENTS" });
     }
-    const checks = r.claim_checks?.items || r.claim_checks || [];
+    const checks = isSuccessfulRun(r) ? (r.claim_checks?.items || r.claim_checks || []) : [];
     for (const chk of checks) {
       const cid = claimIndex[chk.claim_id];
       if (cid && (chk.verdict === "VALIDATES" || chk.verdict === "REFUTES")) {
@@ -191,17 +218,35 @@ function buildGraph(papers: any[], runs: any[]) {
 
 function runRowToRecord(row: any) {
   const checks = row.claim_checks?.items || row.claim_checks || [];
+  const params = row.params && typeof row.params === "object" && !Array.isArray(row.params)
+    ? row.params
+    : {};
+  const parameterOverrides =
+    row.parameter_overrides &&
+    typeof row.parameter_overrides === "object" &&
+    !Array.isArray(row.parameter_overrides)
+      ? row.parameter_overrides
+      : {};
   return {
     run_id: row.id,
     method_id: row.method_id,
     backend: row.backend || "daytona",
     exit_code: row.exit_code ?? 0,
     duration_s: Number(row.duration_s) || 0,
+    created_at: row.created_at || null,
+    implementation_source: implementationSource(row),
+    implementation_fingerprint: row.implementation_fingerprint || null,
+    context_digest: row.context_digest || null,
+    workspace_revision: row.workspace_revision ?? null,
+    provisional: isProvisionalRun(row),
+    params,
+    parameter_overrides: parameterOverrides,
     stdout: row.stdout || "",
     stderr: "",
     error: row.error || null,
     result: {
       method_id: row.method_id,
+      params,
       metrics: row.metrics || {},
       claim_checks: checks,
     },
@@ -209,15 +254,39 @@ function runRowToRecord(row: any) {
   };
 }
 
-function latestRunForMethod(runs: any[], methodId: string) {
-  const hits = runs.filter((r) => r.method_id === methodId);
-  if (!hits.length) return null;
-  const successful = hits.filter(
-    (r) => !r.error && r.exit_code === 0 && (!r.status || r.status === "success"),
+function implementationSource(run: any): "curated" | "llm" | "unknown" {
+  return run?.implementation_source === "curated" || run?.implementation_source === "llm"
+    ? run.implementation_source
+    : "unknown";
+}
+
+function isProvisionalRun(run: any): boolean {
+  return (
+    implementationSource(run) !== "curated" ||
+    !/^[0-9a-f]{64}$/.test(String(run?.implementation_fingerprint || "")) ||
+    !/^[0-9a-f]{64}$/.test(String(run?.context_digest || "")) ||
+    run?.provisional === true
   );
-  const candidates = successful.length ? successful : hits;
-  candidates.sort((a, b) => String(b.id).localeCompare(String(a.id)));
-  return candidates[0];
+}
+
+function isSuccessfulRun(run: any): boolean {
+  return !run?.error && Number(run?.exit_code) === 0 && (!run?.status || run.status === "success");
+}
+
+function compareRunsNewestFirst(a: any, b: any): number {
+  const aTime = Date.parse(String(a?.created_at || ""));
+  const bTime = Date.parse(String(b?.created_at || ""));
+  if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) return bTime - aTime;
+  if (Number.isFinite(aTime) !== Number.isFinite(bTime)) return Number.isFinite(bTime) ? 1 : -1;
+  return String(b?.id || "").localeCompare(String(a?.id || ""));
+}
+
+function successfulRunsNewestFirst(runs: any[]): any[] {
+  return runs.filter(isSuccessfulRun).slice().sort(compareRunsNewestFirst);
+}
+
+function latestRunForMethod(runs: any[], methodId: string) {
+  return successfulRunsNewestFirst(runs).find((r) => r.method_id === methodId) || null;
 }
 
 function isInfrastructureFailure(run: any) {
@@ -225,12 +294,81 @@ function isInfrastructureFailure(run: any) {
   return /DaytonaValidationError/i.test(error) && /disk limit exceeded|concurrency limits/i.test(error);
 }
 
+const DEMO_PAPER_IDS = new Set(["adam2014", "wilson2017", "adamw2017"]);
+
+function persistedWorkspaceSnapshot(papers: any[], runs: any[], state: any) {
+  const refs = Array.isArray(state?.active_papers?.items)
+    ? state.active_papers.items
+    : [];
+  const paperDigests = new Map<string, string>();
+  for (const ref of refs) {
+    const id = String(ref?.id || "");
+    const digest = String(ref?.content_digest || "");
+    if (id && /^[0-9a-f]{64}$/.test(digest)) paperDigests.set(id, digest);
+  }
+  const visiblePapers = papers.filter((row: any) => {
+    const id = String(row.extraction?.paper?.id || row.id || "");
+    return row.active === true && paperDigests.get(id) === String(row.content_digest || "");
+  });
+
+  const activeRunIds = new Set<string>(
+    (Array.isArray(state?.active_run_ids?.items) ? state.active_run_ids.items : [])
+      .map((id: any) => String(id || ""))
+      .filter(Boolean),
+  );
+  const visibleRuns = runs.filter(
+    (run: any) => run.active === true && activeRunIds.has(String(run.id || "")),
+  );
+  return {
+    papers: visiblePapers,
+    runs: visibleRuns,
+    revision: Number.isInteger(state?.revision) ? state.revision : null,
+  };
+}
+
+function workspaceView(papers: any[], runs: any[], view: string, removedRaw: string) {
+  const removed = new Set(
+    removedRaw
+      .split(",")
+      .map((id) => id.trim())
+      .filter((id) => /^[a-z0-9-]{1,96}$/.test(id))
+      .slice(0, 50),
+  );
+  let visiblePapers = papers.filter((row: any) => {
+    const id = row.extraction?.paper?.id || row.id;
+    return !removed.has(String(id));
+  });
+  if (view === "empty") visiblePapers = [];
+  if (view === "demo") {
+    visiblePapers = visiblePapers.filter((row: any) =>
+      DEMO_PAPER_IDS.has(String(row.extraction?.paper?.id || row.id)),
+    );
+  }
+
+  const methodIds = new Set<string>();
+  for (const row of visiblePapers) {
+    for (const method of row.extraction?.methods || []) {
+      if (method.id) methodIds.add(String(method.id));
+    }
+  }
+
+  let visibleRuns = runs.filter((run: any) => methodIds.has(String(run.method_id || "")));
+  if (view === "empty" || view === "no-runs" || view === "demo") visibleRuns = [];
+  if (view.startsWith("run:")) {
+    const selected = view.slice(4);
+    visibleRuns = visibleRuns.filter((run: any) => String(run.id) === selected);
+  }
+  return { papers: visiblePapers, runs: visibleRuns, methodIds };
+}
+
 function buildEvidence(papers: any[], runs: any[]) {
   const runByClaim: Record<string, any> = {};
-  for (const r of runs) {
+  for (const r of successfulRunsNewestFirst(runs)) {
     const checks = r.claim_checks?.items || r.claim_checks || [];
     for (const chk of checks) {
-      if (chk.claim_id) runByClaim[chk.claim_id] = { run: r, verdict: chk.verdict, detail: chk.detail };
+      if (chk.claim_id && !runByClaim[chk.claim_id]) {
+        runByClaim[chk.claim_id] = { run: r, verdict: chk.verdict, detail: chk.detail };
+      }
     }
   }
   const rows: any[] = [];
@@ -244,6 +382,10 @@ function buildEvidence(papers: any[], runs: any[]) {
         claim: c.id,
         text: c.text,
         evidence: hit ? `${hit.verdict} by ${hit.run.id}` : "no runs yet",
+        run_id: hit?.run?.id || null,
+        verdict: hit?.verdict || null,
+        implementation_source: hit ? implementationSource(hit.run) : null,
+        provisional: hit ? isProvisionalRun(hit.run) : false,
       });
     }
   }
@@ -255,7 +397,13 @@ type ClaimRow = {
   text: string;
   paperId: string;
   paperTitle: string;
-  evidence?: { verdict: string; runId: string; detail?: string };
+  evidence?: {
+    verdict: string;
+    runId: string;
+    detail?: string;
+    implementationSource: "curated" | "llm" | "unknown";
+    provisional: boolean;
+  };
 };
 
 type WorkspaceCtx = {
@@ -275,17 +423,20 @@ type WorkspaceCtx = {
 };
 
 function buildWorkspaceCtx(papers: any[], runs: any[]): WorkspaceCtx {
-  const runByClaim: Record<string, { verdict: string; runId: string; detail?: string }> = {};
-  const methodsWithRuns = new Set(runs.map((r) => r.method_id).filter(Boolean));
+  const runByClaim: Record<string, NonNullable<ClaimRow["evidence"]>> = {};
+  const successfulRuns = successfulRunsNewestFirst(runs);
+  const methodsWithRuns = new Set(successfulRuns.map((r) => r.method_id).filter(Boolean));
 
-  for (const r of runs) {
+  for (const r of successfulRuns) {
     const checks = r.claim_checks?.items || r.claim_checks || [];
     for (const chk of checks) {
-      if (chk.claim_id) {
+      if (chk.claim_id && !runByClaim[chk.claim_id]) {
         runByClaim[chk.claim_id] = {
           verdict: chk.verdict,
           runId: r.id,
           detail: chk.detail,
+          implementationSource: implementationSource(r),
+          provisional: isProvisionalRun(r),
         };
       }
     }
@@ -346,7 +497,7 @@ function buildWorkspaceCtx(papers: any[], runs: any[]): WorkspaceCtx {
     claims,
     methods,
     conflicts,
-    runs,
+    runs: successfulRuns,
     claimById,
   };
 }
@@ -365,7 +516,12 @@ function nextMethodToRun(ctx: WorkspaceCtx) {
   return (wilson || untested[0] || ctx.methods[0])?.id || null;
 }
 
-function answerAsk(question: string, ctx: WorkspaceCtx) {
+function answerAsk(
+  question: string,
+  ctx: WorkspaceCtx,
+  cogneeConfigured = false,
+  cogneeSession = "",
+) {
   const q = (question || "").toLowerCase().trim();
   const evidenced = claimsWithEvidence(ctx);
   const untested = untestedClaims(ctx);
@@ -381,7 +537,10 @@ function answerAsk(question: string, ctx: WorkspaceCtx) {
     const lines = evidenced.map((c) => {
       const ev = c.evidence!;
       const detail = ev.detail ? ` — ${ev.detail}` : "";
-      return `• **${c.id}** (${c.paperId}): ${ev.verdict} via \`${ev.runId}\`${detail}`;
+      const provenance = ev.provisional
+        ? ` **PROVISIONAL** (${ev.implementationSource})`
+        : ` (${ev.implementationSource})`;
+      return `• **${c.id}** (${c.paperId}): ${ev.verdict}${provenance} via \`${ev.runId}\`${detail}`;
     });
     const pending = untested.length
       ? `\n\nStill untested: ${untested.slice(0, 4).map((c) => c.id).join(", ")}` +
@@ -407,11 +566,15 @@ function answerAsk(question: string, ctx: WorkspaceCtx) {
       (c) =>
         `• **${c.from}** (${c.fromPaper}) CONTRADICTS **${c.to}** (${c.toPaper})\n  _"${c.fromText.slice(0, 90)}…"_ vs _"${c.toText.slice(0, 90)}…"_`
     );
+    const wilsonEvidence = evidenced.find((c) => c.paperId === "wilson2017")?.evidence;
+    const wilsonSummary = wilsonEvidence
+      ? `Latest Wilson evidence: **${wilsonEvidence.verdict}**${wilsonEvidence.provisional ? " (**PROVISIONAL**)" : ""} via \`${wilsonEvidence.runId}\`.`
+      : "Wilson's separable counterexample method (**wilson2017-m1**) can adjudicate the generalization conflict, but this view has no successful evidence for it.";
     return (
       "They do **not** fully agree — the graph records cross-paper conflicts:\n\n" +
       lines.join("\n\n") +
       (ctx.conflicts.length > sample.length ? `\n\n…plus ${ctx.conflicts.length - sample.length} more CONTRADICTS edge(s).` : "") +
-      "\n\nWilson's separable counterexample run (replay **wilson2017-m1**) currently **VALIDATES** that Adam generalizes worse than GD on the constructed problem."
+      `\n\n${wilsonSummary}`
     );
   }
 
@@ -450,9 +613,17 @@ function answerAsk(question: string, ctx: WorkspaceCtx) {
 
   if (/cognee|semantic memory|memory recall/.test(q)) {
     const evidenced = claimsWithEvidence(ctx);
+    if (!cogneeConfigured) {
+      return (
+        "Cognee is **not configured on this deployment**. Set `COGNEE_ENABLED=true`, " +
+        "`COGNEE_SERVICE_URL`, and `COGNEE_API_KEY` to enable recall and session logging.\n\n" +
+        `Graph snapshot: ${ctx.papers.length} papers, ${evidenced.length} claims with evidence, ` +
+        `${ctx.runs.length} persisted runs.`
+      );
+    }
     return (
-      "Cognee is **active on this cloud deploy** — each Ask / workflow action is logged to your " +
-      "**Sessions** tab on platform.cognee.ai (session `verigraph-cloud-demo`).\n\n" +
+      "Cognee is **configured on this cloud deploy**. Successful recall and logging requests use " +
+      `session \`${cogneeSession}\`; check the Cognee dashboard for delivery status.\n\n` +
       `Graph snapshot: ${ctx.papers.length} papers, ${evidenced.length} claims with evidence, ` +
       `${ctx.runs.length} persisted runs.\n\n` +
       "Run `scripts/sync_cognee.py` locally to index paper text into **Brain**. " +
@@ -503,21 +674,37 @@ function answerBrief(ctx: WorkspaceCtx) {
   const validated = evidenced.filter((c) => c.evidence?.verdict === "VALIDATES");
   const refuted = evidenced.filter((c) => c.evidence?.verdict === "REFUTES");
   const untested = untestedClaims(ctx);
-  const runIds = [...new Set(ctx.runs.map((r) => r.id))];
-  const headline =
-    validated.length && ctx.runs.some((r) => r.method_id === "wilson2017-m1")
-      ? "Wilson counterexample: GD test error 0.000 vs Adam 0.425 — VALIDATES generalization gap"
-      : `${validated.length} validated, ${refuted.length} refuted, ${untested.length} untested`;
+  const runIds = [...new Set(evidenced.map((c) => c.evidence?.runId).filter(Boolean))];
+  const selectedRuns = successfulRunsNewestFirst(
+    ctx.runs.filter((run) => runIds.includes(run.id)),
+  );
+  const headlineRun = selectedRuns[0];
+  let headline = `${validated.length} validated, ${refuted.length} refuted, ${untested.length} untested`;
+  if (headlineRun) {
+    const checks = headlineRun.claim_checks?.items || headlineRun.claim_checks || [];
+    const verdicts = [...new Set(checks.map((check: any) => String(check.verdict || "")).filter(Boolean))];
+    const metrics = Object.entries(headlineRun.metrics || {})
+      .filter(([, value]) => typeof value === "number" && Number.isFinite(value))
+      .slice(0, 3)
+      .map(([key, value]) => `${key}=${Number(value).toPrecision(6).replace(/\.?0+$/, "")}`);
+    headline = `${headlineRun.method_id}: ${verdicts.join("/") || "evidence recorded"}`;
+    if (metrics.length) headline += ` — ${metrics.join(", ")}`;
+    if (isProvisionalRun(headlineRun)) headline = `PROVISIONAL — ${headline}`;
+  }
 
   const lines: string[] = [`**${headline}**`, ""];
   if (validated.length) {
     lines.push("**Validated**");
-    validated.forEach((c) => lines.push(`• ${c.id}: ${c.evidence?.detail || c.text}`));
+    validated.forEach((c) => lines.push(
+      `• ${c.id}${c.evidence?.provisional ? " [PROVISIONAL]" : ""}: ${c.evidence?.detail || c.text}`,
+    ));
     lines.push("");
   }
   if (refuted.length) {
     lines.push("**Refuted**");
-    refuted.forEach((c) => lines.push(`• ${c.id}: ${c.evidence?.detail || c.text}`));
+    refuted.forEach((c) => lines.push(
+      `• ${c.id}${c.evidence?.provisional ? " [PROVISIONAL]" : ""}: ${c.evidence?.detail || c.text}`,
+    ));
     lines.push("");
   }
   if (untested.length) {
@@ -535,6 +722,7 @@ function answerBrief(ctx: WorkspaceCtx) {
       validated: validated.map((c) => c.id),
       refuted: refuted.map((c) => c.id),
       untested: untested.map((c) => c.id),
+      provisional_run_ids: selectedRuns.filter(isProvisionalRun).map((run) => run.id),
     },
   };
 }
@@ -550,7 +738,10 @@ function answerConduct(ctx: WorkspaceCtx) {
   if (run) {
     const checks = run.claim_checks?.items || run.claim_checks || [];
     const verdicts = checks.map((c: any) => `${c.verdict} ${c.claim_id}`).join(", ");
-    steps.push(`[executor] ✓ ${run.id} [${run.backend || "daytona"}] replay — ${verdicts || "metrics recorded"}`);
+    const provenance = isProvisionalRun(run)
+      ? `PROVISIONAL ${implementationSource(run)}`
+      : implementationSource(run);
+    steps.push(`[executor] ✓ ${run.id} [${run.backend || "daytona"}; ${provenance}] replay — ${verdicts || "metrics recorded"}`);
   } else {
     steps.push(`[executor] ✗ no persisted run for ${methodId}`);
   }
@@ -568,10 +759,42 @@ function answerConduct(ctx: WorkspaceCtx) {
 }
 
 async function readJsonBody(req: Request) {
+  const maxBytes = 1_000_000;
+  const declaredHeader = req.headers.get("content-length");
+  if (declaredHeader && !/^\d+$/.test(declaredHeader)) {
+    throw new HttpError(400, "Invalid Content-Length header.");
+  }
+  const declared = Number(declaredHeader || 0);
+  if (declared > maxBytes) throw new HttpError(413, "Request body exceeds 1 MB.");
+
+  const reader = req.body?.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  if (reader) {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      received += value.byteLength;
+      if (received > maxBytes) {
+        await reader.cancel("request body limit exceeded").catch(() => undefined);
+        throw new HttpError(413, "Request body exceeds 1 MB.");
+      }
+      chunks.push(value);
+    }
+  }
+  const rawBytes = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    rawBytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const raw = new TextDecoder().decode(rawBytes);
   try {
-    return await req.json();
-  } catch {
-    return {};
+    return raw ? JSON.parse(raw) : {};
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    throw new HttpError(400, "Request body must be valid JSON.");
   }
 }
 
@@ -607,69 +830,69 @@ function isPublicIp(value: string) {
   return false;
 }
 
-function publicClientIp(req: Request, ctx: any) {
-  const forwarded = (req.headers.get("x-forwarded-for") || "").split(",");
-  const candidates = [
-    req.headers.get("fly-client-ip"),
-    req.headers.get("cf-connecting-ip"),
-    req.headers.get("true-client-ip"),
-    ...forwarded,
-    req.headers.get("x-real-ip"),
-    ctx?.request?.ip,
-  ];
+function publicClientIp(_req: Request, ctx: any) {
+  // Headers on a public function are caller-controlled. Only runtime context
+  // is an identity boundary suitable for rate limiting and visitor metadata.
+  const candidates = [ctx?.request?.ip, ctx?.client?.ip];
   return candidates.map((value) => String(value || "").trim()).find(isPublicIp) || "";
 }
 
+async function enforceEdgeRateLimit(
+  req: Request,
+  ctx: any,
+  bucket: string,
+  limit: number,
+): Promise<Response | null> {
+  const url = new URL(req.url);
+  const visitor = url.searchParams.get("visitor") || "";
+  let peer = publicClientIp(req, ctx);
+  if (!peer && UUID_PATTERN.test(visitor)) {
+    const known = await ctx.db.query(
+      "SELECT id FROM demo_visitors WHERE id = $1 LIMIT 1",
+      [visitor],
+    );
+    if (known.rows?.length) peer = `visitor:${visitor}`;
+  }
+  peer ||= "anonymous";
+  const key = `${bucket}:${peer}`.slice(0, 240);
+  const result = await ctx.db.query(
+    `WITH expired AS (
+       DELETE FROM api_rate_limits
+       WHERE window_start < now() - interval '10 minutes'
+       RETURNING id
+     )
+     INSERT INTO api_rate_limits (id, window_start, request_count)
+     VALUES ($1, now(), 1)
+     ON CONFLICT (id) DO UPDATE SET
+       request_count = CASE
+         WHEN api_rate_limits.window_start < now() - interval '1 minute' THEN 1
+         ELSE api_rate_limits.request_count + 1
+       END,
+       window_start = CASE
+         WHEN api_rate_limits.window_start < now() - interval '1 minute' THEN now()
+         ELSE api_rate_limits.window_start
+       END
+     RETURNING request_count`,
+    [key],
+  );
+  const count = Number(result.rows?.[0]?.request_count || 0);
+  return count > limit
+    ? new Response(JSON.stringify({ detail: "Rate limit exceeded." }), {
+        status: 429,
+        headers: { ...CORS, "Content-Type": "application/json", "Retry-After": "60" },
+      })
+    : null;
+}
+
 async function visitorLocation(req: Request, ctx: any) {
-  const decodeHeader = (name: string) => {
-    const value = req.headers.get(name) || "";
-    try {
-      return decodeURIComponent(value);
-    } catch {
-      return value;
-    }
-  };
   const ip = publicClientIp(req, ctx);
-  const headerCountry = [
-      req.headers.get("cf-ipcountry") ||
-      req.headers.get("x-vercel-ip-country") ||
-      req.headers.get("cloudfront-viewer-country"),
-      ctx?.request?.country,
-    ].map((value) => String(value || "").toUpperCase()).find((value) => /^[A-Z]{2}$/.test(value)) || "";
+  const country = String(ctx?.request?.country || "").toUpperCase();
   const location = {
     ip,
-    country: headerCountry,
-    region:
-      decodeHeader("x-vercel-ip-country-region") ||
-      decodeHeader("cloudfront-viewer-country-region") ||
-      "",
-    city:
-      decodeHeader("x-vercel-ip-city") ||
-      decodeHeader("cloudfront-viewer-city") ||
-      "",
+    country: /^[A-Z]{2}$/.test(country) ? country : "",
+    region: String(ctx?.request?.region || "").slice(0, 120),
+    city: String(ctx?.request?.city || "").slice(0, 120),
   };
-  if (!ip) return location;
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 2500);
-  try {
-    const response = await fetch(
-      `https://ipwho.is/${encodeURIComponent(ip)}?fields=success,country_code,region,city`,
-      { signal: controller.signal },
-    );
-    if (response.ok) {
-      const geo = await response.json();
-      if (geo?.success) {
-        location.country = String(geo.country_code || location.country).slice(0, 2).toUpperCase();
-        location.region = String(geo.region || location.region).slice(0, 120);
-        location.city = String(geo.city || location.city).slice(0, 120);
-      }
-    }
-  } catch (_) {
-    // Header-derived location is still useful when geolocation is unavailable.
-  } finally {
-    clearTimeout(timer);
-  }
   return location;
 }
 
@@ -677,8 +900,7 @@ function validEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254;
 }
 
-async function registerVisitor(req: Request, ctx: any) {
-  const body = await readJsonBody(req);
+async function registerVisitor(req: Request, ctx: any, body: any) {
   const email = String(body.email || "").trim().toLowerCase();
   const timezone = String(body.timezone || "").slice(0, 100);
   if (!validEmail(email)) return json({ detail: "Enter a valid email address." }, 400);
@@ -704,7 +926,7 @@ async function registerVisitor(req: Request, ctx: any) {
 
 async function recordToolUse(req: Request, route: string, ctx: any) {
   const visitorId = new URL(req.url).searchParams.get("visitor") || "";
-  if (!/^[0-9a-f-]{36}$/i.test(visitorId)) return;
+  if (!UUID_PATTERN.test(visitorId)) return;
   const tool = route.startsWith("run/") ? "run" : route.slice(0, 80);
   await ctx.db.query(
     `UPDATE demo_visitors
@@ -735,26 +957,78 @@ async function adminUsers(req: Request, ctx: any) {
   return json({ users: result.rows || [], generated_at: new Date().toISOString() });
 }
 
+export {
+  buildEvidence,
+  buildGraph,
+  latestRunForMethod,
+  persistedWorkspaceSnapshot,
+  publicClientIp,
+  readJsonBody,
+  runRowToRecord,
+  workspaceView,
+};
+
 export default async function handler(req: Request, ctx: any): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
 
   const url = new URL(req.url);
   const route = url.searchParams.get("route") || "health";
   const visitorId = url.searchParams.get("visitor") || "";
+  const requestedView = url.searchParams.get("view") || "full";
+  const view = /^(?:full|empty|no-runs|demo|run:[A-Za-z0-9._:-]{1,160})$/.test(requestedView)
+    ? requestedView
+    : "full";
+  const removed = url.searchParams.get("removed") || "";
 
   try {
-    if (req.method === "POST" && route === "register") return await registerVisitor(req, ctx);
+    const requestBody = ["POST", "PUT", "PATCH", "DELETE"].includes(req.method)
+      ? await readJsonBody(req)
+      : {};
+    const defaultLimited = await enforceEdgeRateLimit(req, ctx, "default", 120);
+    if (defaultLimited) return defaultLimited;
+    if (req.method === "POST" && route === "register") {
+      const limited = await enforceEdgeRateLimit(req, ctx, "registration", 10);
+      return limited || await registerVisitor(req, ctx, requestBody);
+    }
     if (req.method === "GET" && route === "admin/users") return await adminUsers(req, ctx);
+    if (req.method === "POST") {
+      const bucket = route.startsWith("run/") ? "execution" : "agent";
+      const limit = bucket === "execution" ? 10 : 30;
+      const limited = await enforceEdgeRateLimit(req, ctx, bucket, limit);
+      if (limited) return limited;
+    }
 
-    const papersRes = await ctx.db.query("SELECT * FROM papers ORDER BY year, id");
-    const runsRes = await ctx.db.query("SELECT * FROM runs ORDER BY id");
-    const papers = papersRes.rows || [];
+    const [papersRes, runsRes, stateRes] = await Promise.all([
+      ctx.db.query("SELECT * FROM papers WHERE active = true ORDER BY year, id"),
+      ctx.db.query("SELECT * FROM runs WHERE active = true ORDER BY id"),
+      ctx.db.query("SELECT * FROM workspace_state WHERE id = $1 LIMIT 1", ["default"]),
+    ]);
+    const allPapers = papersRes.rows || [];
+    const allRuns = runsRes.rows || [];
+    const persisted = persistedWorkspaceSnapshot(
+      allPapers,
+      allRuns,
+      stateRes.rows?.[0] || null,
+    );
+    const storedPapers = persisted.papers;
     // Quota failures are operational audit records, not scientific evidence.
     // Keep them in Butterbase but do not render or replay them as graph runs.
-    const runs = (runsRes.rows || []).filter((run: any) => !isInfrastructureFailure(run));
+    const storedRuns = persisted.runs.filter((run: any) => !isInfrastructureFailure(run));
+    const scoped = workspaceView(storedPapers, storedRuns, view, removed);
+    const papers = scoped.papers;
+    const runs = scoped.runs;
     const ws = buildWorkspaceCtx(papers, runs);
 
-    if (route === "health") return json({ ok: true, papers: papers.length, runs: runs.length });
+    if (route === "health") {
+      return json({
+        ok: true,
+        papers: storedPapers.length,
+        runs: storedRuns.length,
+        workspace_revision: persisted.revision,
+        stored_papers: allPapers.length,
+        stored_runs: allRuns.length,
+      });
+    }
 
     if (route === "graph") return json(buildGraph(papers, runs));
 
@@ -767,6 +1041,7 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
         papers: papers.length,
         claims: buildEvidence(papers, runs).length,
         runs: runs.length,
+        revision: persisted.revision,
         paper_ids: ids,
         papers_detail: papers.map((p: any) => {
           const data = p.extraction || {};
@@ -786,13 +1061,14 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
     if (req.method === "POST") {
       await recordToolUse(req, route, ctx);
       if (route === "workspace/load-demo") {
+        const demo = workspaceView(storedPapers, storedRuns, "demo", "");
         return json({
-          papers: papers.length,
-          claims: buildEvidence(papers, runs).length,
+          papers: demo.papers.length,
+          claims: buildEvidence(demo.papers, []).length,
           empty: false,
           replay: true,
-          view: "no-runs",
-          message: `Demo loaded — ${papers.length} papers (Adam · Wilson · AdamW), no runs yet.`,
+          view: "demo",
+          message: `Demo loaded — ${demo.papers.length} papers (Adam · Wilson · AdamW), no runs yet.`,
         });
       }
       if (route === "workspace/new") {
@@ -823,7 +1099,10 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
       }
       if (route.startsWith("run/")) {
         const methodId = route.slice(4);
-        const hit = latestRunForMethod(runs, methodId);
+        if (!scoped.methodIds.has(methodId)) {
+          return json({ detail: `Method ${methodId} is not active in this workspace view.` }, 404);
+        }
+        const hit = latestRunForMethod(storedRuns, methodId);
         if (hit) {
           const rec = runRowToRecord(hit);
           const checks = hit.claim_checks?.items || hit.claim_checks || [];
@@ -843,10 +1122,14 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
         );
       }
       if (route === "ask") {
-        const body = await readJsonBody(req);
-        const question = String(body.question || "").trim();
+        const question = String(requestBody.question || "").trim();
         if (!question) return json({ detail: "question is required" }, 400);
-        let answer = answerAsk(question, ws);
+        let answer = answerAsk(
+          question,
+          ws,
+          cogneeReady(ctx),
+          cogneeSessionId(ctx, visitorId),
+        );
         answer = await cogneeAugmentAsk(ctx, question, answer);
         await cogneeLogSession(ctx, question, answer, visitorId);
         return json({ answer, replay: true, cognee_session: cogneeReady(ctx) });
@@ -862,9 +1145,8 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
         return json(r);
       }
       if (route === "conduct") {
-        const body = await readJsonBody(req);
         const r = answerConduct(ws);
-        const msg = String(body.message || "Full evidence workflow");
+        const msg = String(requestBody.message || "Full evidence workflow");
         await cogneeLogSession(ctx, msg, r.answer, visitorId);
         return json(r);
       }
@@ -877,6 +1159,8 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
 
     return json({ error: `unknown route: ${route}` }, 404);
   } catch (e) {
-    return json({ error: String(e) }, 500);
+    if (e instanceof HttpError) return json({ detail: e.message }, e.status);
+    console.error("verigraph edge request failed", e);
+    return json({ error: "Internal server error." }, 500);
   }
 }

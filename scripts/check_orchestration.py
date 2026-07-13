@@ -12,7 +12,7 @@ import sys
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from app.db import DATABASE, get_driver
+from app.db import DATABASE, GRAPH_NAMESPACE, get_driver
 
 BASE = os.environ.get("P2R_BASE", "http://127.0.0.1:8787")
 
@@ -23,7 +23,9 @@ PROMPT = ("Full evidence workflow: investigate what to test, run the recommended
 def run_count() -> int:
     with get_driver() as driver:
         recs, _, _ = driver.execute_query(
-            "MATCH (r:Run) RETURN count(r) AS c", database_=DATABASE)
+            "MATCH (r:Run:Verigraph {verigraph_namespace: $graph_namespace}) "
+            "RETURN count(r) AS c",
+            graph_namespace=GRAPH_NAMESPACE, database_=DATABASE)
         return recs[0]["c"]
 
 
@@ -50,8 +52,9 @@ def main() -> int:
     else:
         with get_driver() as driver:
             recs, _, _ = driver.execute_query(
-                "MATCH (r:Run) WHERE r.id IN $ids RETURN count(r) AS c",
-                ids=run_ids, database_=DATABASE)
+                "MATCH (r:Run:Verigraph {verigraph_namespace: $graph_namespace}) "
+                "WHERE r.id IN $ids RETURN count(r) AS c",
+                ids=run_ids, graph_namespace=GRAPH_NAMESPACE, database_=DATABASE)
             exact = recs[0]["c"]
             if exact == 0:
                 # tolerate transcription slips (e.g. dropped trailing Z) but
@@ -59,10 +62,14 @@ def main() -> int:
                 recs, _, _ = driver.execute_query(
                     """
                     UNWIND $ids AS cited
-                    MATCH (r:Run) WHERE r.id STARTS WITH cited OR cited STARTS WITH r.id
+                    MATCH (r:Run:Verigraph {
+                        verigraph_namespace: $graph_namespace
+                    })
+                    WHERE r.id STARTS WITH cited OR cited STARTS WITH r.id
                     RETURN count(DISTINCT r) AS c
                     """,
-                    ids=[i for i in run_ids if len(i) > 20], database_=DATABASE)
+                    ids=[i for i in run_ids if len(i) > 20],
+                    graph_namespace=GRAPH_NAMESPACE, database_=DATABASE)
                 if recs[0]["c"] == 0:
                     failures.append("cited run ids not found in graph (hallucination)")
                 else:

@@ -8,3 +8,5 @@ generated/
 runs/
 deploy/site.zip
 .cognee/
+node_modules/
+.tsbuild/

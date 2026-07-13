@@ -66,10 +66,10 @@
 				"default": {
 					"uri": "${ROCKETRIDE_NEO4J_URI}",
 					"auth_method": "userpass",
-					"user": "${ROCKETRIDE_NEO4J_USER}",
-					"password": "${ROCKETRIDE_NEO4J_PASSWORD}",
-					"database": "neo4j",
-					"db_description": "STRICT READ-ONLY: generate ONLY MATCH/RETURN/WITH/ORDER/COUNT queries. NEVER generate CREATE, MERGE, DELETE, DETACH, SET, or REMOVE clauses — any write corrupts irreplaceable research evidence and is forbidden. Research evidence graph. Nodes: Paper(id,title,year), Claim(id,text), Method(id,name,runnable_hint,params), Run(id,status,metrics), Artifact. Edges: FROM (claim->paper), CONTRADICTS/SUPPORTS (claim->claim), DESCRIBED_IN (method->paper), IMPLEMENTS (run->method), VALIDATES/REFUTES (run->claim), CITES (paper->paper). Ignore unrelated SceneStyle/Product/Creator nodes.",
+					"user": "${ROCKETRIDE_NEO4J_READONLY_USER}",
+					"password": "${ROCKETRIDE_NEO4J_READONLY_PASSWORD}",
+					"database": "${ROCKETRIDE_NEO4J_DATABASE}",
+					"db_description": "STRICT READ-ONLY: generate ONLY MATCH/RETURN/WITH/ORDER/COUNT queries. EVERY node pattern, including each endpoint in a relationship pattern, MUST carry both the :Verigraph label and {verigraph_namespace: '${ROCKETRIDE_GRAPH_NAMESPACE}'}. Never query a node with only its domain label or only one ownership marker. NEVER generate CREATE, MERGE, DELETE, DETACH, SET, or REMOVE clauses. Research evidence graph. Nodes: Paper(id,title,year), Claim(id,text), Method(id,name,runnable_hint,params), Run(id,status,metrics), Artifact. Edges: FROM (claim->paper), CONTRADICTS/SUPPORTS (claim->claim), DESCRIBED_IN (method->paper), IMPLEMENTS (run->method), VALIDATES/REFUTES (run->claim), CITES (paper->paper).",
 					"allow_execute": false,
 					"max_attempts": 5
 				},

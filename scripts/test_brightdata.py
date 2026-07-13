@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import sys
+import types
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -44,9 +45,11 @@ class BrightDataFetchTests(unittest.TestCase):
         mock_client.scrape_url.return_value = mock_result
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
+        sdk = types.ModuleType("brightdata")
+        sdk.SyncBrightDataClient = MagicMock(return_value=mock_client)
 
         with patch.dict(os.environ, {"BRIGHTDATA_API_TOKEN": "test-token"}, clear=False):
-            with patch("brightdata.SyncBrightDataClient", return_value=mock_client):
+            with patch.dict(sys.modules, {"brightdata": sdk}):
                 from app.brightdata import fetch_url_text
 
                 html = fetch_url_text("https://arxiv.org/html/1705.08292")

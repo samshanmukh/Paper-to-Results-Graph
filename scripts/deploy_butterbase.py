@@ -23,6 +23,11 @@ import urllib.error
 import urllib.request
 import zipfile
 
+import certifi
+
+# macOS python.org builds do not reliably inherit the system trust store.
+os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
@@ -68,6 +73,24 @@ def ensure_schema() -> None:
         _, current = bb_req("GET", f"/v1/{APP_ID}/schema")
         current_tables = current.get("schema", {}).get("tables", {})
         numeric_types = {"smallint", "integer", "bigint", "real", "float4", "float8", "decimal", "numeric"}
+        desired_tables = schema.setdefault("tables", {})
+        # Schema apply treats omission as an explicit drop. Preserve objects
+        # created by older deployments or other app features unless this
+        # repository explicitly manages them.
+        for table_name, existing_table in current_tables.items():
+            if table_name not in desired_tables:
+                desired_tables[table_name] = existing_table
+                print(f"  preserving existing table {table_name}")
+                continue
+            desired_table = desired_tables[table_name]
+            desired_columns = desired_table.setdefault("columns", {})
+            for column_name, column in existing_table.get("columns", {}).items():
+                if column_name not in desired_columns:
+                    desired_columns[column_name] = column
+                    print(f"  preserving existing column {table_name}.{column_name}")
+            desired_indexes = desired_table.setdefault("indexes", {})
+            for index_name, index in existing_table.get("indexes", {}).items():
+                desired_indexes.setdefault(index_name, index)
         for table_name, table in schema.get("tables", {}).items():
             existing_columns = current_tables.get(table_name, {}).get("columns", {})
             for column_name, column in table.get("columns", {}).items():
@@ -90,10 +113,13 @@ def ensure_schema() -> None:
 
 
 def sync_data() -> None:
-    from app.butterbase import sync_papers, sync_runs
+    from app.butterbase import sync_workspace
 
-    print(f"  syncing {sync_papers()} papers…")
-    print(f"  syncing {sync_runs()} runs…")
+    result = sync_workspace()
+    print(
+        "  published workspace "
+        f"revision {result['revision']} ({result['papers']} papers, {result['runs']} runs)"
+    )
 
 
 def cognee_env_vars() -> dict[str, str]:
@@ -211,14 +237,19 @@ def smoke_test(fn_url: str, site_url: str) -> None:
 
     demo_url = site_url.rstrip("/") + "/demo/"
     for attempt, url in enumerate([site_url, demo_url, site_url.rstrip("/") + "/config.js"]):
-        for retry in range(5):
+        for retry in range(12):
             try:
                 with urllib.request.urlopen(url, timeout=30) as resp:
                     body = resp.read(800).decode(errors="replace")
                 break
             except urllib.error.HTTPError as e:
-                if e.code in (403, 404) and retry < 4:
-                    time.sleep(4)
+                if e.code in (403, 404, 502, 503) and retry < 11:
+                    time.sleep(5)
+                    continue
+                raise
+            except urllib.error.URLError:
+                if retry < 11:
+                    time.sleep(5)
                     continue
                 raise
         else:

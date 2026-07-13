@@ -4,7 +4,7 @@ Endpoints:
   GET  /             -> landing page
   GET  /demo         -> live demo page
   GET  /api/workspace     -> workspace status (papers, empty, runs)
-  POST /api/workspace/new -> blank workspace (wipe graph + papers)
+  POST /api/workspace/new -> blank active workspace (repository assets stay immutable)
   POST /api/workspace/load-demo -> restore bundled demo papers
   DELETE /api/workspace/papers/{paper_id} -> remove one paper from workspace
   POST /api/reset         -> clear runs on current workspace (pristine evidence)
@@ -22,18 +22,26 @@ import os
 import re
 import secrets
 import sys
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
 
 from app.curator import curate
-from app.db import DATABASE, OUR_LABELS, get_driver
+from app.db import DATABASE, GRAPH_NAMESPACE, OUR_LABELS, get_driver
 from app.queries import run_query
 from app.runner import execute
+from app.security import (
+    RequestBodyLimitMiddleware,
+    authorize_expensive_request,
+    enforce_rate_limit,
+    reject_oversized_request,
+    require_api_key,
+)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATIC = os.path.join(ROOT, "static")
@@ -49,7 +57,58 @@ def _pipe_path() -> str:
         return PIPE_LEGACY
     return PIPE
 
-app = FastAPI(title="Verigraph")
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    try:
+        yield
+    finally:
+        await close_rocketride_client()
+
+
+app = FastAPI(title="Verigraph", lifespan=_lifespan)
+app.add_middleware(RequestBodyLimitMiddleware)
+
+
+def _concurrency_limit(name: str, default: int) -> int:
+    try:
+        return max(1, min(32, int(os.environ.get(name, str(default)))))
+    except ValueError:
+        return default
+
+
+_execution_slots = asyncio.Semaphore(_concurrency_limit("VERIGRAPH_MAX_CONCURRENT_RUNS", 2))
+_ingestion_slots = asyncio.Semaphore(_concurrency_limit("VERIGRAPH_MAX_CONCURRENT_INGESTS", 1))
+
+
+@app.middleware("http")
+async def protect_api(request: Request, call_next):
+    """Apply body bounds, coarse rate limits, and baseline response headers."""
+    try:
+        reject_oversized_request(request)
+        if request.url.path.startswith("/api/"):
+            enforce_rate_limit(request, "default", 120)
+            if (
+                request.method in {"POST", "PUT", "PATCH", "DELETE"}
+                and request.url.path != "/api/register"
+            ):
+                require_api_key(request)
+    except HTTPException as exc:
+        response = JSONResponse(
+            {"detail": exc.detail},
+            status_code=exc.status_code,
+            headers=exc.headers or {},
+        )
+    else:
+        response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
+    )
+    return response
 
 
 @app.get("/")
@@ -68,9 +127,20 @@ def visitor_admin():
     return FileResponse(os.path.join(STATIC, "admin.html"))
 
 
+@app.get("/config.js")
+def frontend_config():
+    return FileResponse(os.path.join(STATIC, "config.js"), media_type="application/javascript")
+
+
 class DemoRegistration(BaseModel):
-    email: str
-    timezone: str = ""
+    email: str = Field(min_length=3, max_length=254)
+    timezone: str = Field(default="", max_length=100)
+
+
+_VISITOR_ID = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+    re.IGNORECASE,
+)
 
 
 def _request_location(request: Request) -> dict:
@@ -88,6 +158,7 @@ def _request_location(request: Request) -> dict:
 
 @app.post("/api/register")
 def register_demo_visitor(body: DemoRegistration, request: Request):
+    enforce_rate_limit(request, "registration", 10)
     email = body.email.strip().lower()
     if len(email) > 254 or not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email):
         raise HTTPException(400, "Enter a valid email address.")
@@ -97,7 +168,7 @@ def register_demo_visitor(body: DemoRegistration, request: Request):
         visitor = register_visitor(email, _request_location(request), body.timezone)
         return {"ok": True, "visitor_id": visitor["id"], "email": visitor["email"]}
     except Exception as e:
-        raise HTTPException(503, f"visitor tracking unavailable: {e}")
+        raise HTTPException(503, "visitor tracking unavailable") from e
 
 
 @app.get("/api/admin/users")
@@ -113,7 +184,7 @@ def admin_demo_users(request: Request):
 
         return {"users": list_visitors(), "generated_at": datetime.now(timezone.utc).isoformat()}
     except Exception as e:
-        raise HTTPException(503, f"visitor tracking unavailable: {e}")
+        raise HTTPException(503, "visitor tracking unavailable") from e
 
 
 @app.middleware("http")
@@ -125,7 +196,7 @@ async def track_demo_tools(request: Request, call_next):
         and request.method == "POST"
         and request.url.path.startswith("/api/")
         and request.url.path != "/api/register"
-        and re.fullmatch(r"[0-9a-f-]{36}", visitor_id, re.IGNORECASE)
+        and _VISITOR_ID.fullmatch(visitor_id)
     ):
         try:
             from app.butterbase import record_visitor_tool
@@ -137,14 +208,45 @@ async def track_demo_tools(request: Request, call_next):
     return response
 
 
+def _workspace_result(result: dict) -> dict:
+    if result.get("partial") or not result.get("ok", False):
+        sync = result.get("sync") or {}
+        raise HTTPException(
+            503,
+            {
+                "message": result.get("message", "workspace recovery is required"),
+                "operation_id": sync.get("operation_id"),
+                "stage": sync.get("stage") or sync.get("state"),
+            },
+        )
+    return result
+
+
+def _mirror_workspace(result: dict) -> dict:
+    """Publish the active manifest only after the local transition succeeds."""
+    mirrors = result.setdefault("mirrors", {})
+    try:
+        from app.butterbase import sync_workspace
+
+        state = sync_workspace()
+        mirrors["butterbase"] = "synchronized"
+        result["butterbase_workspace"] = state
+    except Exception as exc:
+        mirrors["butterbase"] = f"deferred: {type(exc).__name__}"
+    return result
+
+
 @app.post("/api/reset")
-def reset_demo():
+def reset_demo(request: Request):
+    authorize_expensive_request(request, bucket="workspace", default_limit=10)
     from app.demo_reset import reset_demo_state
 
     try:
-        return reset_demo_state()
+        return _mirror_workspace(_workspace_result(reset_demo_state()))
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(500, f"reset failed: {e}")
+        raise HTTPException(500, "reset failed") from e
 
 
 @app.get("/api/workspace")
@@ -154,39 +256,52 @@ def workspace_info():
     try:
         return workspace_status()
     except Exception as e:
-        raise HTTPException(500, f"workspace status failed: {e}")
+        raise HTTPException(500, "workspace status failed") from e
 
 
 @app.post("/api/workspace/new")
-def workspace_new():
+def workspace_new(request: Request):
+    authorize_expensive_request(request, bucket="workspace", default_limit=10)
     from app.workspace import new_workspace
 
     try:
-        return new_workspace()
+        return _mirror_workspace(_workspace_result(new_workspace()))
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(500, f"new workspace failed: {e}")
+        raise HTTPException(500, "new workspace failed") from e
 
 
 @app.post("/api/workspace/load-demo")
-def workspace_load_demo():
+def workspace_load_demo(request: Request):
+    authorize_expensive_request(request, bucket="workspace", default_limit=10)
     from app.workspace import load_demo_workspace
 
     try:
-        return load_demo_workspace()
+        return _mirror_workspace(_workspace_result(load_demo_workspace()))
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(500, f"load demo failed: {e}")
+        raise HTTPException(500, "load demo failed") from e
 
 
 @app.delete("/api/workspace/papers/{paper_id}")
-def workspace_remove_paper(paper_id: str):
+def workspace_remove_paper(paper_id: str, request: Request):
+    authorize_expensive_request(request, bucket="workspace", default_limit=10)
     from app.workspace import remove_paper
+    from app.validation import require_paper_id
 
     try:
-        return remove_paper(paper_id)
+        paper_id = require_paper_id(paper_id)
+        return _mirror_workspace(_workspace_result(remove_paper(paper_id)))
     except FileNotFoundError as e:
         raise HTTPException(404, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(500, f"remove paper failed: {e}")
+        raise HTTPException(500, "remove paper failed") from e
 
 
 @app.get("/api/graph")
@@ -194,22 +309,25 @@ def graph():
     with get_driver() as driver:
         node_recs, _, _ = driver.execute_query(
             """
-            MATCH (n) WHERE any(l IN labels(n) WHERE l IN $labels)
-            RETURN elementId(n) AS eid, labels(n)[0] AS label,
+            MATCH (n:Verigraph {verigraph_namespace: $graph_namespace})
+            WHERE any(l IN labels(n) WHERE l IN $labels)
+            RETURN elementId(n) AS eid,
+                   head([l IN labels(n) WHERE l IN $labels]) AS label,
                    coalesce(n.id, n.name) AS key,
                    coalesce(n.title, n.name, n.text, n.id) AS caption,
                    properties(n) AS props
             """,
-            labels=OUR_LABELS, database_=DATABASE,
+            labels=OUR_LABELS, graph_namespace=GRAPH_NAMESPACE, database_=DATABASE,
         )
         edge_recs, _, _ = driver.execute_query(
             """
-            MATCH (a)-[r]->(b)
+            MATCH (a:Verigraph {verigraph_namespace: $graph_namespace})-[r]->
+                  (b:Verigraph {verigraph_namespace: $graph_namespace})
             WHERE any(l IN labels(a) WHERE l IN $labels)
               AND any(l IN labels(b) WHERE l IN $labels)
             RETURN elementId(a) AS src, elementId(b) AS dst, type(r) AS rel
             """,
-            labels=OUR_LABELS, database_=DATABASE,
+            labels=OUR_LABELS, graph_namespace=GRAPH_NAMESPACE, database_=DATABASE,
         )
     return {
         "nodes": [dict(r) for r in node_recs],
@@ -224,149 +342,221 @@ def evidence():
 
 
 class RunBody(BaseModel):
-    params: dict = {}
+    params: dict = Field(default_factory=dict)
+
+
+def _execute_and_curate(method_id: str, backend: str, params: dict) -> dict:
+    from app.workspace import active_method_guard
+
+    with active_method_guard(method_id):
+        record = execute(method_id, backend, params=params)
+        curate(record)
+        try:  # best-effort mirror of both the run and authoritative workspace state
+            from app.butterbase import sync_workspace
+
+            sync_workspace()
+        except Exception as exc:
+            record["butterbase_sync_error"] = type(exc).__name__
+        return record
 
 
 @app.post("/api/run/{method_id}")
-def run_method(method_id: str, backend: str = "auto", body: RunBody | None = None):
+async def run_method(
+    method_id: str,
+    request: Request,
+    backend: str = "auto",
+    body: RunBody | None = None,
+):
+    authorize_expensive_request(request, bucket="execution", default_limit=5)
     if backend not in ("auto", "local", "daytona"):
         raise HTTPException(400, "backend must be auto|local|daytona")
+    from app.validation import normalize_parameter_overrides, require_method_id
+
     try:
-        record = execute(method_id, backend, params=(body.params if body else None))
+        method_id = require_method_id(method_id)
+        params = normalize_parameter_overrides(body.params if body else {})
+        async with _execution_slots:
+            return await asyncio.to_thread(_execute_and_curate, method_id, backend, params)
     except NotImplementedError as e:
         raise HTTPException(404, str(e))
-    curate(record)
-    try:  # best-effort mirror to Butterbase run history
-        from app.butterbase import sync_run
-        sync_run(record)
-    except Exception as e:
-        record["butterbase_sync_error"] = str(e)
-    return record
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 def _ingest_paper_text(text: str) -> dict:
-    """Paper text -> LLM extraction -> files + graph + Butterbase mirror."""
-    import json as _json
-
-    from app.extract import EXTRACTED_DIR, PAPERS_DIR, extract_live_text
-    from app.graph import load_claim_relations, load_paper
+    """Paper text -> validated extraction -> atomic workspace + graph update."""
+    from app.extract import extract_live_text
+    from app.workspace import persist_paper_and_activate
 
     if len(text.strip()) < 200:
         raise HTTPException(400, "paper text too short — need at least the abstract and method section")
     data = extract_live_text(text)
-    pid = data["paper"]["id"]
+    result = persist_paper_and_activate(data, text)
+    workspace = result["workspace"]
+    if workspace.get("partial") or not workspace.get("ok"):
+        detail = workspace.get("message") or workspace.get("sync", {}).get(
+            "error", "workspace graph synchronization is pending recovery"
+        )
+        raise HTTPException(503, f"paper persisted but activation needs recovery: {detail}")
 
-    with open(os.path.join(PAPERS_DIR, f"{pid}.txt"), "w") as f:
-        f.write(text)
-    with open(os.path.join(EXTRACTED_DIR, f"{pid}.json"), "w") as f:
-        _json.dump(data, f, indent=2)
+    pid = result["paper_id"]
+    mirrors: dict[str, str] = {}
 
-    with get_driver() as driver, driver.session(database=DATABASE) as session:
-        session.execute_write(load_paper, data)
-        session.execute_write(load_claim_relations, data)
+    try:  # best-effort authoritative workspace snapshot
+        from app.butterbase import sync_workspace
 
-    try:  # best-effort mirror
-        from app.butterbase import upsert
-        upsert("papers", {"id": pid, "title": data["paper"]["title"],
-                          "year": data["paper"]["year"],
-                          "arxiv": data["paper"].get("arxiv"),
-                          "topic": data["paper"].get("topic"),
-                          "extraction": data})
-    except Exception:
-        pass
+        sync_workspace()
+        mirrors["butterbase"] = "synchronized"
+    except Exception as exc:
+        mirrors["butterbase"] = f"deferred: {type(exc).__name__}"
 
     try:
         from app.cognee_memory import remember_paper_sync
 
         remember_paper_sync(pid, data["paper"]["title"], text, data)
-    except Exception:
-        pass
+        mirrors["cognee"] = "synchronized"
+    except Exception as exc:
+        mirrors["cognee"] = f"deferred: {type(exc).__name__}"
 
-    return {"paper_id": pid, "title": data["paper"]["title"],
-            "claims": len(data["claims"]), "methods": len(data["methods"]),
-            "method_ids": [m["id"] for m in data["methods"]],
-            "relations": len(data.get("claim_relations", []))}
+    result["mirrors"] = mirrors
+    return result
 
 
 def _pdf_to_text(blob: bytes) -> str:
-    import io
+    """Parse an untrusted PDF outside the API process with hard resource caps."""
+    import signal
+    import subprocess
+    import tempfile
 
-    from pypdf import PdfReader
-    reader = PdfReader(io.BytesIO(blob))
-    # first ~12 pages carry abstract + method; keeps extraction prompt lean
-    return "\n".join(page.extract_text() or "" for page in reader.pages[:12])
+    worker = os.path.join(ROOT, "app", "pdf_extract.py")
+    env = {
+        name: os.environ[name]
+        for name in ("LANG", "LC_ALL", "PATH", "SYSTEMROOT", "TEMP", "TMP", "TMPDIR")
+        if name in os.environ
+    }
+    env.update({"PYTHONIOENCODING": "utf-8", "PYTHONDONTWRITEBYTECODE": "1"})
+    with tempfile.TemporaryDirectory(prefix="verigraph-pdf-") as directory:
+        stdout_path = os.path.join(directory, "stdout")
+        stderr_path = os.path.join(directory, "stderr")
+        with open(stdout_path, "w+b") as stdout_file, open(stderr_path, "w+b") as stderr_file:
+            proc = subprocess.Popen(
+                [sys.executable, "-I", worker],
+                stdin=subprocess.PIPE,
+                stdout=stdout_file,
+                stderr=stderr_file,
+                env=env,
+                start_new_session=True,
+            )
+            try:
+                proc.communicate(input=blob, timeout=45)
+            except subprocess.TimeoutExpired as exc:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except (AttributeError, OSError):
+                    proc.kill()
+                proc.wait()
+                raise ValueError("PDF parsing exceeded 45 seconds") from exc
+            finally:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except (AttributeError, ProcessLookupError, OSError):
+                    pass
+            stdout_file.seek(0)
+            text = stdout_file.read(2_000_001).decode("utf-8", errors="replace")
+    if proc.returncode != 0:
+        raise ValueError("PDF parser rejected the document")
+    if len(text) > 2_000_000:
+        raise ValueError("extracted PDF text exceeds the 2 MB limit")
+    return text
 
 
 class Upload(BaseModel):
-    text: str
+    text: str = Field(min_length=200, max_length=2_000_000)
 
 
 @app.post("/api/upload")
-def upload(body: Upload):
-    return _ingest_paper_text(body.text)
+async def upload(body: Upload, request: Request):
+    authorize_expensive_request(request, bucket="ingestion", default_limit=5)
+    async with _ingestion_slots:
+        return await asyncio.to_thread(_ingest_paper_text, body.text)
 
 
 @app.post("/api/upload-file")
-async def upload_file(file: UploadFile):
-    blob = await file.read()
-    if len(blob) > 25_000_000:
-        raise HTTPException(400, "file too large (25 MB max)")
-    if (file.filename or "").lower().endswith(".pdf") or blob[:4] == b"%PDF":
-        text = _pdf_to_text(blob)
-    else:
-        text = blob.decode(errors="replace")
-    return _ingest_paper_text(text)
+async def upload_file(request: Request, file: UploadFile):
+    authorize_expensive_request(request, bucket="ingestion", default_limit=5)
+    async with _ingestion_slots:
+        blob = await file.read(25_000_001)
+        if len(blob) > 25_000_000:
+            raise HTTPException(413, "file too large (25 MB max)")
+        if (file.filename or "").lower().endswith(".pdf") or blob[:4] == b"%PDF":
+            try:
+                text = await asyncio.to_thread(_pdf_to_text, blob)
+            except Exception as e:
+                raise HTTPException(400, f"could not parse PDF: {e}")
+        else:
+            text = blob.decode(errors="replace")
+        if len(text) > 2_000_000:
+            raise HTTPException(413, "extracted paper text exceeds the 2 MB limit")
+        return await asyncio.to_thread(_ingest_paper_text, text)
 
 
 class ArxivUpload(BaseModel):
-    url: str
+    url: str = Field(min_length=1, max_length=500)
 
 
 @app.post("/api/upload-arxiv")
-def upload_arxiv(body: ArxivUpload):
+async def upload_arxiv(body: ArxivUpload, request: Request):
+    authorize_expensive_request(request, bucket="ingestion", default_limit=5)
     from app.arxiv import fetch_arxiv_text, parse_arxiv_id
 
     try:
         parse_arxiv_id(body.url)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    try:
-        text = fetch_arxiv_text(body.url)
-    except Exception as e:
-        raise HTTPException(502, f"arXiv fetch failed: {e}")
-    return _ingest_paper_text(text)
+    async with _ingestion_slots:
+        try:
+            text = await asyncio.to_thread(fetch_arxiv_text, body.url)
+        except Exception as e:
+            raise HTTPException(502, f"arXiv fetch failed: {e}")
+        return await asyncio.to_thread(_ingest_paper_text, text)
 
 
 CONDUCT_PIPE = os.path.join(ROOT, "pipelines", "paper-orchestrator.pipe")
 
 
 class Conduct(BaseModel):
-    message: str
+    message: str = Field(min_length=1, max_length=4_000)
 
 
 def _method_exists(method_id: str) -> bool:
     with get_driver() as driver:
         recs, _, _ = driver.execute_query(
-            "MATCH (m:Method {id: $id}) RETURN count(m) AS c",
-            id=method_id, database_=DATABASE)
+            "MATCH (m:Method:Verigraph {id: $id, verigraph_namespace: $graph_namespace}) "
+            "RETURN count(m) AS c",
+            id=method_id, graph_namespace=GRAPH_NAMESPACE, database_=DATABASE)
         return recs[0]["c"] == 1
 
 
 @app.post("/api/conduct")
-async def conduct(body: Conduct):
+async def conduct(body: Conduct, request: Request):
     """Conductor workflow: investigator → execute → reporter.
 
     Uses RocketRide specialist pipes when the engine is up; falls back to
     graph-grounded Python audit + canonical execute spine otherwise."""
     from app.grounded_qa import agent_unavailable, answer_brief, answer_conduct
 
+    authorize_expensive_request(request, bucket="agent", default_limit=20)
     if os.environ.get("GROUNDED_AGENTS", "").lower() in ("1", "true", "yes"):
-        return answer_conduct()
+        async with _execution_slots:
+            return await asyncio.to_thread(answer_conduct)
 
     steps = []
+    investigation_prompt = f"{INVESTIGATE_PROMPT}\n\nUser objective: {body.message.strip()}"
 
     # STEP 1 — Investigator (checks V1/V3/V4, retry once)
-    parsed = _parse_p2r_block(await _agent_chat(INVESTIGATE_PIPE, INVESTIGATE_PROMPT))
+    parsed = _parse_p2r_block(await _agent_chat(INVESTIGATE_PIPE, investigation_prompt))
     if agent_unavailable(parsed.get("prose") or ""):
         return await asyncio.to_thread(answer_conduct)
     payload = parsed.get("payload") or {}
@@ -385,9 +575,13 @@ async def conduct(body: Conduct):
         with get_driver() as driver:
             recs, _, _ = driver.execute_query(
                 """
-                MATCH (m:Method) WHERE NOT (:Run)-[:IMPLEMENTS]->(m)
+                MATCH (m:Method:Verigraph {verigraph_namespace: $graph_namespace})
+                WHERE NOT EXISTS {
+                  MATCH (:Run:Verigraph {verigraph_namespace: $graph_namespace})
+                        -[:IMPLEMENTS]->(m)
+                }
                 RETURN m.id AS id LIMIT 1
-                """, database_=DATABASE)
+                """, graph_namespace=GRAPH_NAMESPACE, database_=DATABASE)
             method_id = recs[0]["id"] if recs else "wilson2017-m1"
         steps.append(f"[investigator] ✗ id check failed twice — fell back to "
                      f"deterministic pick: {method_id}")
@@ -397,13 +591,8 @@ async def conduct(body: Conduct):
                      f"recommended {method_id}")
 
     # STEP 2 — Executor: canonical spine (codegen -> sandbox -> curate)
-    record = await asyncio.to_thread(execute, method_id, "auto")
-    await asyncio.to_thread(curate, record)
-    try:
-        from app.butterbase import sync_run
-        sync_run(record)
-    except Exception:
-        pass
+    async with _execution_slots:
+        record = await asyncio.to_thread(_execute_and_curate, method_id, "auto", {})
     checks = (record.get("result") or {}).get("claim_checks", [])
     if record.get("error"):
         steps.append(f"[executor] ✗ {record['run_id']} failed: {record['error']} "
@@ -437,13 +626,14 @@ async def conduct(body: Conduct):
 
 
 class Ask(BaseModel):
-    question: str
+    question: str = Field(min_length=1, max_length=4_000)
 
 
 # One shared RocketRide connection; one cached task token per .pipe file.
 # The engine refuses a second `use` of a running pipeline ("Pipeline is
 # already running"), so we start each once and attach on later requests.
-_rr: dict = {"client": None, "tokens": {}}
+_rr: dict = {"client": None, "tokens": {}, "chat_locks": {}}
+_rr_guard = asyncio.Lock()
 
 
 async def _pipeline_token(pipe_path: str):
@@ -451,59 +641,144 @@ async def _pipeline_token(pipe_path: str):
 
     from rocketride import RocketRideClient
 
-    if _rr["client"] is None:
-        client = RocketRideClient()
-        await client.connect()
-        _rr["client"] = client
-    client = _rr["client"]
-    if pipe_path not in _rr["tokens"]:
-        try:
-            result = await client.use(filepath=pipe_path)
-            _rr["tokens"][pipe_path] = result["token"]
-        except RuntimeError as e:
-            if "already running" not in str(e).lower():
-                raise
-            with open(pipe_path) as f:
-                project_id = _json.load(f)["project_id"]
-            token = await client.get_task_token(project_id, "chat_1")
-            if not token:
-                raise
-            _rr["tokens"][pipe_path] = token
-    return client, _rr["tokens"][pipe_path]
+    async with _rr_guard:
+        if _rr["client"] is None:
+            client = RocketRideClient()
+            await client.connect()
+            _rr["client"] = client
+        client = _rr["client"]
+        if pipe_path not in _rr["tokens"]:
+            try:
+                result = await client.use(filepath=pipe_path)
+                _rr["tokens"][pipe_path] = result["token"]
+            except RuntimeError as e:
+                if "already running" not in str(e).lower():
+                    raise
+                if _pipeline_uses_graph(pipe_path):
+                    raise RuntimeError(
+                        "A pre-existing graph pipeline cannot be trusted after credential changes; "
+                        "restart RocketRide before enabling it."
+                    ) from e
+                with open(pipe_path) as f:
+                    project_id = _json.load(f)["project_id"]
+                token = await client.get_task_token(project_id, "chat_1")
+                if not token:
+                    raise
+                _rr["tokens"][pipe_path] = token
+        _rr["chat_locks"].setdefault(pipe_path, asyncio.Lock())
+        return client, _rr["tokens"][pipe_path]
 
 
-def _core_counts() -> tuple:
-    with get_driver() as driver:
-        recs, _, _ = driver.execute_query(
-            "RETURN count { MATCH (p:Paper) } AS p, count { MATCH (r:Run) } AS r",
-            database_=DATABASE)
-        return recs[0]["p"], recs[0]["r"]
+def _pipeline_uses_graph(pipe_path: str) -> bool:
+    """Fail closed when a pipeline is malformed or its providers are unknown."""
+    import json as _json
+
+    try:
+        with open(pipe_path, encoding="utf-8") as handle:
+            pipeline = _json.load(handle)
+    except (OSError, ValueError):
+        return True
+    nodes = (
+        pipeline.get("components")
+        or pipeline.get("pipeline")
+        or pipeline.get("nodes")
+        or []
+    )
+    if not isinstance(nodes, list):
+        return True
+    return any(
+        isinstance(node, dict) and node.get("provider") == "db_neo4j"
+        for node in nodes
+    )
+
+
+def _assert_rocketride_readonly_credentials() -> None:
+    """Prove the RocketRide Neo4j identity cannot execute mutation clauses."""
+    from neo4j import GraphDatabase
+    from neo4j.exceptions import ClientError
+
+    enabled = os.environ.get("VERIGRAPH_ENABLE_ROCKETRIDE_DB", "").strip().lower()
+    if enabled not in {"1", "true", "yes", "on"}:
+        raise RuntimeError("RocketRide graph access is disabled")
+
+    uri = os.environ.get("ROCKETRIDE_NEO4J_URI", "").strip()
+    username = os.environ.get("ROCKETRIDE_NEO4J_READONLY_USER", "").strip()
+    password = os.environ.get("ROCKETRIDE_NEO4J_READONLY_PASSWORD", "")
+    database = os.environ.get("ROCKETRIDE_NEO4J_DATABASE", "").strip()
+    graph_namespace = os.environ.get("ROCKETRIDE_GRAPH_NAMESPACE", "").strip()
+    if not uri or not username or not password or not database or not graph_namespace:
+        raise RuntimeError("Dedicated RocketRide read-only credentials are not configured")
+    if username == os.environ.get("NEO4J_USERNAME", "").strip():
+        raise RuntimeError("RocketRide must not reuse the Verigraph write identity")
+    if graph_namespace != GRAPH_NAMESPACE:
+        raise RuntimeError(
+            "ROCKETRIDE_GRAPH_NAMESPACE must match VERIGRAPH_GRAPH_NAMESPACE"
+        )
+
+    mutation_probes = (
+        "CREATE (n:VerigraphReadonlyProbe) RETURN count(n) AS c",
+        "MATCH (n:Verigraph) WITH n LIMIT 1 SET n.__readonly_probe = true RETURN count(n) AS c",
+        "MATCH (n:Verigraph) WITH n LIMIT 1 DETACH DELETE n RETURN count(*) AS c",
+        "MATCH (a:Verigraph), (b:Verigraph) WITH a, b LIMIT 1 "
+        "CREATE (a)-[:VERIGRAPH_READONLY_PROBE]->(b) RETURN count(*) AS c",
+    )
+    driver = GraphDatabase.driver(uri, auth=(username, password), connection_timeout=10)
+    try:
+        driver.verify_connectivity()
+        with driver.session(database=database) as session:
+            foreign = session.run(
+                """
+                MATCH (n:Verigraph)
+                WHERE n.verigraph_namespace IS NULL
+                   OR n.verigraph_namespace <> $graph_namespace
+                RETURN count(n) AS count
+                """,
+                graph_namespace=GRAPH_NAMESPACE,
+            ).single()
+        if foreign is None or int(foreign["count"]) != 0:
+            raise RuntimeError(
+                "RocketRide database contains Verigraph nodes outside the configured namespace"
+            )
+        for cypher in mutation_probes:
+            with driver.session(database=database) as session:
+                tx = session.begin_transaction()
+                try:
+                    tx.run(cypher).consume()
+                except ClientError as exc:
+                    if exc.code != "Neo.ClientError.Security.Forbidden":
+                        raise RuntimeError("RocketRide read-only verification failed") from exc
+                else:
+                    raise RuntimeError("RocketRide Neo4j identity permits graph mutations")
+                finally:
+                    try:
+                        tx.rollback()
+                    except Exception:
+                        pass
+    finally:
+        driver.close()
 
 
 async def _agent_chat(pipe_path: str, question_text: str) -> str:
     from rocketride.schema import Question
 
-    # LLM-generated Cypher has (rarely) emitted write clauses despite the
-    # read-only contract; snapshot core counts so we can self-heal from disk.
     try:
-        before = _core_counts()
-    except Exception:
-        before = None
-    try:
+        if _pipeline_uses_graph(pipe_path):
+            await asyncio.to_thread(_assert_rocketride_readonly_credentials)
         client, token = await _pipeline_token(pipe_path)
         q = Question()
         q.addQuestion(question_text)
-        response = await client.chat(token=token, question=q)
+        async with _rr["chat_locks"][pipe_path]:
+            response = await client.chat(token=token, question=q)
     except Exception as e:
         # drop the cached session so the next request reconnects fresh
         stale = _rr.pop("client", None)
-        _rr.update({"client": None, "tokens": {}})
+        _rr.update({"client": None, "tokens": {}, "chat_locks": {}})
         if stale is not None:
             try:
                 await stale.disconnect()
             except Exception:
                 pass
-        return f"(agent unavailable: {type(e).__name__}: {e})"
+        return f"(agent unavailable: {type(e).__name__})"
 
     answers = response.get("answers", [])
     if not answers:
@@ -513,19 +788,17 @@ async def _agent_chat(pipe_path: str, question_text: str) -> str:
                 break
     answer = answers[0] if answers else "(no answer from agent)"
 
-    if before is not None:
+    return answer
+
+
+async def close_rocketride_client():
+    stale = _rr.get("client")
+    _rr.update({"client": None, "tokens": {}, "chat_locks": {}})
+    if stale is not None:
         try:
-            after = _core_counts()
-            if after[0] < before[0] or after[1] < before[1]:
-                from app.restore import restore_all
-                restored = restore_all()
-                answer += (f"\n\n[graph guard] a generated query removed nodes "
-                           f"(papers {before[0]}→{after[0]}, runs {before[1]}→{after[1]}); "
-                           f"auto-restored {restored['papers']} papers + "
-                           f"{restored['runs']} runs from disk.")
+            await stale.disconnect()
         except Exception:
             pass
-    return answer
 
 
 def _parse_p2r_block(answer: str) -> dict:
@@ -562,7 +835,10 @@ async def ask(body: Ask, request: Request):
     from app.cognee_memory import is_enabled, recall_context
     from app.grounded_qa import agent_unavailable, answer_ask
 
+    authorize_expensive_request(request, bucket="agent", default_limit=20)
     question = body.question.strip()
+    if not question:
+        raise HTTPException(400, "question is required")
     memory = ""
     if is_enabled():
         memory = await recall_context(question)
@@ -576,7 +852,7 @@ async def ask(body: Ask, request: Request):
     answer = await _agent_chat(_pipe_path(), prompt)
     grounded = agent_unavailable(answer)
     if grounded:
-        answer = answer_ask(question)
+        answer = await asyncio.to_thread(answer_ask, question)
     if memory and not answer.startswith("[semantic") and not answer.startswith("**Cognee"):
         answer = f"[semantic memory ✓]\n\n{answer}"
     try:
@@ -585,25 +861,35 @@ async def ask(body: Ask, request: Request):
         visitor_id = request.query_params.get("visitor", "")
         session_id = (
             f"verigraph-{visitor_id}"
-            if re.fullmatch(r"[0-9a-f-]{36}", visitor_id, re.IGNORECASE)
+            if _VISITOR_ID.fullmatch(visitor_id)
             else None
         )
-        log_session_qa_sync(question, answer, session_id=session_id)
+        await asyncio.to_thread(
+            log_session_qa_sync,
+            question,
+            answer,
+            session_id=session_id,
+        )
     except Exception:
         pass
     return {"answer": answer, "memory_used": bool(memory), "grounded": grounded}
 
 
 class MemoryRecall(BaseModel):
-    query: str
+    query: str = Field(min_length=1, max_length=4_000)
     paper_id: str | None = None
-    top_k: int = 5
+    top_k: int = Field(default=5, ge=1, le=20)
 
 
 @app.post("/api/memory/recall")
-async def memory_recall(body: MemoryRecall):
+async def memory_recall(body: MemoryRecall, request: Request):
     from app.cognee_memory import is_enabled, recall
 
+    authorize_expensive_request(request, bucket="agent", default_limit=20)
+    if body.paper_id:
+        from app.validation import require_paper_id
+
+        require_paper_id(body.paper_id)
     if not is_enabled():
         raise HTTPException(
             501,
@@ -620,15 +906,20 @@ EXECUTE_PIPE = os.path.join(ROOT, "pipelines", "paper-execute.pipe")
 
 
 class ExecuteBody(BaseModel):
-    method_id: str
-    params: dict = {}
+    method_id: str = Field(min_length=1, max_length=96)
+    params: dict = Field(default_factory=dict)
 
 
 @app.post("/api/execute")
-async def execute_agent(body: ExecuteBody):
+async def execute_agent(body: ExecuteBody, request: Request):
     """Executor sub-agent path: agent drives POST /api/run via its HTTP tool."""
-    prompt = (f"Run method {body.method_id} now"
-              + (f" with parameter overrides {body.params}" if body.params else "")
+    authorize_expensive_request(request, bucket="agent", default_limit=20)
+    from app.validation import normalize_parameter_overrides, require_method_id
+
+    method_id = require_method_id(body.method_id)
+    params = normalize_parameter_overrides(body.params)
+    prompt = (f"Run method {method_id} now"
+              + (f" with parameter overrides {params}" if params else "")
               + ". Use your HTTP tool against the canonical API and report exactly.")
     answer = await _agent_chat(EXECUTE_PIPE, prompt)
     parsed = _parse_p2r_block(answer)
@@ -642,29 +933,37 @@ BRIEF_PROMPT = ("Generate the evidence brief covering all experiment runs: valid
 
 
 @app.post("/api/investigate")
-async def investigate():
+async def investigate(request: Request):
     from app.grounded_qa import agent_unavailable, answer_investigate
 
+    authorize_expensive_request(request, bucket="agent", default_limit=20)
     answer = await _agent_chat(INVESTIGATE_PIPE, INVESTIGATE_PROMPT)
     parsed = _parse_p2r_block(answer)
     if agent_unavailable(parsed.get("prose") or answer):
-        return answer_investigate()
+        return await asyncio.to_thread(answer_investigate)
     return {"answer": parsed["prose"] or answer, **{k: parsed[k] for k in
             ("agent", "status", "payload", "header_present")}}
 
 
 @app.post("/api/brief")
-async def brief():
+async def brief(request: Request):
     from app.grounded_qa import agent_unavailable, answer_brief
 
-    with get_driver() as driver:
-        recs, _, _ = driver.execute_query(
-            "MATCH (r:Run) RETURN count(r) AS c", database_=DATABASE)
-        if recs[0]["c"] == 0:
-            raise HTTPException(409, "no runs in the graph yet — run a method first")
+    authorize_expensive_request(request, bucket="agent", default_limit=20)
+    def _run_count() -> int:
+        with get_driver() as driver:
+            recs, _, _ = driver.execute_query(
+                "MATCH (r:Run:Verigraph {verigraph_namespace: $graph_namespace}) "
+                "RETURN count(r) AS c",
+                graph_namespace=GRAPH_NAMESPACE,
+                database_=DATABASE)
+            return recs[0]["c"]
+
+    if await asyncio.to_thread(_run_count) == 0:
+        raise HTTPException(409, "no runs in the graph yet — run a method first")
     answer = await _agent_chat(BRIEF_PIPE, BRIEF_PROMPT)
     parsed = _parse_p2r_block(answer)
     if agent_unavailable(parsed.get("prose") or answer):
-        return answer_brief()
+        return await asyncio.to_thread(answer_brief)
     return {"answer": parsed["prose"] or answer, **{k: parsed[k] for k in
             ("agent", "status", "payload", "header_present")}}

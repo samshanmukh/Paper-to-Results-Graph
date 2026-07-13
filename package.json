@@ -1,0 +1,12 @@
+{
+  "name": "verigraph-edge-checks",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build:edge": "tsc --outDir .tsbuild --noEmit false",
+    "test:edge": "npm run build:edge && node --test butterbase/verigraph_api.test.cjs"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

@@ -59,12 +59,21 @@
 			"provider": "tool_http_request",
 			"config": {
 				"type": "tool_http_request",
-				"allowGET": true,
+				"allowGET": false,
 				"allowPOST": true,
 				"allowPUT": false,
 				"allowPATCH": false,
 				"allowDELETE": false,
-				"urlWhitelist": ["^http://127\\.0\\.0\\.1:8787/api/.*$", "^http://localhost:8787/api/.*$"]
+				"allowHEAD": false,
+				"allowOPTIONS": false,
+				"urlWhitelist": [
+					{
+						"whitelistPattern": "^http://127\\.0\\.0\\.1:8787/api/run/[a-z0-9]+(?:-[a-z0-9]+)*$"
+					}
+				],
+				"rateLimitPerSecond": 1,
+				"rateLimitPerMinute": 5,
+				"maxConcurrentRequests": 1
 			},
 			"control": [{ "classType": "tool", "from": "agent_rocketride_1" }],
 			"ui": { "position": { "x": 500, "y": 380 }, "measured": { "width": 150, "height": 40 } }

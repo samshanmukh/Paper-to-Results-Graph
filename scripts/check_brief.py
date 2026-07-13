@@ -10,7 +10,7 @@ import sys
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from app.db import DATABASE, get_driver
+from app.db import DATABASE, GRAPH_NAMESPACE, get_driver
 
 BASE = os.environ.get("P2R_BASE", "http://127.0.0.1:8787")
 
@@ -34,8 +34,9 @@ def main() -> int:
     else:
         with get_driver() as driver:
             recs, _, _ = driver.execute_query(
-                "MATCH (r:Run) WHERE r.id IN $ids RETURN count(r) AS c",
-                ids=runs, database_=DATABASE)
+                "MATCH (r:Run:Verigraph {verigraph_namespace: $graph_namespace}) "
+                "WHERE r.id IN $ids RETURN count(r) AS c",
+                ids=runs, graph_namespace=GRAPH_NAMESPACE, database_=DATABASE)
             if recs[0]["c"] != len(runs):
                 failures.append("U4_no_hallucinated_ids: some run ids not in graph")
     headline = payload.get("headline") or ""

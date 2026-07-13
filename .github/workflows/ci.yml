@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [master, Dileep]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install core dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+      - name: Check dependency consistency
+        run: python -m pip check
+      - name: Compile Python sources
+        run: python -m compileall -q app scripts papers/impl tests
+      - name: Lint for invalid and undefined Python
+        run: python -m ruff check app scripts tests --select E9,F63,F7,F82
+      - name: Run unit and integration tests
+        run: python -m pytest -q tests
+      - name: Run legacy integration helper tests
+        run: python -m unittest scripts/test_brightdata.py scripts/test_cognee_memory.py -v
+      - name: Validate bundled extraction contracts
+        run: python app/extract.py --mock
+      - name: Validate pipeline and schema JSON
+        run: python -c "import glob,json; [json.load(open(path, encoding='utf-8')) for path in glob.glob('pipelines/*.pipe') + ['butterbase/schema.json']]"
+
+  edge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:edge

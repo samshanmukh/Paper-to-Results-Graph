@@ -1014,18 +1014,32 @@ const consoleLogWrap = document.getElementById("console-log-wrap");
 const chatArea = document.getElementById("chat-area");
 
 const ts = () => new Date().toTimeString().slice(0,8);
+const escapeHtml = value => String(value ?? "")
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+  .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 function log(msg, cls=""){
   logEl.querySelector(".cursor")?.remove();
-  logEl.innerHTML += (logEl.dataset.used ? "\n" : "") +
-    `<span class="t-faint">${ts()} </span><span class="${cls}">${msg}</span>`;
-  if(running) logEl.innerHTML += `<span class="cursor">▌</span>`;
+  if(logEl.dataset.used) logEl.append(document.createTextNode("\n"));
+  const timestamp = document.createElement("span");
+  timestamp.className = "t-faint";
+  timestamp.textContent = `${ts()} `;
+  const message = document.createElement("span");
+  message.className = String(cls).split(/\s+/).filter(name=>/^[a-z0-9_-]+$/i.test(name)).join(" ");
+  message.textContent = String(msg);
+  logEl.append(timestamp, message);
+  if(running){
+    const cursor = document.createElement("span");
+    cursor.className = "cursor";
+    cursor.textContent = "▌";
+    logEl.append(cursor);
+  }
   logEl.dataset.used = 1;
   logEl.scrollTop = logEl.scrollHeight;
   document.getElementById("console-badge").textContent = logEl.dataset.used ? " ·" : "";
   consoleLogWrap.style.display = "block";
   consoleEmpty.style.display = "none";
 }
-function clearLog(){ logEl.innerHTML=""; delete logEl.dataset.used; document.getElementById("console-badge").textContent=""; }
+function clearLog(){ logEl.replaceChildren(); delete logEl.dataset.used; document.getElementById("console-badge").textContent=""; }
 
 const wrap = (s, w) => {
   const words = (s||"").split(" "); const lines=[]; let cur="";
@@ -1366,7 +1380,11 @@ function renderParams(){
   grid.classList.add("show"); head.classList.add("show");
   for(const p of methodParams){
     const label = document.createElement("label");
-    label.innerHTML = `<span class="pname" title="${p.description||p.name}">${p.name}</span>`;
+    const name = document.createElement("span");
+    name.className = "pname";
+    name.title = p.description || p.name;
+    name.textContent = p.name;
+    label.appendChild(name);
     const input = document.createElement("input");
     input.value = p.default;
     input.dataset.name = p.name; input.dataset.def = p.default;
@@ -1441,13 +1459,14 @@ function renderPapersList(){
   list.innerHTML = workspacePapers.map(p=>{
     const sel = selectedPaper === p.id ? " selected" : "";
     const year = p.year ? ` · ${p.year}` : "";
-    return `<div class="paper-row${sel}" data-paper-id="${p.id}">
+    const paperId = escapeHtml(p.id);
+    return `<div class="paper-row${sel}" data-paper-id="${paperId}">
       <div class="paper-row-main">
-        <div class="paper-row-id">${p.id}${year}</div>
-        <div class="paper-row-title">${(p.title||"").replace(/</g,"&lt;")}</div>
-        <div class="paper-row-meta">${p.claims} claims · ${p.methods} methods</div>
+        <div class="paper-row-id">${paperId}${escapeHtml(year)}</div>
+        <div class="paper-row-title">${escapeHtml(p.title)}</div>
+        <div class="paper-row-meta">${Number(p.claims)||0} claims · ${Number(p.methods)||0} methods</div>
       </div>
-      <button type="button" class="btn-remove" data-remove-paper="${p.id}" title="Remove from workspace">✕</button>
+      <button type="button" class="btn-remove" data-remove-paper="${paperId}" title="Remove from workspace">✕</button>
     </div>`;
   }).join("");
   list.querySelectorAll("[data-remove-paper]").forEach(btn=>{
@@ -1527,7 +1546,7 @@ async function removePaper(paperId){
       await refreshWorkspaceMeta();
       await loadGraph();
       await loadEvidence();
-      chatArea.innerHTML = `<div class="chat-bubble agent">Removed <b>${paperId}</b> from this browser session. Shared demo data was not changed.</div>`;
+      setChatMessage(`Removed ${paperId} from this browser session. Shared demo data was not changed.`);
       return;
     }
     const res = await fetch(`/api/workspace/papers/${encodeURIComponent(paperId)}`, {method:"DELETE"});
@@ -1540,9 +1559,9 @@ async function removePaper(paperId){
       consoleEmpty.style.display = "block";
       document.getElementById("run-btn").disabled = true;
     }
-    chatArea.innerHTML = `<div class="chat-bubble agent">${r.empty
+    setChatMessage(r.empty
       ? "Workspace is empty. Add a paper or load the demo."
-      : `Removed <b>${paperId}</b> — ${r.papers} paper${r.papers!==1?"s":""} remain.`}</div>`;
+      : `Removed ${paperId} — ${r.papers} paper${r.papers!==1?"s":""} remain.`);
     await refreshWorkspaceMeta();
     await loadGraph();
     await loadEvidence();
@@ -1569,7 +1588,12 @@ function resetUIState(agentMsg){
   document.getElementById("run-btn").classList.remove("running","done");
   document.getElementById("run-btn").textContent = "▶ RUN THIS METHOD";
   document.getElementById("run-btn").disabled = true;
-  chatArea.innerHTML = `<div class="chat-bubble agent">${agentMsg}</div>`;
+  setChatMessage(agentMsg);
+}
+
+function setChatMessage(message){
+  chatArea.replaceChildren();
+  addBubble("agent", String(message));
 }
 
 async function loadEvidence(){
@@ -1585,16 +1609,17 @@ async function loadEvidence(){
   document.getElementById("evidence").innerHTML = rows.map(r=>{
     const v = r.evidence.startsWith("VALIDATES") ? "validates"
             : r.evidence.startsWith("REFUTES") ? "refutes" : "none";
-    if(v !== "none") validated++;
+    const provisional = Boolean(r.provisional);
+    if(v === "validates" && !provisional) validated++;
     const badge = v==="none" ? `<span class="ev-badge none">no runs yet</span>`
-               : `<span class="ev-badge ${v}">${v.toUpperCase()}</span>`;
+               : `<span class="ev-badge ${v}">${v.toUpperCase()}${provisional ? " · PROVISIONAL" : ""}</span>`;
     const metric = v==="none" ? "" :
-      `<div class="ev-metric">${r.evidence.replace(/^(VALIDATES|REFUTES) by /,"")}</div>`;
+      `<div class="ev-metric">${escapeHtml(r.evidence.replace(/^(VALIDATES|REFUTES) by /,""))}</div>`;
     const changed = lastEvidence[r.claim] !== undefined && lastEvidence[r.claim] !== r.evidence;
     lastEvidence[r.claim] = r.evidence;
     return `<div class="ev-card ${v!=="none"?"validated":""} ${changed?"flash":""}">
-      <div class="ev-card-top"><span class="ev-id">${r.claim}</span>${badge}</div>
-      <div class="ev-text">${(r.text||"").replace(/</g,"&lt;")}</div>${metric}</div>`;
+      <div class="ev-card-top"><span class="ev-id">${escapeHtml(r.claim)}</span>${badge}</div>
+      <div class="ev-text">${escapeHtml(r.text)}</div>${metric}</div>`;
   }).join("");
   updateEvidenceCounter(validated, rows.length);
 }
@@ -1604,15 +1629,15 @@ document.getElementById("run-btn").addEventListener("click", async ()=>{
   await runMethodAndWait();
 });
 
-const mdLite = s => s
-  .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+const mdLite = s => String(s ?? "")
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
   .replace(/\*\*([^*]+)\*\*/g,"<b>$1</b>")
   .replace(/`([^`]+)`/g,"<code>$1</code>");
 
-function addBubble(role, html){
+function addBubble(role, content){
   const div = document.createElement("div");
   div.className = "chat-bubble " + role;
-  div.innerHTML = html;
+  div.innerHTML = mdLite(content);
   chatArea.appendChild(div);
   chatArea.scrollTop = chatArea.scrollHeight;
   return div;
@@ -1623,7 +1648,7 @@ async function ask(q){
   if(!q) return;
   document.getElementById("ask-input").value = "";
   setTab("ask");
-  addBubble("user", mdLite(q));
+  addBubble("user", q);
   const thinking = document.createElement("div");
   thinking.className = "chat-thinking";
   thinking.textContent = "agent is querying Neo4j…";
@@ -1638,7 +1663,7 @@ async function ask(q){
       const r = JSON.parse(raw);
       let answer = r.answer || "";
       if(r.memory_used) answer = "[semantic memory ✓]\n\n" + answer;
-      addBubble("agent", mdLite(answer));
+      addBubble("agent", answer);
     }
     catch{ addBubble("agent", `agent error (HTTP ${res.status}): ${raw.slice(0,200)}`); }
   }catch(e){ thinking.remove();
@@ -1659,7 +1684,7 @@ const AGENT_LABEL = {conduct:"conductor", investigate:"investigator", brief:"rep
 document.querySelectorAll(".sug.act").forEach(s=>s.addEventListener("click", async ()=>{
   const act = s.dataset.act;
   setTab("ask");
-  addBubble("user", mdLite(s.textContent));
+  addBubble("user", s.textContent);
   const thinking = document.createElement("div");
   thinking.className = "chat-thinking";
   thinking.textContent = `${AGENT_LABEL[act]} agent: ${act==="conduct" ? "orchestrating specialists (investigate → run → brief, ~2 min)…" : "graph audit in progress…"}`;
@@ -1685,7 +1710,7 @@ document.querySelectorAll(".sug.act").forEach(s=>s.addEventListener("click", asy
     let answer = badge + (r.answer||"");
     if(r.payload?.recommended_method_id)
       answer += `\n\n→ recommended next run: **${r.payload.recommended_method_id}**`;
-    addBubble("agent", mdLite(answer));
+    addBubble("agent", answer);
     if(r.steps) r.steps.forEach(st=>log(st, st.includes("✓") ? "t-ok" : "t-bad"));
     if(act==="conduct"){ await loadGraph(true); await loadEvidence(); }
   }catch(e){
@@ -1708,10 +1733,16 @@ document.getElementById("zoom-fit").addEventListener("click", ()=>
 
 const backdrop = document.getElementById("modal-backdrop");
 const status = document.getElementById("upload-status");
-document.getElementById("upload-btn").addEventListener("click", ()=>{
-  document.getElementById("modal-title").textContent = "Add a paper";
-  backdrop.classList.add("show");
-});
+const uploadButton = document.getElementById("upload-btn");
+if(window.VERIGRAPH_FN_URL){
+  uploadButton.disabled = true;
+  uploadButton.title = "Paper ingestion requires the full local Verigraph backend";
+}else{
+  uploadButton.addEventListener("click", ()=>{
+    document.getElementById("modal-title").textContent = "Add a paper";
+    backdrop.classList.add("show");
+  });
+}
 document.getElementById("modal-close").addEventListener("click", ()=>backdrop.classList.remove("show"));
 backdrop.addEventListener("click", e=>{ if(e.target===backdrop) backdrop.classList.remove("show"); });
 
@@ -1795,8 +1826,10 @@ async function doNewWorkspace(){
     resetUIState(r.message || "New workspace ready. Add a paper via arXiv or PDF — I'll extract claims, methods, and conflicts into the graph.");
     setTab("evidence");
     await loadGraph(); await loadEvidence();
-    backdrop.classList.add("show");
-    document.getElementById("modal-title").textContent = "Add your first paper";
+    if(!window.VERIGRAPH_FN_URL){
+      backdrop.classList.add("show");
+      document.getElementById("modal-title").textContent = "Add your first paper";
+    }
   }catch(e){ alert("New workspace failed: "+e.message); }
   btn.disabled = false;
 }
@@ -1853,7 +1886,7 @@ async function runMethodAndWait(){
     } else {
       if(rec.replay){
         log("[runner ] replaying persisted run (Butterbase deploy — graph/evidence from stored history)", "t-warn");
-        setBbView("full");
+        setBbView(`run:${rec.run_id}`);
       }
       log(`[runner ] ${rec.run_id} [${rec.backend}] exit=${rec.exit_code} · ${rec.duration_s}s`, "");
       (rec.stdout||"").trim().split("\n").slice(0,-1).forEach(l=>log("  "+l, "t-dim"));
