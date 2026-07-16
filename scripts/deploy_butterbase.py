@@ -334,7 +334,14 @@ def smoke_test(fn_url: str, site_url: str) -> None:
     for attempt, url in enumerate([site_url, demo_url, site_url.rstrip("/") + "/config.js", site_url.rstrip("/") + "/advanced-features.js"]):
         for retry in range(5):
             try:
-                with urllib.request.urlopen(url, timeout=30) as resp:
+                frontend_req = urllib.request.Request(
+                    url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (compatible; VerigraphDeployCheck/1.0)",
+                        "Accept": "text/html,application/javascript,*/*",
+                    },
+                )
+                with urllib.request.urlopen(frontend_req, timeout=30) as resp:
                     body = resp.read(800).decode(errors="replace")
                 break
             except urllib.error.HTTPError as e:
