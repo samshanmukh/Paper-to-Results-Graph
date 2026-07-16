@@ -201,4 +201,43 @@ test.describe("Verigraph demo smoke", () => {
     await expect(page.locator("#run-btn")).toHaveText("▶ RUN THIS METHOD");
     await expect(page.locator("#run-btn")).toBeEnabled();
   });
+
+  test("keeps the selected method stable while its run is in flight", async ({ page }) => {
+    await page.route("**/api/run/**", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return route.fulfill({
+        json: {
+          run_id: "run-adam2014-m1-live",
+          method_id: "adam2014-m1",
+          backend: "daytona",
+          exit_code: 0,
+          duration_s: 0.25,
+          stdout: "",
+          result: {
+            metrics: { final_loss: 0.01 },
+            claim_checks: [{ claim_id: "adam2014-c1", verdict: "VALIDATES", detail: "ok" }],
+          },
+          error: null,
+          live: true,
+        },
+      });
+    });
+    await page.goto("/index.html");
+    await page.evaluate(() => {
+      selectMethod({
+        props: { id: "adam2014-m1", name: "Adam optimizer", params: "[]" },
+      });
+    });
+
+    await page.locator("#run-btn").click();
+    const switched = await page.evaluate(() =>
+      selectMethod({
+        props: { id: "wilson2017-m1", name: "Wilson counterexample", params: "[]" },
+      })
+    );
+
+    expect(switched).toBe(false);
+    await expect(page.locator("#m-paper")).toHaveText("METHOD · adam2014-m1");
+    await expect(page.locator("#run-btn")).toHaveText("✓ run complete");
+  });
 });

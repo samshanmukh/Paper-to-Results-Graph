@@ -20,6 +20,7 @@ import os
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -118,6 +119,19 @@ def cognee_env_vars() -> dict[str, str]:
         if v:
             out[k] = v
     return out
+
+
+def validate_production_config(allow_replay_only: bool = False) -> None:
+    """Refuse to publish a RUN-capable UI without execution compute."""
+    if os.environ.get("DAYTONA_API_KEY", "").strip():
+        return
+    if allow_replay_only:
+        print("  warning: DAYTONA_API_KEY missing; deploying an explicitly replay-only archive")
+        return
+    raise RuntimeError(
+        "DAYTONA_API_KEY is required for production method execution. "
+        "Set it in .env, or pass --allow-replay-only only for an intentional evidence archive."
+    )
 
 
 def inject_impl_bundle(code: str) -> str:
@@ -242,6 +256,38 @@ def smoke_test(fn_url: str, site_url: str) -> None:
             body = json.load(resp)
         print(f"  ✓ {route}: {str(body)[:80]}…")
 
+    health_req = urllib.request.Request(f"{fn_url}?route=health")
+    with urllib.request.urlopen(health_req, timeout=30) as resp:
+        health = json.load(resp)
+    if os.environ.get("DAYTONA_API_KEY", "").strip() and not health.get("live_run"):
+        raise RuntimeError("health check reports live_run=false despite configured Daytona execution")
+
+    graph_req = urllib.request.Request(f"{fn_url}?route=graph")
+    with urllib.request.urlopen(graph_req, timeout=30) as resp:
+        graph = json.load(resp)
+    method_ids = sorted({
+        str(node.get("props", {}).get("id", ""))
+        for node in graph.get("nodes", [])
+        if node.get("label") == "Method" and node.get("props", {}).get("id")
+    })
+    if not method_ids:
+        raise RuntimeError("production graph contains no runnable methods")
+    for method_id in method_ids:
+        payload = json.dumps({"params": {}}).encode()
+        req = urllib.request.Request(
+            f"{fn_url}?route=run/{urllib.parse.quote(method_id, safe='')}",
+            data=payload,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=240) as resp:
+            run = json.load(resp)
+        if run.get("error") or int(run.get("exit_code", 0)) != 0:
+            raise RuntimeError(f"production run smoke failed for {method_id}: {run.get('error')}")
+        if not run.get("result", {}).get("claim_checks"):
+            raise RuntimeError(f"production run smoke returned no verdicts for {method_id}")
+        print(f"  ✓ run/{method_id}: {run.get('run_id')} [{run.get('backend')}]")
+
     demo_url = site_url.rstrip("/") + "/demo/"
     for attempt, url in enumerate([site_url, demo_url, site_url.rstrip("/") + "/config.js", site_url.rstrip("/") + "/advanced-features.js"]):
         for retry in range(5):
@@ -270,11 +316,17 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--skip-sync", action="store_true", help="skip paper/run sync")
     ap.add_argument("--frontend-only", action="store_true", help="only redeploy static frontend")
+    ap.add_argument(
+        "--allow-replay-only",
+        action="store_true",
+        help="allow an intentional archive deploy without live method execution",
+    )
     args = ap.parse_args()
 
     print(f"Deploying Verigraph to Butterbase app {APP_ID}")
 
     if not args.frontend_only:
+        validate_production_config(args.allow_replay_only)
         print("[1/4] Schema")
         ensure_schema()
         if not args.skip_sync:
@@ -298,7 +350,7 @@ def main() -> int:
     print(f"  Site:    {site_url}")
     print(f"  Demo:    {site_url.rstrip('/')}/demo/")
     print(f"  API fn:  {fn_url}")
-    print("  Note: run/ask/upload need the full FastAPI backend; this deploy serves graph + evidence from Butterbase.")
+    print("  Live method execution and parameter propagation verified by production smoke tests.")
     return 0
 
 

@@ -397,6 +397,10 @@
     fetch("/api/health")
       .then((r) => r.json())
       .then((h) => {
+        window.verigraphExecution = {
+          live: !!h.live_run,
+          implementations: Number(h.impl_methods || 0),
+        };
         const badge = document.getElementById("live-run-badge");
         if (!badge) return;
         if (h.live_run) {
@@ -404,8 +408,9 @@
           badge.classList.add("live");
           badge.title = "Cloud RUN executes in Daytona sandboxes";
         } else {
-          badge.textContent = "Replay mode";
-          badge.title = "Cloud RUN replays persisted results (set DAYTONA_API_KEY for live)";
+          badge.textContent = "Evidence archive";
+          badge.classList.remove("live");
+          badge.title = "Live execution is unavailable; RUN can only load matching archived evidence";
         }
       })
       .catch(() => {});

@@ -1350,6 +1350,10 @@ async function animateGraph(nodes, edges, {initial=false, focusNew=false, existi
     });
     network.on("click", p=>{
       if(!p.nodes.length) return;
+      if(running || guidedDemoRunning){
+        showDemoToast("Wait for the current experiment to finish before changing methods.", 3000);
+        return;
+      }
       const n = nodesDS.get(p.nodes[0]);
       if(n._raw?.label==="Method") selectMethod(n._raw);
       else if(n._raw?.label==="Paper") selectPaper(n._raw, n.id);
@@ -1629,6 +1633,7 @@ document.getElementById("params-reset").addEventListener("click", ()=>{
 });
 
 function selectMethod(raw){
+  if(running) return false;
   selectedMethod = raw.props.id;
   selectedPaper = null;
   renderPapersList();
@@ -1642,6 +1647,7 @@ function selectMethod(raw){
   renderParams();
   document.getElementById("run-btn").disabled = running;
   syncDeepLink();
+  return true;
 }
 
 function selectPaper(raw, eid=null){
@@ -2207,6 +2213,12 @@ document.getElementById("zoom-fit").addEventListener("click", ()=>
 const backdrop = document.getElementById("modal-backdrop");
 const status = document.getElementById("upload-status");
 const IS_CLOUD_DEPLOY = !!window.VERIGRAPH_FN_URL;
+if(IS_CLOUD_DEPLOY){
+  consoleEmpty.innerHTML =
+    'Select a violet <span style="color:var(--purple);font-weight:600">◆ method node</span>, ' +
+    'adjust its parameters, then press <span style="font-family:\'IBM Plex Mono\',monospace">▶ RUN</span>. ' +
+    'Live executions update the evidence graph; archived results are explicitly labeled.';
+}
 
 function openAddPaperModal(){
   document.getElementById("modal-title").textContent = "Add a paper";
@@ -2400,10 +2412,13 @@ async function doLoadDemo(silent=false){
   }finally{ btn.disabled = false; }
 }
 
-async function runMethodAndWait(){
-  if(!selectedMethod || running) return false;
+async function runMethodAndWait(methodId=selectedMethod){
+  if(!methodId || running) return false;
+  const targetMethod = methodId;
   const btn = document.getElementById("run-btn");
   let succeeded = false;
+  const controller = new AbortController();
+  const timeout = setTimeout(()=>controller.abort(), 120000);
   running = true; btn.classList.add("running"); btn.classList.remove("done");
   btn.textContent = "● running…";
   setTab("console");
@@ -2411,17 +2426,17 @@ async function runMethodAndWait(){
   const params = collectParams();
   const pstr = Object.entries(params).map(([k,v])=>`${k}=${v}`).join(" ");
   if(window.VERIGRAPH_FN_URL){
-    log(`[runner ] requesting ${selectedMethod} from the cloud executor…`, "t-stage");
+    log(`[runner ] requesting ${targetMethod} from the cloud executor…`, "t-stage");
     if(pstr) log(`[params ] overriding: ${pstr}`, "t-warn");
   }else{
-    log(`[codegen] method ${selectedMethod} → experiment.py`, "t-stage");
+    log(`[codegen] method ${targetMethod} → experiment.py`, "t-stage");
     if(pstr) log(`[params ] overriding: ${pstr}`, "t-warn");
     log("[runner ] dispatching to sandbox (daytona)…", "t-stage");
   }
   const started = Date.now();
   try{
-    const res = await fetch(`/api/run/${selectedMethod}`, {method:"POST",
-      headers:{"Content-Type":"application/json"}, body:JSON.stringify({params})});
+    const res = await fetch(`/api/run/${targetMethod}`, {method:"POST",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify({params}), signal:controller.signal});
     const rec = await res.json();
     const dt = ((Date.now()-started)/1000).toFixed(1);
     if(!res.ok){
@@ -2443,9 +2458,13 @@ async function runMethodAndWait(){
       succeeded = true;
     }
   }catch(e){
-    log("[error  ] "+e, "t-bad");
+    log(e?.name === "AbortError"
+      ? "[error  ] Experiment timed out after 120 seconds. It is safe to retry."
+      : "[error  ] "+e, "t-bad");
   }finally{
+    clearTimeout(timeout);
     running = false;
+    logEl.querySelector(".cursor")?.remove();
     btn.classList.remove("running");
     btn.classList.toggle("done", succeeded);
     btn.textContent = succeeded ? "✓ run complete" : "▶ RUN THIS METHOD";
@@ -2482,7 +2501,7 @@ async function runGuidedDemo(){
     await pulseNode(methodEid, true);
 
     showDemoToast("Step 3 — Running experiment (GD vs Adam)…", 8000);
-    const ok = await runMethodAndWait();
+    const ok = await runMethodAndWait(DEMO_METHOD_ID);
     await pulseNode(methodEid, false);
     if(!ok){
       showDemoToast("Run failed — check Console tab for details", 5000);
