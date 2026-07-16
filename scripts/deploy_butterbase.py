@@ -138,13 +138,13 @@ def validate_production_config(allow_replay_only: bool = False) -> None:
 def inject_impl_bundle(code: str) -> str:
     """Embed curated papers/impl/*.py into the edge function for live Daytona runs."""
     bundle_path = os.path.join(ROOT, "butterbase", "impl_bundle.json")
-    if not os.path.isfile(bundle_path):
-        from app.research_tools import load_impl_bundle
-        bundle = load_impl_bundle()
-        with open(bundle_path, "w") as f:
-            json.dump(bundle, f)
-    with open(bundle_path) as f:
-        bundle_json = f.read().strip()
+    from app.research_tools import load_impl_bundle
+    bundle = load_impl_bundle()
+    if not bundle:
+        raise RuntimeError("no curated method implementations found for deployment")
+    with open(bundle_path, "w") as f:
+        json.dump(bundle, f)
+    bundle_json = json.dumps(bundle)
     marker = "const IMPL_BUNDLE: Record<string, string> = {};"
     replacement = f"const IMPL_BUNDLE: Record<string, string> = {bundle_json};"
     if marker not in code:

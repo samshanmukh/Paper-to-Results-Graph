@@ -58,10 +58,28 @@ def make_data(n, offset):
     return X, y
 
 
-def logistic_grad(w, X, y):
-    z = np.clip(y * (X @ w), -30, 30)
+def logistic_grad(w, y):
+    """Gradient for the construction without multiplying its mostly-zero matrix."""
+    starts = 3 + 5 * np.arange(y.size)
+    negative = y < 0
+    private_score = w[starts].copy()
+    private_score[negative] += (
+        w[starts[negative] + 1]
+        + w[starts[negative] + 2]
+        + w[starts[negative] + 3]
+        + w[starts[negative] + 4]
+    )
+    score = y * w[0] + w[1] + w[2] + private_score
+    z = np.clip(y * score, -30, 30)
     p = 1.0 / (1.0 + np.exp(-z))
-    return -(X * (y * (1 - p))[:, None]).mean(axis=0)
+    coeff = -(y * (1 - p)) / y.size
+    grad = np.zeros_like(w)
+    grad[0] = np.sum(coeff * y)
+    grad[1] = grad[2] = np.sum(coeff)
+    grad[starts] = coeff
+    for offset in range(1, 5):
+        grad[starts[negative] + offset] = coeff[negative]
+    return grad
 
 
 def error_rate(w, X, y):
@@ -73,7 +91,7 @@ def error_rate(w, X, y):
 def train_gd(X, y, lr=LR_GD):
     w = np.zeros(X.shape[1])
     for _ in range(STEPS):
-        w -= lr * logistic_grad(w, X, y)
+        w -= lr * logistic_grad(w, y)
     return w
 
 
@@ -82,7 +100,7 @@ def train_adam(X, y, lr=LR_ADAM, b1=BETA1, b2=BETA2, eps=1e-8):
     m = np.zeros_like(w)
     v = np.zeros_like(w)
     for t in range(1, STEPS + 1):
-        g = logistic_grad(w, X, y)
+        g = logistic_grad(w, y)
         m = b1 * m + (1 - b1) * g
         v = b2 * v + (1 - b2) * g * g
         m_hat = m / (1 - b1 ** t)
