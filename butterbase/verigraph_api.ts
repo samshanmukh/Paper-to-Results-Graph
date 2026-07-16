@@ -820,12 +820,16 @@ async function daytonaLiveRun(ctx: any, methodId: string, params: Record<string,
     return record;
   } finally {
     try {
-      await fetch(`https://app.daytona.io/api/sandbox/${sandboxId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${apiKey}` },
-      });
+      await fetchWithTimeout(
+        `https://app.daytona.io/api/sandbox/${sandboxId}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${apiKey}` },
+        },
+        2000,
+      );
     } catch (_) {
-      /* ignore cleanup errors */
+      /* autoStopInterval remains the cleanup fallback */
     }
   }
 }
