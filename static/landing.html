@@ -386,12 +386,12 @@ html[data-theme="light"] .cta-box p{color:#626C79}
     <div class="sec-head">
       <div class="sec-label">2-minute walkthrough</div>
       <h2>How the live demo works</h2>
-      <p>The shared archive currently contains six papers, 19 claims, and 25 persisted runs. The guided path follows the Adam, Wilson, and AdamW disagreement.</p>
+      <p>The shared graph contains six papers, 19 claims, and a growing archive of reproducible runs. The guided path follows the Adam, Wilson, and AdamW disagreement.</p>
     </div>
     <div class="steps">
       <div class="step"><h4>Open the graph</h4><p>vis-network shows papers, claims, methods, citations, and CONTRADICTS edges. Evidence tab: all claims say "no runs yet".</p></div>
       <div class="step"><h4>Select a method</h4><p>Click the violet ◆ method node. Console tab loads the runnable spec with optional parameter overrides.</p></div>
-      <div class="step"><h4>▶ RUN</h4><p>The cloud demo replays measured Butterbase run history. The full local stack can generate code and execute fresh Daytona sandbox runs.</p></div>
+      <div class="step"><h4>▶ RUN</h4><p>The production app executes the selected method in a fresh Daytona sandbox, applies your parameter changes, and persists the measured result.</p></div>
       <div class="step"><h4>Watch evidence flip</h4><p>A ⚡ Run node appears. Claims update to VALIDATES or REFUTES with run ids and exact metrics in the evidence cards.</p></div>
       <div class="step"><h4>Ask the agent</h4><p>RocketRide queries Neo4j via NL→Cypher. With Cognee enabled, semantic recall over paper text and run logs augments answers — e.g. Wilson's GD 0.000 vs Adam 0.425.</p></div>
     </div>
@@ -415,7 +415,7 @@ html[data-theme="light"] .cta-box p{color:#626C79}
       <div class="card"><div class="icon">🕸</div><div class="tag">static/index.html</div><h3>Interactive graph UI</h3><p>vis-network visualization with search, deep links, keyboard shortcuts, export, zoom controls, and tabbed side panel (Evidence · Insights · Console · Ask).</p></div>
       <div class="card"><div class="icon" style="color:var(--purple)">◈</div><div class="tag">verigraph.pipe · cognee_memory.py</div><h3>Ask the research agent</h3><p>Every Ask now recalls relevant Cognee Brain context before the graph-grounded answer. Visitor sessions remain isolated by anonymous id—no email or IP is sent to Cognee.</p></div>
       <div class="card"><div class="icon">↺</div><div class="tag">demo_reset.py</div><h3>Reset demo</h3><p>One-click pristine state: clears Run/Artifact nodes, reloads papers, wipes local run dirs. Evidence returns to "no runs yet" for a clean stage demo.</p></div>
-      <div class="card"><div class="icon">☁</div><div class="tag">butterbase.py</div><h3>Run history mirror</h3><p>Papers and 25 measured runs are persisted in Butterbase outside Neo4j, powering reliable cloud replay without rerunning a sandbox for every visitor.</p></div>
+      <div class="card"><div class="icon">☁</div><div class="tag">butterbase.py</div><h3>Run history mirror</h3><p>Papers and measured runs persist in Butterbase outside Neo4j, preserving an auditable evidence archive alongside fresh cloud execution.</p></div>
       <div class="card"><div class="icon" style="color:var(--amber)">⇄</div><div class="tag">insights.py</div><h3>Conflict adjudication</h3><p>CONTRADICTS edges between claims from different papers. Insights ranks each conflict as untested, leading, resolved, or both-supported once runs exist.</p></div>
       <div class="card"><div class="icon">↓</div><div class="tag">/api/export · /api/evidence-brief</div><h3>Workspace export</h3><p>Download JSON snapshots or a shareable markdown evidence brief (print to PDF). Compare two runs side-by-side and batch-run never-executed methods.</p></div>
       <div class="card"><div class="icon">⏱</div><div class="tag">/api/timeline</div><h3>Claim timeline</h3><p>Track how claim verdicts flip as new runs land. Citation layout mode highlights CITES edges across papers.</p></div>

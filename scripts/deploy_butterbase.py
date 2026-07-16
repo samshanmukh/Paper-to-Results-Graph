@@ -34,6 +34,7 @@ load_dotenv(os.path.join(ROOT, ".env"))
 API = os.environ.get("BUTTERBASE_API_URL", "https://api.butterbase.ai")
 APP_ID = os.environ["P2R_BUTTERBASE_APP_ID"]
 KEY = os.environ["BUTTERBASE_API_KEY"]
+PUBLIC_SITE_URL = os.environ.get("P2R_PUBLIC_URL", "https://paper2result.butterbase.dev")
 FN_NAME = "verigraph_api"
 SCHEMA_PATH = os.path.join(ROOT, "butterbase", "schema.json")
 FN_PATH = os.path.join(ROOT, "butterbase", "verigraph_api.ts")
@@ -385,11 +386,11 @@ def main() -> int:
     site_url = deploy_frontend(fn_url)
 
     print("\nSmoke test")
-    smoke_test(fn_url, site_url)
+    smoke_test(fn_url, PUBLIC_SITE_URL or site_url)
 
     print("\n✓ Deploy complete")
-    print(f"  Site:    {site_url}")
-    print(f"  Demo:    {site_url.rstrip('/')}/demo/")
+    print(f"  Site:    {PUBLIC_SITE_URL or site_url}")
+    print(f"  Demo:    {(PUBLIC_SITE_URL or site_url).rstrip('/')}/demo/")
     print(f"  API fn:  {fn_url}")
     print("  Live method execution and parameter propagation verified by production smoke tests.")
     return 0
