@@ -342,7 +342,7 @@ def smoke_test(fn_url: str, site_url: str) -> None:
                     },
                 )
                 with urllib.request.urlopen(frontend_req, timeout=30) as resp:
-                    body = resp.read(800).decode(errors="replace")
+                    body = resp.read(200_000).decode(errors="replace")
                 break
             except urllib.error.HTTPError as e:
                 if e.code in (403, 404) and retry < 4:
