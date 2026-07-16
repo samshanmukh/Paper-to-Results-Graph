@@ -745,22 +745,6 @@ async function daytonaLiveRun(ctx: any, methodId: string, params: Record<string,
       env[`P2R_${k.toUpperCase()}`] = String(v);
     }
 
-    const install = await fetch(
-      `https://proxy.app.daytona.io/toolbox/${sandboxId}/process/execute`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ command: "pip install -q numpy", timeout: 180 }),
-      },
-    );
-    if (!install.ok) {
-      // non-fatal if numpy already present
-      console.error("daytona pip", install.status, await install.text());
-    }
-
     const runRes = await fetch(
       `https://proxy.app.daytona.io/toolbox/${sandboxId}/process/code-run`,
       {
