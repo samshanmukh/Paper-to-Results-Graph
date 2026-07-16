@@ -250,21 +250,40 @@ def deploy_frontend(fn_url: str) -> str:
 
 
 def smoke_test(fn_url: str, site_url: str) -> None:
-    for route in ("health", "graph", "evidence", "workspace", "insights", "timeline", "batch-plan"):
+    def get_json(route: str, timeout: int = 30) -> object:
         req = urllib.request.Request(f"{fn_url}?route={route}")
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            body = json.load(resp)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.load(resp)
+
+    def post_json(route: str, body: dict, timeout: int = 60) -> object:
+        req = urllib.request.Request(
+            f"{fn_url}?route={urllib.parse.quote(route, safe='/')}",
+            data=json.dumps(body).encode(),
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.load(resp)
+
+    read_routes = (
+        "health", "graph", "evidence", "workspace", "insights", "conflicts",
+        "runs", "timeline", "batch-plan", "export",
+    )
+    read_results: dict[str, object] = {}
+    for route in read_routes:
+        body = get_json(route)
+        read_results[route] = body
         print(f"  ✓ {route}: {str(body)[:80]}…")
 
-    health_req = urllib.request.Request(f"{fn_url}?route=health")
-    with urllib.request.urlopen(health_req, timeout=30) as resp:
-        health = json.load(resp)
+    health = read_results["health"]
+    if not isinstance(health, dict) or not health.get("ok"):
+        raise RuntimeError("production health endpoint did not return ok=true")
     if os.environ.get("DAYTONA_API_KEY", "").strip() and not health.get("live_run"):
         raise RuntimeError("health check reports live_run=false despite configured Daytona execution")
 
-    graph_req = urllib.request.Request(f"{fn_url}?route=graph")
-    with urllib.request.urlopen(graph_req, timeout=30) as resp:
-        graph = json.load(resp)
+    graph = read_results["graph"]
+    if not isinstance(graph, dict):
+        raise RuntimeError("production graph endpoint returned an invalid payload")
     method_ids = sorted({
         str(node.get("props", {}).get("id", ""))
         for node in graph.get("nodes", [])
@@ -273,20 +292,42 @@ def smoke_test(fn_url: str, site_url: str) -> None:
     if not method_ids:
         raise RuntimeError("production graph contains no runnable methods")
     for method_id in method_ids:
-        payload = json.dumps({"params": {}}).encode()
-        req = urllib.request.Request(
-            f"{fn_url}?route=run/{urllib.parse.quote(method_id, safe='')}",
-            data=payload,
-            method="POST",
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=240) as resp:
-            run = json.load(resp)
+        run = post_json(f"run/{method_id}", {"params": {}}, timeout=240)
+        if not isinstance(run, dict):
+            raise RuntimeError(f"production run returned an invalid payload for {method_id}")
         if run.get("error") or int(run.get("exit_code", 0)) != 0:
             raise RuntimeError(f"production run smoke failed for {method_id}: {run.get('error')}")
         if not run.get("result", {}).get("claim_checks"):
             raise RuntimeError(f"production run smoke returned no verdicts for {method_id}")
         print(f"  ✓ run/{method_id}: {run.get('run_id')} [{run.get('backend')}]")
+
+    for route, body in (
+        ("ask", {"question": "Which claims have executable evidence?"}),
+        ("investigate", {"message": "Audit the evidence graph"}),
+        ("brief", {"message": "Summarize executable evidence"}),
+        ("conduct", {"message": "Run the full evidence workflow"}),
+    ):
+        result = post_json(route, body, timeout=120)
+        if not isinstance(result, dict) or not str(result.get("answer", "")).strip():
+            raise RuntimeError(f"production {route} workflow returned no answer")
+        print(f"  ✓ {route}: grounded answer returned")
+
+    refreshed_runs = get_json("runs")
+    if isinstance(refreshed_runs, list) and len(refreshed_runs) >= 2:
+        comparison = post_json(
+            "compare",
+            {"run_a": refreshed_runs[1]["run_id"], "run_b": refreshed_runs[0]["run_id"]},
+        )
+        if not isinstance(comparison, dict) or "summary" not in comparison:
+            raise RuntimeError("production compare workflow returned an invalid result")
+        print("  ✓ compare: run comparison returned")
+
+    brief_req = urllib.request.Request(f"{fn_url}?route=evidence-brief")
+    with urllib.request.urlopen(brief_req, timeout=30) as resp:
+        brief_text = resp.read().decode(errors="replace")
+    if "evidence" not in brief_text.lower():
+        raise RuntimeError("production evidence brief is empty or malformed")
+    print("  ✓ evidence-brief: markdown returned")
 
     demo_url = site_url.rstrip("/") + "/demo/"
     for attempt, url in enumerate([site_url, demo_url, site_url.rstrip("/") + "/config.js", site_url.rstrip("/") + "/advanced-features.js"]):
