@@ -1575,8 +1575,21 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
 
         const hit = latestRunForMethod(runs, methodId);
         if (hit) {
+          if (Object.keys(params).length) {
+            return json(
+              {
+                detail:
+                  "This deployment could not start a live sandbox, so the changed parameters were not run. " +
+                  "Try again when Live Daytona is available; the saved run was not substituted.",
+                code: "LIVE_EXECUTION_REQUIRED",
+                params,
+                live: false,
+                live_capable: daytonaReady(ctx),
+              },
+              409,
+            );
+          }
           const rec = runRowToRecord(hit);
-          rec.params = params;
           const checks = hit.claim_checks?.items || hit.claim_checks || [];
           const summary =
             `[run replay ${hit.id}] method ${methodId} ` +

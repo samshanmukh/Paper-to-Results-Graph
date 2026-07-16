@@ -2403,6 +2403,7 @@ async function doLoadDemo(silent=false){
 async function runMethodAndWait(){
   if(!selectedMethod || running) return false;
   const btn = document.getElementById("run-btn");
+  let succeeded = false;
   running = true; btn.classList.add("running"); btn.classList.remove("done");
   btn.textContent = "● running…";
   setTab("console");
@@ -2410,7 +2411,8 @@ async function runMethodAndWait(){
   const params = collectParams();
   const pstr = Object.entries(params).map(([k,v])=>`${k}=${v}`).join(" ");
   if(window.VERIGRAPH_FN_URL){
-    log(`[history] requesting persisted run for ${selectedMethod} from Butterbase…`, "t-stage");
+    log(`[runner ] requesting ${selectedMethod} from the cloud executor…`, "t-stage");
+    if(pstr) log(`[params ] overriding: ${pstr}`, "t-warn");
   }else{
     log(`[codegen] method ${selectedMethod} → experiment.py`, "t-stage");
     if(pstr) log(`[params ] overriding: ${pstr}`, "t-warn");
@@ -2422,29 +2424,34 @@ async function runMethodAndWait(){
       headers:{"Content-Type":"application/json"}, body:JSON.stringify({params})});
     const rec = await res.json();
     const dt = ((Date.now()-started)/1000).toFixed(1);
-    running = false;
     if(!res.ok){
       log(`[error  ] ${rec.detail || JSON.stringify(rec).slice(0,200)}`, "t-bad");
-      return false;
     } else if(rec.error){
       log(`[error  ] run failed: ${rec.error}`, "t-bad");
-      return false;
     } else {
       if(rec.replay){
-        log("[runner ] replaying persisted run (Butterbase deploy — graph/evidence from stored history)", "t-warn");
+        log(`[runner ] ${rec.replay_reason || "Loading a saved run; no new method execution occurred."}`, "t-warn");
         setBbView("full");
       }
       log(`[runner ] ${rec.run_id} [${rec.backend}] exit=${rec.exit_code} · ${rec.duration_s}s`, "");
       (rec.stdout||"").trim().split("\n").slice(0,-1).forEach(l=>log("  "+l, "t-dim"));
       (rec.result?.claim_checks||[]).forEach(c=>
         log(`[verdict] ${c.verdict} ${c.claim_id} — ${c.detail}`, c.verdict==="VALIDATES"?"t-ok":"t-bad"));
-      log(`[curator] graph updated · wall ${dt}s ✓`, "t-ok");
+      log(rec.replay
+        ? `[history] saved evidence loaded · wall ${dt}s ✓`
+        : `[curator] graph updated · wall ${dt}s ✓`, "t-ok");
+      succeeded = true;
     }
-  }catch(e){ running = false; log("[error  ] "+e, "t-bad"); return false; }
-  btn.classList.remove("running");
-  btn.classList.add("done");
-  btn.textContent = "✓ run complete";
-  btn.disabled = false;
+  }catch(e){
+    log("[error  ] "+e, "t-bad");
+  }finally{
+    running = false;
+    btn.classList.remove("running");
+    btn.classList.toggle("done", succeeded);
+    btn.textContent = succeeded ? "✓ run complete" : "▶ RUN THIS METHOD";
+    btn.disabled = false;
+  }
+  if(!succeeded) return false;
   await loadGraph(!guidedDemoRunning);
   await loadEvidence();
   if(activeTab === "insights") await loadInsights();

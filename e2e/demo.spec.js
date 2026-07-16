@@ -59,7 +59,9 @@ test.describe("Verigraph demo smoke", () => {
                   name: "Separable counterexample",
                   description: "GD vs Adam",
                   runnable_hint: "numpy",
-                  params: "[]",
+                  params: JSON.stringify([
+                    { name: "n_train", default: 200, description: "Training examples" },
+                  ]),
                 },
               },
               {
@@ -109,6 +111,16 @@ test.describe("Verigraph demo smoke", () => {
       if (path === "runs") return route.fulfill({ json: [] });
       if (path === "saved-workspaces") return route.fulfill({ json: { workspaces: [] } });
       if (path.startsWith("run/") && method === "POST") {
+        const params = route.request().postDataJSON()?.params || {};
+        if (Object.keys(params).length) {
+          return route.fulfill({
+            status: 409,
+            json: {
+              code: "LIVE_EXECUTION_REQUIRED",
+              detail: "Changed parameters require a live sandbox; the saved run was not substituted.",
+            },
+          });
+        }
         return route.fulfill({
           json: {
             run_id: "run-wilson2017-m1-demo",
@@ -168,5 +180,25 @@ test.describe("Verigraph demo smoke", () => {
         return /VALIDATES|Guided demo|wilson2017/i.test(text);
       }, { timeout: 45_000 })
       .toBeTruthy();
+  });
+
+  test("does not present a saved run as a parameterized execution", async ({ page }) => {
+    await page.goto("/index.html");
+    await page.evaluate(() => {
+      selectMethod({
+        props: {
+          id: "wilson2017-m1",
+          name: "Separable counterexample",
+          params: JSON.stringify([{ name: "n_train", default: 200 }]),
+        },
+      });
+    });
+
+    await page.locator('#m-params input[data-name="n_train"]').fill("400");
+    await page.locator("#run-btn").click();
+
+    await expect(page.locator("#log")).toContainText("the saved run was not substituted");
+    await expect(page.locator("#run-btn")).toHaveText("▶ RUN THIS METHOD");
+    await expect(page.locator("#run-btn")).toBeEnabled();
   });
 });
