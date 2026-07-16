@@ -35,6 +35,16 @@ function cogneeReady(ctx: any): boolean {
   );
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 4000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function cogneeLogSession(
   ctx: any,
   question: string,
@@ -48,7 +58,7 @@ async function cogneeLogSession(
     ? `verigraph-${visitorId}`
     : ctx.env.COGNEE_SESSION_ID || "verigraph-cloud-demo";
   try {
-    const res = await fetch(`${base}/api/v1/remember/entry`, {
+    const res = await fetchWithTimeout(`${base}/api/v1/remember/entry`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -68,11 +78,20 @@ async function cogneeLogSession(
   }
 }
 
+function queueCogneeLog(ctx: any, question: string, answer: string, visitorId = "") {
+  const task = cogneeLogSession(ctx, question, answer, visitorId);
+  if (typeof ctx?.waitUntil === "function") {
+    ctx.waitUntil(task);
+  } else {
+    task.catch((e) => console.error("cognee background log failed", e));
+  }
+}
+
 async function cogneeAugmentAsk(ctx: any, question: string, answer: string): Promise<string> {
   if (!cogneeReady(ctx)) return answer;
   const base = String(ctx.env.COGNEE_SERVICE_URL).replace(/\/$/, "");
   try {
-    const res = await fetch(`${base}/api/v1/recall`, {
+    const res = await fetchWithTimeout(`${base}/api/v1/recall`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1559,7 +1578,7 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
         if (daytonaReady(ctx) && IMPL_BUNDLE[methodId]) {
           try {
             const live = await daytonaLiveRun(ctx, methodId, params);
-            await cogneeLogSession(
+            queueCogneeLog(
               ctx,
               `LIVE RUN ${methodId}`,
               `${live.run_id} ${live.error || "ok"} ${(live.result?.claim_checks || [])
@@ -1594,7 +1613,7 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
           const summary =
             `[run replay ${hit.id}] method ${methodId} ` +
             checks.map((c: any) => `${c.verdict} ${c.claim_id}`).join(", ");
-          await cogneeLogSession(ctx, `RUN ${methodId}`, summary, visitorId);
+          queueCogneeLog(ctx, `RUN ${methodId}`, summary, visitorId);
           return json({
             ...rec,
             live: false,
@@ -1696,24 +1715,24 @@ export default async function handler(req: Request, ctx: any): Promise<Response>
         if (!question) return json({ detail: "question is required" }, 400);
         let answer = answerAsk(question, ws);
         answer = await cogneeAugmentAsk(ctx, question, answer);
-        await cogneeLogSession(ctx, question, answer, visitorId);
+        queueCogneeLog(ctx, question, answer, visitorId);
         return json({ answer, replay: true, cognee_session: cogneeReady(ctx) });
       }
       if (route === "investigate") {
         const r = answerInvestigate(ws);
-        await cogneeLogSession(ctx, "Investigate graph audit", r.answer, visitorId);
+        queueCogneeLog(ctx, "Investigate graph audit", r.answer, visitorId);
         return json(r);
       }
       if (route === "brief") {
         const r = answerBrief(ws);
-        await cogneeLogSession(ctx, "Evidence brief", r.answer, visitorId);
+        queueCogneeLog(ctx, "Evidence brief", r.answer, visitorId);
         return json(r);
       }
       if (route === "conduct") {
         const body = await readJsonBody(req);
         const r = answerConduct(ws);
         const msg = String(body.message || "Full evidence workflow");
-        await cogneeLogSession(ctx, msg, r.answer, visitorId);
+        queueCogneeLog(ctx, msg, r.answer, visitorId);
         return json(r);
       }
       return notImplemented(`POST ${route} is not available on the Butterbase read-only deploy.`);
